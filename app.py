@@ -14,7 +14,7 @@ st.markdown("""
     .main { background-color: #f8f9fa; }
     .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     </style>
-""", unsafe_index=True)
+""", unsafe_allow_html=True)
 
 # ==========================================
 # 2. CONNEXION SUPABASE & CHARGEMENT
