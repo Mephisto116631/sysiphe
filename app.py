@@ -15,35 +15,7 @@ def init_connection():
 
 supabase = init_connection()
 
-# Fonction pour charger les données et les mettre en cache pour la rapidité
-@st.cache_data(ttl=60)
-def load_data():
-    reponse = supabase.table("perfs").select("*").execute()
-    if reponse.data:
-        df = pd.DataFrame(reponse.data)
-        df['date'] = pd.to_datetime(df['date']).dt.date
-        
-        # Nettoyage en mémoire (remplace les requêtes UPDATE de l'ancienne version)
-        df.loc[df['categorie'].str.lower().str.strip().isin(['force iso', 'force isometrique', 'statique']), 'categorie'] = 'Force Iso'
-        df.loc[df['categorie'].str.lower().str.strip().isin(['force', 'musculation', '']), 'categorie'] = 'Musculation'
-        df['categorie'].fillna('Musculation', inplace=True)
-        
-        # Remplacement des variantes de planche
-        mask_planche = (df['exercice'].str.lower().str.contains('planche')) & (df['exercice'].str.lower() != 'planche')
-        df.loc[mask_planche & df['exercice'].str.lower().str.contains('straddle'), 'variante'] = 'Straddle'
-        df.loc[mask_planche & df['exercice'].str.lower().str.contains('adv'), 'variante'] = 'Adv_Tuck'
-        df.loc[mask_planche & df['exercice'].str.lower().str.contains('tuck'), 'variante'] = 'Tuck'
-        df.loc[mask_planche & df['exercice'].str.lower().str.contains('full'), 'variante'] = 'Full'
-        df.loc[mask_planche & df['exercice'].str.lower().str.contains('half'), 'variante'] = 'Half_Lay'
-        df.loc[mask_planche & df['exercice'].str.lower().str.contains('diamond'), 'variante'] = 'Diamond'
-        df.loc[mask_planche & df['exercice'].str.lower().str.contains('maltese'), 'variante'] = 'Maltese'
-        df.loc[mask_planche, 'exercice'] = 'Planche'
-        
-        return df
-    return pd.DataFrame()
-
-df_global = load_data()
-
+# --- DÉPLACEMENT DE LA CONFIGURATION POUR LE CALCUL RÉTROACTIF ---
 CONFIG = {
     "poids_corporel": 97,
     "elastiques": {"Aucun": 0, "Rouge/Violet": 35, "Jaune+Bleu": 40, "Jaune": 25, "Bleu": 15, "Vert": 45},
@@ -68,6 +40,49 @@ def calculer_effort(variante, elastique, tension, forme, temps):
         facteur_m = (score_v * score_f) ** 1.2
         return round((float(temps) * facteur_e * facteur_m) / 100, 2)
     except: return 0.0
+
+# --- MOTEUR D'AUTO-RÉPARATION DES DONNÉES HISTORIQUES ---
+@st.cache_data(ttl=60)
+def load_data():
+    reponse = supabase.table("perfs").select("*").execute()
+    if reponse.data:
+        df = pd.DataFrame(reponse.data)
+        df['date'] = pd.to_datetime(df['date']).dt.date
+        
+        # 1. Ajout des colonnes manquantes pour l'historique CSV
+        for col in ['serie', 'forme', 'effort_pondere', 'unite']:
+            if col not in df.columns:
+                df[col] = None
+                
+        df['serie'] = df['serie'].fillna(1).astype(int)
+        df['forme'] = df['forme'].fillna('Normal')
+        df['unite'] = df['unite'].fillna('Sec')
+        df['elastique'] = df['elastique'].fillna('Aucun').replace('', 'Aucun')
+        df['tension'] = df['tension'].fillna('N/A').replace('', 'N/A')
+        
+        # 2. Nettoyage des variantes pour correspondre à la V13
+        df['variante'] = df['variante'].replace({'Advanced Tuck': 'Adv_Tuck', 'Half Lay': 'Half_Lay'})
+        df['variante'] = df['variante'].fillna('Tuck').replace('', 'Tuck')
+        
+        # 3. Nettoyage des anciennes catégories Sheets
+        df.loc[df['categorie'].str.lower().str.strip().isin(['force iso', 'force isometrique', 'statique']), 'categorie'] = 'Force Iso'
+        df.loc[df['categorie'].str.lower().str.strip().isin(['force', 'musculation', '']), 'categorie'] = 'Musculation'
+        df['categorie'].fillna('Musculation', inplace=True)
+        
+        # 4. CALCUL RÉTROACTIF DE L'EFFORT POUR TES 1126 LIGNES
+        df['effort_pondere'] = pd.to_numeric(df['effort_pondere'], errors='coerce').fillna(0)
+        mask_recalc = (df['exercice'] == 'Planche') & (df['effort_pondere'] == 0)
+        
+        if mask_recalc.any():
+            df.loc[mask_recalc, 'effort_pondere'] = df[mask_recalc].apply(
+                lambda r: calculer_effort(r['variante'], r['elastique'], r['tension'], r['forme'], r['performance']),
+                axis=1
+            )
+        
+        return df
+    return pd.DataFrame()
+
+df_global = load_data()
 
 def lisser_donnees(df, index_col, columns_col, values_col, fill_zero=False):
     if df.empty: return pd.DataFrame()
@@ -97,10 +112,9 @@ with st.sidebar:
         st.session_state.date_seance = date_seance
         st.rerun()
     
-    # FONCTION SUPPRIMER UN JOUR COMPLET
     if st.button("🗑️ Supprimer cette séance", type="secondary", use_container_width=True):
         supabase.table("perfs").delete().eq("date", str(st.session_state.date_seance)).execute()
-        st.cache_data.clear() # Vide le cache pour forcer la mise à jour
+        st.cache_data.clear()
         st.session_state.exos_du_jour = []
         st.toast(f"Séance du {st.session_state.date_seance.strftime('%d/%m/%Y')} supprimée", icon="🗑️")
         st.session_state.date_seance = datetime.now().date()
@@ -139,7 +153,7 @@ with st.sidebar:
     else:
         st.write("Aucun historique détecté.")
 
-# --- Hydratation dynamique et mémoire des exercices ---
+# --- Hydratation dynamique ---
 date_active = st.session_state.date_seance
 existe_aujourdhui = not df_global.empty and (date_active in df_global['date'].values)
 
@@ -194,7 +208,6 @@ with col_saisie:
         with c2: elas_g = st.selectbox("Élastique", list(CONFIG["elastiques"].keys()), index=idx_e, key=f"elas_g_{date_active}")
         with c3: tens_g = st.selectbox("Tension", list(CONFIG["tensions"].keys()), index=idx_t, key=f"tens_g_{date_active}")
         
-        # Zone de sauvegarde explicite pour réduire les appels au Cloud
         st.write("---")
         c_times = st.columns([1, 2, 1])
         
@@ -212,9 +225,7 @@ with col_saisie:
             formes_temp[s] = f
             
         if st.button("💾 Enregistrer la Planche", type="primary", use_container_width=True):
-            # Suppression préalable des anciennes données de planche du jour
             supabase.table("perfs").delete().eq("date", str(date_active)).ilike("exercice", "planche").execute()
-            
             lignes_a_inserer = []
             for s in range(1, 6):
                 t = temps_temp[s]
@@ -364,9 +375,7 @@ with tab_records:
                 df_p['elastique'] = df_p['elastique'].fillna('Aucun').replace('', 'Aucun')
                 df_p['tension'] = df_p['tension'].fillna('N/A').replace('', 'N/A')
                 
-                # Tri par effort puis performance pour avoir les max
                 df_p = df_p.sort_values(by=['effort_pondere', 'performance'], ascending=[False, False])
-                # Drop duplicates pour ne garder que le meilleur de chaque configuration
                 df_pr_planche = df_p.drop_duplicates(subset=['variante', 'elastique', 'tension'])
                 
                 df_pr_planche = df_pr_planche[['date', 'variante', 'elastique', 'tension', 'performance', 'effort_pondere']]
