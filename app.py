@@ -16,29 +16,60 @@ def init_connection():
 supabase = init_connection()
 
 # =========================================================================
-# 🔐 SYSTÈME D'AUTHENTIFICATION SÉCURISÉ
+# 🔐 SYSTÈME D'AUTHENTIFICATION SÉCURISÉ (AVEC GOOGLE OAUTH)
 # =========================================================================
 if 'user' not in st.session_state:
     st.session_state.user = None
 
-# Si personne n'est connecté, on affiche l'écran de connexion et on bloque le reste
+# Fonction pour extraire le jeton de connexion depuis l'URL (Retour de Google)
+def check_oauth_callback():
+    if "access_token" in st.query_params:
+        try:
+            # On demande à Supabase de valider le jeton
+            res = supabase.auth.get_session()
+            if res:
+                st.session_state.user = res.user
+                # On nettoie l'URL pour faire propre
+                st.query_params.clear()
+        except Exception as e:
+            st.error(f"Erreur de connexion Google : {e}")
+
+check_oauth_callback()
+
+# Si personne n'est connecté, on affiche l'écran de connexion
 if st.session_state.user is None:
     st.title("🔐 Accès Sécurisé Sysiphe")
-    st.markdown("Connecte-toi pour accéder à ton tableau de bord.")
+    st.markdown("Connecte-toi pour accéder à ton tableau de bord personnel.")
     
     col_auth1, col_auth2, col_auth3 = st.columns([1, 2, 1])
     with col_auth2:
-        choix = st.radio("Mode :", ["Se connecter", "Créer un compte"], horizontal=True)
+        # --- LE BOUTON GOOGLE MAGIQUE ---
+        if st.button("🔵 Se connecter avec Google", use_container_width=True, type="primary"):
+            # On génère le lien vers Google
+            res = supabase.auth.sign_in_with_oauth({
+                "provider": "google",
+                "options": {
+                    # L'URL où Google doit nous ramener après la connexion (Ton app Streamlit)
+                    "redirect_to": "https://sysiphe-voseesdgwwcstfepbdepkh.streamlit.app/"
+                }
+            })
+            # On redirige physiquement le navigateur vers la page Google
+            st.markdown(f'<meta http-equiv="refresh" content="0; url={res.url}">', unsafe_allow_html=True)
+        
+        st.markdown("<div style='text-align: center; margin: 15px 0;'>— OU —</div>", unsafe_allow_html=True)
+        
+        # --- L'ANCIEN SYSTÈME EMAIL/MDP (En secours) ---
+        choix = st.radio("Connexion classique :", ["Se connecter", "Créer un compte"], horizontal=True)
         email = st.text_input("Adresse Email")
         password = st.text_input("Mot de passe", type="password")
         
-        if st.button("Valider", type="primary", use_container_width=True):
+        if st.button("Valider l'Email", use_container_width=True):
             if choix == "Créer un compte":
                 try:
                     response = supabase.auth.sign_up({"email": email, "password": password})
-                    st.success("✅ Compte créé avec succès ! Tu peux maintenant te connecter.")
+                    st.success("✅ Compte créé avec succès ! Tu peux te connecter.")
                 except Exception as e:
-                    st.error(f"Erreur de création : {e}")
+                    st.error(f"Erreur : {e}")
             else:
                 try:
                     response = supabase.auth.sign_in_with_password({"email": email, "password": password})
@@ -47,8 +78,7 @@ if st.session_state.user is None:
                 except Exception as e:
                     st.error("❌ Email ou mot de passe incorrect.")
     
-    st.stop() # 🛑 Bloque tout le reste de l'application si non connecté
-
+    st.stop() # 🛑 Bloque tout le reste
 # =========================================================================
 # 👤 UTILISATEUR CONNECTÉ : ON RÉCUPÈRE SON VRAI ID
 # =========================================================================
