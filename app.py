@@ -69,15 +69,19 @@ def load_data():
         df.loc[df['categorie'].str.lower().str.strip().isin(['force', 'musculation', '']), 'categorie'] = 'Musculation'
         df['categorie'].fillna('Musculation', inplace=True)
         
-        # 4. CALCUL RÉTROACTIF DE L'EFFORT POUR TES 1126 LIGNES
-        df['effort_pondere'] = pd.to_numeric(df['effort_pondere'], errors='coerce').fillna(0)
-        mask_recalc = (df['exercice'] == 'Planche') & (df['effort_pondere'] == 0)
+      # 4. CALCUL RÉTROACTIF DE L'EFFORT POUR TES 1126 LIGNES
+        # On force la colonne en décimal (float) dès le départ pour éviter le crash Pandas
+        df['effort_pondere'] = pd.to_numeric(df['effort_pondere'], errors='coerce').fillna(0.0).astype(float)
+        
+        mask_recalc = (df['exercice'] == 'Planche') & (df['effort_pondere'] == 0.0)
         
         if mask_recalc.any():
-            df.loc[mask_recalc, 'effort_pondere'] = df[mask_recalc].apply(
-                lambda r: calculer_effort(r['variante'], r['elastique'], r['tension'], r['forme'], r['performance']),
+            # On calcule et on force explicitement le format float sur les résultats
+            efforts_calcules = df[mask_recalc].apply(
+                lambda r: float(calculer_effort(r['variante'], r['elastique'], r['tension'], r['forme'], r['performance'])),
                 axis=1
             )
+            df.loc[mask_recalc, 'effort_pondere'] = efforts_calcules
         
         return df
     return pd.DataFrame()
