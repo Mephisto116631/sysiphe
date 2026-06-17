@@ -23,16 +23,24 @@ if 'user' not in st.session_state:
 
 # Fonction pour extraire le jeton de connexion depuis l'URL (Retour de Google)
 def check_oauth_callback():
-    if "access_token" in st.query_params:
+    # Supabase renvoie un paramètre "code" dans l'URL après la validation Google
+    if "code" in st.query_params:
         try:
-            # On demande à Supabase de valider le jeton
-            res = supabase.auth.get_session()
-            if res:
+            # 1. On capture le code
+            code = st.query_params["code"]
+            # 2. On l'échange officiellement contre une vraie session Supabase
+            res = supabase.auth.exchange_code_for_session({"auth_code": code})
+            
+            # 3. Si l'échange réussit, on enregistre l'utilisateur
+            if res.user:
                 st.session_state.user = res.user
-                # On nettoie l'URL pour faire propre
-                st.query_params.clear()
+                
+            # 4. On efface le code de l'URL pour faire propre
+            st.query_params.clear()
         except Exception as e:
-            st.error(f"Erreur de connexion Google : {e}")
+            st.error(f"Erreur lors de la validation du ticket Supabase : {e}")
+
+check_oauth_callback()
 
 check_oauth_callback()
 
@@ -44,11 +52,16 @@ if st.session_state.user is None:
     col_auth1, col_auth2, col_auth3 = st.columns([1, 2, 1])
     with col_auth2:
       # --- LE BOUTON GOOGLE MAGIQUE ---
-        # On construit directement l'URL d'autorisation Supabase sans passer par la balise meta
-        oauth_url = "https://qzvfkscqcllfnoqywkwq.supabase.co/auth/v1/authorize?provider=google&redirect_to=https://sysiphe-voseesdgwwcstfepbdepkh.streamlit.app/"
+        # On demande au SDK Supabase de préparer un lien d'autorisation sécurisé (PKCE)
+        res = supabase.auth.sign_in_with_oauth({
+            "provider": "google",
+            "options": {
+                "redirect_to": "https://sysiphe-voseesdgwwcstfepbdepkh.streamlit.app/"
+            }
+        })
         
-        # Ce bouton est un vrai lien HTML (<a>). Google l'acceptera sans erreur 403 !
-        st.link_button("🔵 Se connecter avec Google", url=oauth_url, type="primary", use_container_width=True)
+        # On utilise le vrai bouton de lien HTML de Streamlit avec l'URL générée
+        st.link_button("🔵 Se connecter avec Google", url=res.url, type="primary", use_container_width=True)
         # --- L'ANCIEN SYSTÈME EMAIL/MDP (En secours) ---
         choix = st.radio("Connexion classique :", ["Se connecter", "Créer un compte"], horizontal=True)
         email = st.text_input("Adresse Email")
