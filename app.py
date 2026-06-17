@@ -43,21 +43,12 @@ if st.session_state.user is None:
     
     col_auth1, col_auth2, col_auth3 = st.columns([1, 2, 1])
     with col_auth2:
-        # --- LE BOUTON GOOGLE MAGIQUE ---
-        if st.button("🔵 Se connecter avec Google", use_container_width=True, type="primary"):
-            # On génère le lien vers Google
-            res = supabase.auth.sign_in_with_oauth({
-                "provider": "google",
-                "options": {
-                    # L'URL où Google doit nous ramener après la connexion (Ton app Streamlit)
-                    "redirect_to": "https://sysiphe-voseesdgwwcstfepbdepkh.streamlit.app/"
-                }
-            })
-            # On redirige physiquement le navigateur vers la page Google
-            st.markdown(f'<meta http-equiv="refresh" content="0; url={res.url}">', unsafe_allow_html=True)
+      # --- LE BOUTON GOOGLE MAGIQUE ---
+        # On construit directement l'URL d'autorisation Supabase sans passer par la balise meta
+        oauth_url = "https://qzvfkscqcllfnoqywkwq.supabase.co/auth/v1/authorize?provider=google&redirect_to=https://sysiphe-voseesdgwwcstfepbdepkh.streamlit.app/"
         
-        st.markdown("<div style='text-align: center; margin: 15px 0;'>— OU —</div>", unsafe_allow_html=True)
-        
+        # Ce bouton est un vrai lien HTML (<a>). Google l'acceptera sans erreur 403 !
+        st.link_button("🔵 Se connecter avec Google", url=oauth_url, type="primary", use_container_width=True)
         # --- L'ANCIEN SYSTÈME EMAIL/MDP (En secours) ---
         choix = st.radio("Connexion classique :", ["Se connecter", "Créer un compte"], horizontal=True)
         email = st.text_input("Adresse Email")
