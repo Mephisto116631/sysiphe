@@ -15,6 +15,56 @@ def init_connection():
 
 supabase = init_connection()
 
+# =========================================================================
+# 🔐 SYSTÈME D'AUTHENTIFICATION SÉCURISÉ
+# =========================================================================
+if 'user' not in st.session_state:
+    st.session_state.user = None
+
+# Si personne n'est connecté, on affiche l'écran de connexion et on bloque le reste
+if st.session_state.user is None:
+    st.title("🔐 Accès Sécurisé Sysiphe")
+    st.markdown("Connecte-toi pour accéder à ton tableau de bord.")
+    
+    col_auth1, col_auth2, col_auth3 = st.columns([1, 2, 1])
+    with col_auth2:
+        choix = st.radio("Mode :", ["Se connecter", "Créer un compte"], horizontal=True)
+        email = st.text_input("Adresse Email")
+        password = st.text_input("Mot de passe", type="password")
+        
+        if st.button("Valider", type="primary", use_container_width=True):
+            if choix == "Créer un compte":
+                try:
+                    response = supabase.auth.sign_up({"email": email, "password": password})
+                    st.success("✅ Compte créé avec succès ! Tu peux maintenant te connecter.")
+                except Exception as e:
+                    st.error(f"Erreur de création : {e}")
+            else:
+                try:
+                    response = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                    st.session_state.user = response.user
+                    st.rerun()
+                except Exception as e:
+                    st.error("❌ Email ou mot de passe incorrect.")
+    
+    st.stop() # 🛑 Bloque tout le reste de l'application si non connecté
+
+# =========================================================================
+# 👤 UTILISATEUR CONNECTÉ : ON RÉCUPÈRE SON VRAI ID
+# =========================================================================
+USER_ID = st.session_state.user.id
+
+with st.sidebar:
+    st.caption(f"Connecté : {st.session_state.user.email}")
+    if st.button("🚪 Se déconnecter", use_container_width=True):
+        supabase.auth.sign_out()
+        st.session_state.user = None
+        st.cache_data.clear()
+        st.rerun()
+    st.markdown("---")
+
+# ---> LAISSE TOUTE LA SUITE DE TON CODE (load_data, etc.) JUSTE EN DESSOUS <---
+
 # --- DÉPLACEMENT DE LA CONFIGURATION POUR LE CALCUL RÉTROACTIF ---
 CONFIG = {
     "poids_corporel": 97,
