@@ -15,54 +15,65 @@ def init_connection():
 
 supabase = init_connection()
 
-# =========================================================================
-# 🔐 SYSTÈME D'AUTHENTIFICATION SÉCURISÉ (AVEC GOOGLE OAUTH)
-# =========================================================================
+# Initialisation des variables de session et des paramètres dynamiques
 if 'user' not in st.session_state:
     st.session_state.user = None
+if 'date_seance' not in st.session_state:
+    st.session_state.date_seance = datetime.now().date()
+if 'weight' not in st.session_state:
+    st.session_state.weight = 97
+if 'nb_days_avg' not in st.session_state:
+    st.session_state.nb_days_avg = 5
+if 'include_planche' not in st.session_state:
+    st.session_state.include_planche = True
 
-# Fonction pour extraire le jeton de connexion depuis l'URL (Retour de Google)
+# --- RECONNAISSANCE AUTOMATIQUE DE L'APPAREIL (MÉMORISATION) ---
+def restore_session():
+    if st.session_state.user is None:
+        try:
+            session = supabase.auth.get_session()
+            if session and session.user:
+                st.session_state.user = session.user
+        except Exception:
+            pass
+
+restore_session()
+
+# =========================================================================
+# 🔐 SYSTÈME D'AUTHENTIFICATION SÉCURISÉ (AVEC GOOGLE OAUTH PKCE)
+# =========================================================================
 def check_oauth_callback():
-    # Supabase renvoie un paramètre "code" dans l'URL après la validation Google
     if "code" in st.query_params:
         try:
-            # 1. On capture le code
             code = st.query_params["code"]
-            # 2. On l'échange officiellement contre une vraie session Supabase
             res = supabase.auth.exchange_code_for_session({"auth_code": code})
-            
-            # 3. Si l'échange réussit, on enregistre l'utilisateur
             if res.user:
                 st.session_state.user = res.user
-                
-            # 4. On efface le code de l'URL pour faire propre
             st.query_params.clear()
         except Exception as e:
-            st.error(f"Erreur lors de la validation du ticket Supabase : {e}")
+            st.error(f"Erreur de validation du ticket de connexion : {e}")
 
 check_oauth_callback()
 
-check_oauth_callback()
-
-# Si personne n'est connecté, on affiche l'écran de connexion
+# Écran de connexion si l'utilisateur n'est pas reconnu
 if st.session_state.user is None:
     st.title("🔐 Accès Sécurisé Sysiphe")
     st.markdown("Connecte-toi pour accéder à ton tableau de bord personnel.")
     
     col_auth1, col_auth2, col_auth3 = st.columns([1, 2, 1])
     with col_auth2:
-      # --- LE BOUTON GOOGLE MAGIQUE ---
-        # On demande au SDK Supabase de préparer un lien d'autorisation sécurisé (PKCE)
+        # --- LE BOUTON GOOGLE SÉCURISÉ ---
         res = supabase.auth.sign_in_with_oauth({
             "provider": "google",
             "options": {
                 "redirect_to": "https://sysiphe-voseesdgwwcstfepbdepkh.streamlit.app/"
             }
         })
-        
-        # On utilise le vrai bouton de lien HTML de Streamlit avec l'URL générée
         st.link_button("🔵 Se connecter avec Google", url=res.url, type="primary", use_container_width=True)
-        # --- L'ANCIEN SYSTÈME EMAIL/MDP (En secours) ---
+        
+        st.markdown("<div style='text-align: center; margin: 15px 0;'>— OU —</div>", unsafe_allow_html=True)
+        
+        # --- SYSTÈME EMAIL/MDP DE SECOURS ---
         choix = st.radio("Connexion classique :", ["Se connecter", "Créer un compte"], horizontal=True)
         email = st.text_input("Adresse Email")
         password = st.text_input("Mot de passe", type="password")
@@ -70,7 +81,7 @@ if st.session_state.user is None:
         if st.button("Valider l'Email", use_container_width=True):
             if choix == "Créer un compte":
                 try:
-                    response = supabase.auth.sign_up({"email": email, "password": password})
+                    supabase.auth.sign_up({"email": email, "password": password})
                     st.success("✅ Compte créé avec succès ! Tu peux te connecter.")
                 except Exception as e:
                     st.error(f"Erreur : {e}")
@@ -81,10 +92,10 @@ if st.session_state.user is None:
                     st.rerun()
                 except Exception as e:
                     st.error("❌ Email ou mot de passe incorrect.")
-    
-    st.stop() # 🛑 Bloque tout le reste
+    st.stop()
+
 # =========================================================================
-# 👤 UTILISATEUR CONNECTÉ : ON RÉCUPÈRE SON VRAI ID
+# 👤 UTILISATEUR CONNECTÉ : ISOLATION STRICTE DES DONNÉES
 # =========================================================================
 USER_ID = st.session_state.user.id
 
@@ -97,19 +108,12 @@ with st.sidebar:
         st.rerun()
     st.markdown("---")
 
-# ---> LAISSE TOUTE LA SUITE DE TON CODE (load_data, etc.) JUSTE EN DESSOUS <---
-
-# --- DÉPLACEMENT DE LA CONFIGURATION POUR LE CALCUL RÉTROACTIF ---
 CONFIG = {
-    "poids_corporel": 97,
     "elastiques": {"Aucun": 0, "Rouge/Violet": 35, "Jaune+Bleu": 40, "Jaune": 25, "Bleu": 15, "Vert": 45},
     "tensions": {"N/A": 0.70, "Ecarté": 0.85, "Normal": 0.70, "Serré": 0.60},
     "variantes": {"Full": 10, "Straddle": 9, "Half_Lay": 9, "Diamond": 5, "Maltese": 11, "Tuck": 2, "Adv_Tuck": 3},
     "formes": {"Normal": 47.6, "High": 34, "Bas": 66.64, "Dead": 93.296}
 }
-
-MOIS_FR = {1: 'Janvier', 2: 'Février', 3: 'Mars', 4: 'Avril', 5: 'Mai', 6: 'Juin', 
-           7: 'Juillet', 8: 'Août', 9: 'Septembre', 10: 'Octobre', 11: 'Novembre', 12: 'Décembre'}
 
 def calculer_effort(variante, elastique, tension, forme, temps):
     try:
@@ -119,21 +123,21 @@ def calculer_effort(variante, elastique, tension, forme, temps):
         score_f = CONFIG["formes"].get(forme, 0)
         if score_v == 0 or score_f == 0 or not temps: return 0.0
         kg_traction = force_e * ratio_t
-        poids_eff = CONFIG["poids_corporel"] - kg_traction
+        # Utilisation dynamique de la valeur de poids de la session
+        poids_eff = st.session_state.weight - kg_traction
         facteur_e = (poids_eff / 100) ** 2
         facteur_m = (score_v * score_f) ** 1.2
         return round((float(temps) * facteur_e * facteur_m) / 100, 2)
     except: return 0.0
 
-# --- MOTEUR D'AUTO-RÉPARATION DES DONNÉES HISTORIQUES ---
+# --- CHARGEMENT ISOLÉ DES DONNÉES DE L'UTILISATEUR ---
 @st.cache_data(ttl=60)
-def load_data():
-    reponse = supabase.table("perfs").select("*").execute()
+def load_data(uid, current_weight):
+    reponse = supabase.table("perfs").select("*").eq("user_id", uid).execute()
     if reponse.data:
         df = pd.DataFrame(reponse.data)
         df['date'] = pd.to_datetime(df['date']).dt.date
         
-        # 1. Ajout des colonnes manquantes pour l'historique CSV
         for col in ['serie', 'forme', 'effort_pondere', 'unite']:
             if col not in df.columns:
                 df[col] = None
@@ -143,34 +147,22 @@ def load_data():
         df['unite'] = df['unite'].fillna('Sec')
         df['elastique'] = df['elastique'].fillna('Aucun').replace('', 'Aucun')
         df['tension'] = df['tension'].fillna('N/A').replace('', 'N/A')
+        df['variante'] = df['variante'].replace({'Advanced Tuck': 'Adv_Tuck', 'Half Lay': 'Half_Lay'}).fillna('Tuck').replace('', 'Tuck')
         
-        # 2. Nettoyage des variantes pour correspondre à la V13
-        df['variante'] = df['variante'].replace({'Advanced Tuck': 'Adv_Tuck', 'Half Lay': 'Half_Lay'})
-        df['variante'] = df['variante'].fillna('Tuck').replace('', 'Tuck')
-        
-        # 3. Nettoyage des anciennes catégories Sheets
         df.loc[df['categorie'].str.lower().str.strip().isin(['force iso', 'force isometrique', 'statique']), 'categorie'] = 'Force Iso'
         df.loc[df['categorie'].str.lower().str.strip().isin(['force', 'musculation', '']), 'categorie'] = 'Musculation'
         df['categorie'].fillna('Musculation', inplace=True)
         
-      # 4. CALCUL RÉTROACTIF DE L'EFFORT POUR TES 1126 LIGNES
-        # On force la colonne en décimal (float) dès le départ pour éviter le crash Pandas
-        df['effort_pondere'] = pd.to_numeric(df['effort_pondere'], errors='coerce').fillna(0.0).astype(float)
-        
-        mask_recalc = (df['exercice'] == 'Planche') & (df['effort_pondere'] == 0.0)
-        
-        if mask_recalc.any():
-            # On calcule et on force explicitement le format float sur les résultats
-            efforts_calcules = df[mask_recalc].apply(
-                lambda r: float(calculer_effort(r['variante'], r['elastique'], r['tension'], r['forme'], r['performance'])),
-                axis=1
-            )
-            df.loc[mask_recalc, 'effort_pondere'] = efforts_calcules
-        
+        # Recalcul systématique basé sur le poids choisi dans l'interface
+        df['effort_pondere'] = df.apply(
+            lambda r: float(calculer_effort(r['variante'], r['elastique'], r['tension'], r['forme'], r['performance'])) if r['exercice'] == 'Planche' else 0.0,
+            axis=1
+        )
         return df
     return pd.DataFrame()
 
-df_global = load_data()
+# Passage du poids à la fonction de cache pour forcer la mise à jour si le poids change
+df_global = load_data(USER_ID, st.session_state.weight)
 
 def lisser_donnees(df, index_col, columns_col, values_col, fill_zero=False):
     if df.empty: return pd.DataFrame()
@@ -184,65 +176,28 @@ def lisser_donnees(df, index_col, columns_col, values_col, fill_zero=False):
     return pivot
 
 # =========================================================================
-# 1. GESTION DE LA BARRE LATÉRALE (NAVIGATION & SUPPRESSION)
+# 1. NAVIGATION PAR MINI-CALENDRIER (BARRE LATÉRALE)
 # =========================================================================
 st.title("🪨 Sysiphe v13 (Cloud)")
 
-if 'date_seance' not in st.session_state:
-    st.session_state.date_seance = datetime.now().date()
-
 with st.sidebar:
-    st.header("Statut")
-    st.success("● Cloud Connecté")
+    st.header("📅 Navigation")
     
-    date_seance = st.date_input("Date de la séance", st.session_state.date_seance, key="date_picker")
-    if date_seance != st.session_state.date_seance:
-        st.session_state.date_seance = date_seance
+    # Mini calendrier d'entraînement interactif
+    date_active = st.date_input("Choisir une date", st.session_state.date_seance, key="date_picker")
+    if date_active != st.session_state.date_seance:
+        st.session_state.date_seance = date_active
         st.rerun()
     
     if st.button("🗑️ Supprimer cette séance", type="secondary", use_container_width=True):
-        supabase.table("perfs").delete().eq("date", str(st.session_state.date_seance)).execute()
+        supabase.table("perfs").delete().eq("user_id", USER_ID).eq("date", str(date_active)).execute()
         st.cache_data.clear()
         st.session_state.exos_du_jour = []
-        st.toast(f"Séance du {st.session_state.date_seance.strftime('%d/%m/%Y')} supprimée", icon="🗑️")
+        st.toast(f"Séance du {date_active.strftime('%d/%m/%Y')} supprimée", icon="🗑️")
         st.session_state.date_seance = datetime.now().date()
         st.rerun()
-    
-    st.write("---")
-    st.write("🗄️ **Consulter un entraînement passé**")
-    
-    if not df_global.empty:
-        dates_uniques = df_global['date'].unique()
-        df_dates = pd.DataFrame({'date': dates_uniques}).sort_values('date', ascending=False)
-        df_dates['date_dt'] = pd.to_datetime(df_dates['date'])
-        df_dates['Mois_Str'] = df_dates['date_dt'].dt.month.map(MOIS_FR) + " " + df_dates['date_dt'].dt.year.astype(str)
-        
-        liste_mois = df_dates['Mois_Str'].unique().tolist()
-        if liste_mois:
-            mois_selectionne = st.selectbox("Filtrer par mois", liste_mois)
-            
-            df_mois = df_dates[df_dates['Mois_Str'] == mois_selectionne].copy()
-            df_mois['📅 Séances du mois'] = df_mois['date_dt'].dt.strftime('%d/%m/%Y')
-            
-            selection_sidebar = st.dataframe(
-                df_mois[['📅 Séances du mois']], 
-                hide_index=True, 
-                use_container_width=True,
-                on_select="rerun",
-                selection_mode="single-row"
-            )
-            
-            if selection_sidebar and selection_sidebar["selection"]["rows"]:
-                idx_clic = selection_sidebar["selection"]["rows"][0]
-                date_cliquee = df_mois.iloc[idx_clic]['date']
-                if date_cliquee != st.session_state.date_seance:
-                    st.session_state.date_seance = date_cliquee
-                    st.rerun()
-    else:
-        st.write("Aucun historique détecté.")
 
-# --- Hydratation dynamique ---
-date_active = st.session_state.date_seance
+# --- HYDRATATION AUTOMATIQUE & REMONTÉE DE LA DERNIÈRE SÉANCE ---
 existe_aujourdhui = not df_global.empty and (date_active in df_global['date'].values)
 
 target_date = date_active if existe_aujourdhui else None
@@ -254,87 +209,108 @@ if not existe_aujourdhui and not df_global.empty:
 is_fallback = not existe_aujourdhui
 
 default_var, default_elas, default_tens = "Full", "Aucun", "N/A"
-default_forms, default_times = {i: "Normal" for i in range(1,6)}, {i: "" for i in range(1,6)}
+default_forms, default_times = {i: "Normal" for i in range(1, 6)}, {i: "" for i in range(1, 6)}
 
 if target_date and not df_global.empty:
     df_target_planche = df_global[(df_global['date'] == target_date) & (df_global['exercice'].str.lower() == 'planche')]
     if not df_target_planche.empty:
         last_g = df_target_planche.iloc[0]
         default_var, default_elas, default_tens = last_g['variante'], last_g['elastique'], last_g['tension']
-        
         for _, r in df_target_planche.iterrows():
             s = int(r['serie'])
             default_forms[s] = r['forme'] if pd.notna(r['forme']) else "Normal"
             if not is_fallback: 
                 default_times[s] = str(r['performance']) if pd.notna(r['performance']) else ""
 
+# Suggestion automatique des exercices de la dernière séance
 if 'exos_du_jour' not in st.session_state or st.session_state.get('current_date') != date_active:
     if target_date and not df_global.empty:
-        exos_cible = df_global[(df_global['date'] == (target_date if target_date else date_active)) & (df_global['exercice'].str.lower() != 'planche')]
+        exos_cible = df_global[(df_global['date'] == target_date) & (df_global['exercice'].str.lower() != 'planche')]
         st.session_state.exos_du_jour = exos_cible['exercice'].unique().tolist()
     else:
         st.session_state.exos_du_jour = []
     st.session_state.current_date = date_active
 
+# Liste des exercices uniques du profil de l'utilisateur connecté
 tous_les_exos = []
 if not df_global.empty:
     tous_les_exos = sorted(df_global[df_global['exercice'].str.lower() != 'planche']['exercice'].unique().tolist())
 
 # =========================================================================
-# 2. INTERFACE DE SAISIE REACTIONNELLE EN LIGNE
+# 2. INTERFACE DE SAISIE RÉACTIONNELLE EN LIGNE (AVEC MÉTRIQUES INTÉGRÉES)
 # =========================================================================
 col_saisie, col_vide = st.columns([2, 1])
 with col_saisie:
-    # --- PLANCHE ---
-    with st.expander("🤸 PLANCHE", expanded=True):
-        idx_v = list(CONFIG["variantes"].keys()).index(default_var) if default_var in CONFIG["variantes"] else 0
-        idx_e = list(CONFIG["elastiques"].keys()).index(default_elas) if default_elas in CONFIG["elastiques"] else 0
-        idx_t = list(CONFIG["tensions"].keys()).index(default_tens) if default_tens in CONFIG["tensions"] else 0
-        
-        c1, c2, c3 = st.columns(3)
-        with c1: var_g = st.selectbox("Variante", list(CONFIG["variantes"].keys()), index=idx_v, key=f"var_g_{date_active}")
-        with c2: elas_g = st.selectbox("Élastique", list(CONFIG["elastiques"].keys()), index=idx_e, key=f"elas_g_{date_active}")
-        with c3: tens_g = st.selectbox("Tension", list(CONFIG["tensions"].keys()), index=idx_t, key=f"tens_g_{date_active}")
-        
-        st.write("---")
-        c_times = st.columns([1, 2, 1])
-        
-        formes_temp, temps_temp = {}, {}
-        for s in range(1, 6):
-            c1, c2, c3 = st.columns([1, 2, 1])
-            with c1: t = st.text_input(f"S{s}(s)", value=default_times.get(s, ""), key=f"p_t_{s}_{date_active}")
-            with c2: f = st.select_slider(f"F{s}", options=list(CONFIG["formes"].keys()), value=default_forms.get(s, "Normal"), key=f"p_f_{s}_{date_active}")
-            with c3:
-                if t:
-                    eff = calculer_effort(var_g, elas_g, tens_g, f, t)
-                    st.metric("Effort", f"{eff}")
-                else: st.metric("Effort", "0.0")
-            temps_temp[s] = t
-            formes_temp[s] = f
-            
-        if st.button("💾 Enregistrer la Planche", type="primary", use_container_width=True):
-            supabase.table("perfs").delete().eq("date", str(date_active)).ilike("exercice", "planche").execute()
-            lignes_a_inserer = []
-            for s in range(1, 6):
-                t = temps_temp[s]
-                f = formes_temp[s]
-                if t:
-                    eff = calculer_effort(var_g, elas_g, tens_g, f, t)
-                    lignes_a_inserer.append({
-                        "user_id": "00000000-0000-0000-0000-000000000000",
-                        "date": str(date_active), "exercice": "Planche", "serie": s, "performance": float(t),
-                        "variante": var_g, "elastique": elas_g, "tension": tens_g, "forme": f,
-                        "effort_pondere": eff, "categorie": "Force Iso", "unite": "Sec"
-                    })
-            if lignes_a_inserer:
-                supabase.table("perfs").insert(lignes_a_inserer).execute()
-                st.cache_data.clear()
-                st.success("Planche enregistrée !")
-                st.rerun()
+    
+    # --- BLOC ENTRAÎNEMENT PLANCHE CONDITIONNEL ---
+    if st.session_state.include_planche:
+        titre_planche = "🤸 PLANCHE"
+        if not df_global.empty:
+            df_p_historique = df_global[(df_global['exercice'].str.lower() == 'planche') & (df_global['effort_pondere'] > 0)]
+            if not df_p_historique.empty:
+                max_effort = df_p_historique['effort_pondere'].max()
+                titre_planche = f"🤸 PLANCHE (Record : {max_effort:.1f} pts)"
 
-    # --- AUTRES EXERCICES ---
+        with st.expander(titre_planche, expanded=True):
+            idx_v = list(CONFIG["variantes"].keys()).index(default_var) if default_var in CONFIG["variantes"] else 0
+            idx_e = list(CONFIG["elastiques"].keys()).index(default_elas) if default_elas in CONFIG["elastiques"] else 0
+            idx_t = list(CONFIG["tensions"].keys()).index(default_tens) if default_tens in CONFIG["tensions"] else 0
+            
+            c1, c2, c3 = st.columns(3)
+            with c1: var_g = st.selectbox("Variante", list(CONFIG["variantes"].keys()), index=idx_v, key=f"var_g_{date_active}")
+            with c2: elas_g = st.selectbox("Élastique", list(CONFIG["elastiques"].keys()), index=idx_e, key=f"elas_g_{date_active}")
+            with c3: tens_g = st.selectbox("Tension", list(CONFIG["tensions"].keys()), index=idx_t, key=f"tens_g_{date_active}")
+            
+            st.write("---")
+            formes_temp, temps_temp = {}, {}
+            for s in range(1, 6):
+                c1, c2, c3 = st.columns([1, 2, 1])
+                with c1: t = st.text_input(f"S{s}(s)", value=default_times.get(s, ""), key=f"p_t_{s}_{date_active}")
+                with c2: f = st.select_slider(f"F{s}", options=list(CONFIG["formes"].keys()), value=default_forms.get(s, "Normal"), key=f"p_f_{s}_{date_active}")
+                with c3:
+                    if t:
+                        eff = calculer_effort(var_g, elas_g, tens_g, f, t)
+                        st.metric("Effort", f"{eff}")
+                    else: st.metric("Effort", "0.0")
+                temps_temp[s] = t
+                formes_temp[s] = f
+                
+            if st.button("💾 Enregistrer la Planche", type="primary", use_container_width=True):
+                supabase.table("perfs").delete().eq("user_id", USER_ID).eq("date", str(date_active)).ilike("exercice", "planche").execute()
+                lignes_a_inserer = []
+                for s in range(1, 6):
+                    t = temps_temp[s]
+                    f = formes_temp[s]
+                    if t:
+                        eff = calculer_effort(var_g, elas_g, tens_g, f, t)
+                        lignes_a_inserer.append({
+                            "user_id": USER_ID,
+                            "date": str(date_active), "exercice": "Planche", "serie": s, "performance": float(t),
+                            "variante": var_g, "elastique": elas_g, "tension": tens_g, "forme": f,
+                            "effort_pondere": eff, "categorie": "Force Iso", "unite": "Sec"
+                        })
+                if lignes_a_inserer:
+                    supabase.table("perfs").insert(lignes_a_inserer).execute()
+                    st.cache_data.clear()
+                    st.success("Planche enregistrée !")
+                    st.rerun()
+
+    # --- AUTRES EXERCICES AVEC PR & MOYENNE GLISSANTE CONFIGURABLE ---
     for nom_exo in list(st.session_state.exos_du_jour):
-        with st.expander(f"💪 {nom_exo.upper()}", expanded=True):
+        titre_dynamique = f"💪 {nom_exo.upper()}"
+        if not df_global.empty:
+            df_historique_exo = df_global[df_global['exercice'].str.lower() == nom_exo.lower().strip()]
+            if not df_historique_exo.empty:
+                pr_absolu = int(df_historique_exo['performance'].max())
+                total_par_seance = df_historique_exo.groupby('date')['performance'].sum().sort_index(ascending=False)
+                # Utilisation dynamique de la taille de fenêtre configurée
+                window_size = int(st.session_state.nb_days_avg)
+                volume_moyen_glissant = total_par_seance.head(window_size).mean()
+                titre_dynamique = f"💪 {nom_exo.upper()} (PR : {pr_absolu} | Moy. {window_size} séances : {volume_moyen_glissant:.1f})"
+            else:
+                titre_dynamique = f"💪 {nom_exo.upper()} (Nouvel Exercice)"
+
+        with st.expander(titre_dynamique, expanded=True):
             p_today = []
             cat_init = "Musculation"
             if not df_global.empty:
@@ -344,7 +320,6 @@ with col_saisie:
                     cat_init = df_exo_today.iloc[0]['categorie']
             
             val_init = " ".join([str(int(p) if float(p).is_integer() else p) for p in p_today if pd.notna(p)])
-            
             c_input, c_m1, c_m2, c_btn = st.columns([2.5, 1, 1, 0.5])
             
             with c_input: 
@@ -366,18 +341,18 @@ with col_saisie:
                 st.write("")
                 if st.button("🗑️", key=f"rem_{nom_exo}_{date_active}", use_container_width=True):
                     st.session_state.exos_du_jour.remove(nom_exo)
-                    supabase.table("perfs").delete().eq("date", str(date_active)).ilike("exercice", nom_exo).execute()
+                    supabase.table("perfs").delete().eq("user_id", USER_ID).eq("date", str(date_active)).ilike("exercice", nom_exo).execute()
                     st.cache_data.clear()
                     st.rerun()
             
             if st.button(f"Enregistrer {nom_exo}", key=f"save_{nom_exo}_{date_active}"):
-                supabase.table("perfs").delete().eq("date", str(date_active)).ilike("exercice", nom_exo).execute()
+                supabase.table("perfs").delete().eq("user_id", USER_ID).eq("date", str(date_active)).ilike("exercice", nom_exo).execute()
                 if raw_input:
                     try:
                         lignes = []
                         for i, v in enumerate(raw_input.split()):
                             lignes.append({
-                                "user_id": "00000000-0000-0000-0000-000000000000",
+                                "user_id": USER_ID,
                                 "date": str(date_active), "exercice": nom_exo, "serie": i+1, "performance": float(v),
                                 "variante": "", "elastique": "", "tension": "", "forme": "", "effort_pondere": 0.0,
                                 "categorie": cat_exo, "unite": "Reps"
@@ -389,7 +364,7 @@ with col_saisie:
                             st.rerun()
                     except ValueError: pass
 
-    # --- AJOUT EXERCICES ---
+    # --- HISTORIQUE & AJOUT COMPLET ---
     col_sel, col_add = st.columns([3, 1])
     with col_sel:
         new_sel = st.selectbox("Exercices Habituels", ["--- Sélectionner ---"] + tous_les_exos)
@@ -402,43 +377,44 @@ with col_saisie:
                 st.rerun()
 
 # =========================================================================
-# 3. STATISTIQUES & PR HISTORIQUES GLOBALS
+# 3. STATISTIQUES, PRs HISTORIQUES & ONGLETS CONFIGURABLES
 # =========================================================================
 st.write("---")
-tab_graph, tab_records, tab_repos = st.tabs(["📈 Graphiques", "🏆 Records (PRs)", "💤 Analyse du Repos"])
+tab_graph, tab_records, tab_repos, tab_param = st.tabs(["📈 Graphiques", "🏆 Records (PRs)", "💤 Analyse du Repos", "⚙️ Paramètres"])
 
 with tab_graph:
     if not df_global.empty:
         min_date, max_date = df_global['date'].min(), df_global['date'].max()
         curseur_dates = st.slider("🔍 Période d'analyse", min_value=min_date, max_value=max_date, value=(min_date, max_date)) if min_date != max_date else (date_active, date_active)
-        
         df_period = df_global[(df_global['date'] >= curseur_dates[0]) & (df_global['date'] <= curseur_dates[1])]
         
-        # Graph Planche
-        df_planche = df_period[df_period['exercice'].str.lower() == 'planche']
-        if not df_planche.empty:
-            df_g_planche = df_planche.groupby(['date', 'variante'])['effort_pondere'].max().reset_index()
-            pivot_planche = lisser_donnees(df_g_planche, 'date', 'variante', 'effort_pondere')
-            if not pivot_planche.empty:
-                df_melt_p = pivot_planche.reset_index().melt(id_vars='date', var_name='Variante', value_name='Effort')
-                fig_p = px.line(df_melt_p, x='date', y='Effort', color='Variante')
-                fig_p.update_traces(hovertemplate='%{y:.1f} pts')
-                fig_p.update_layout(hovermode="x unified", xaxis_title="", yaxis_title="Effort Pondéré")
-                st.plotly_chart(fig_p, use_container_width=True)
+        # Graph Planche (Conditionnel)
+        if st.session_state.include_planche:
+            df_planche = df_period[df_period['exercice'].str.lower() == 'planche']
+            if not df_planche.empty:
+                df_g_planche = df_planche.groupby(['date', 'variante'])['effort_pondere'].max().reset_index()
+                pivot_planche = lisser_donnees(df_g_planche, 'date', 'variante', 'effort_pondere')
+                if not pivot_planche.empty:
+                    df_melt_p = pivot_planche.reset_index().melt(id_vars='date', var_name='Variante', value_name='Effort')
+                    fig_p = px.line(df_melt_p, x='date', y='Effort', color='Variante')
+                    fig_p.update_traces(hovertemplate='%{y:.1f} pts')
+                    fig_p.update_layout(hovermode="x unified", xaxis_title="", yaxis_title="Effort Pondéré")
+                    st.plotly_chart(fig_p, use_container_width=True)
         
         # Graph Muscu
-        select_exos = st.multiselect("Sélectionner les exercices", tous_les_exos, default=tous_les_exos[:3] if len(tous_les_exos)>=3 else tous_les_exos)
-        if select_exos:
-            df_muscu = df_period[df_period['exercice'].str.lower().isin([e.lower().strip() for e in select_exos])]
-            if not df_muscu.empty:
-                df_g_muscu = df_muscu.groupby(['date', 'exercice'])['performance'].max().reset_index()
-                pivot_muscu = lisser_donnees(df_g_muscu, 'date', 'exercice', 'performance')
-                if not pivot_muscu.empty:
-                    df_melt_m = pivot_muscu.reset_index().melt(id_vars='date', var_name='Exercice', value_name='Performance')
-                    fig_m = px.line(df_melt_m, x='date', y='Performance', color='Exercice')
-                    fig_m.update_traces(hovertemplate='%{y:.0f} Reps')
-                    fig_m.update_layout(hovermode="x unified", xaxis_title="", yaxis_title="Répétitions")
-                    st.plotly_chart(fig_m, use_container_width=True)
+        if tous_les_exos:
+            select_exos = st.multiselect("Sélectionner les exercices", tous_les_exos, default=tous_les_exos[:3] if len(tous_les_exos)>=3 else tous_les_exos)
+            if select_exos:
+                df_muscu = df_period[df_period['exercice'].str.lower().isin([e.lower().strip() for e in select_exos])]
+                if not df_muscu.empty:
+                    df_g_muscu = df_muscu.groupby(['date', 'exercice'])['performance'].max().reset_index()
+                    pivot_muscu = lisser_donnees(df_g_muscu, 'date', 'exercice', 'performance')
+                    if not pivot_muscu.empty:
+                        df_melt_m = pivot_muscu.reset_index().melt(id_vars='date', var_name='Exercice', value_name='Performance')
+                        fig_m = px.line(df_melt_m, x='date', y='Performance', color='Exercice')
+                        fig_m.update_traces(hovertemplate='%{y:.0f} Reps')
+                        fig_m.update_layout(hovermode="x unified", xaxis_title="", yaxis_title="Répétitions")
+                        st.plotly_chart(fig_m, use_container_width=True)
 
         # Graph Volume
         df_g_cat = df_period.groupby(['date', 'categorie']).size().reset_index(name='nb_series')
@@ -462,14 +438,14 @@ with tab_records:
                 df_p['variante'] = df_p['variante'].fillna('Full').replace('', 'Full')
                 df_p['elastique'] = df_p['elastique'].fillna('Aucun').replace('', 'Aucun')
                 df_p['tension'] = df_p['tension'].fillna('N/A').replace('', 'N/A')
-                
                 df_p = df_p.sort_values(by=['effort_pondere', 'performance'], ascending=[False, False])
                 df_pr_planche = df_p.drop_duplicates(subset=['variante', 'elastique', 'tension'])
-                
                 df_pr_planche = df_pr_planche[['date', 'variante', 'elastique', 'tension', 'performance', 'effort_pondere']]
                 df_pr_planche.columns = ["Date", "Variante", "Élastique", "Tension", "Temps (s)", "Effort Absolu"]
-                st.dataframe(df_pr_planche, use_container_width=True, hide_index=True)
-
+                
+                df_styled_planche = df_pr_planche.style.background_gradient(subset=["Effort Absolu", "Temps (s)"], cmap="YlOrRd")
+                st.dataframe(df_styled_planche, use_container_width=True, hide_index=True)
+                
         with c2:
             st.write("#### 💪 Top Musculation (Reps Max)")
             df_m = df_global[df_global['exercice'].str.lower() != 'planche']
@@ -477,7 +453,9 @@ with tab_records:
                 df_pr_muscu = df_m.groupby('exercice')['performance'].max().reset_index()
                 df_pr_muscu.columns = ["Exercice", "Reps Max (1 série)"]
                 df_pr_muscu = df_pr_muscu.sort_values('Reps Max (1 série)', ascending=False)
-                st.dataframe(df_pr_muscu, use_container_width=True, hide_index=True)
+                
+                df_styled_muscu = df_pr_muscu.style.background_gradient(subset=["Reps Max (1 série)"], cmap="Blues")
+                st.dataframe(df_styled_muscu, use_container_width=True, hide_index=True)
 
 with tab_repos:
     st.subheader("💤 Analyse Mathématique de la Récupération")
@@ -492,7 +470,6 @@ with tab_repos:
             with cr1:
                 st.metric("Moyenne de repos entre séances", f"{round(df_repos_stats['jours_repos'].mean(), 1)} jours")
                 st.metric("Plus longue coupure de repos", f"{int(df_repos_stats['jours_repos'].max())} jours")
-                
                 habitudes = df_repos_stats['jours_repos'].value_counts().reset_index()
                 habitudes.columns = ['Jours de repos', 'Nombre de fois']
                 habitudes['Jours de repos'] = habitudes['Jours de repos'].astype(int).astype(str) + " jour(s)"
@@ -512,3 +489,31 @@ with tab_repos:
                 st.dataframe(df_log_repos.sort_values(by='Date de Reprise', ascending=False), use_container_width=True, hide_index=True)
         else:
             st.info("Ajoute au moins deux séances à des dates différentes pour générer l'analyse du repos.")
+
+# --- ONGLET PARAMÈTRES (MIGRATION DYNAMIQUE DE LA CONFIGURATION) ---
+with tab_param:
+    st.subheader("⚙️ Configuration Générale de l'Application")
+    st.markdown("Ajuste ici les variables structurelles. Les changements modifient immédiatement les calculs d'isométrie et les filtres.")
+    
+    # Checkbox pour activer/désactiver le bloc Planche
+    st.checkbox("Inclure la Planche dans l'interface de saisie", key="include_planche")
+    
+    st.write("---")
+    # Sélecteur de fenêtre pour la moyenne glissante
+    st.number_input(
+        "Taille de la moyenne glissante (Nombre de séances prises en compte)", 
+        min_value=1, 
+        max_value=30, 
+        step=1, 
+        key="nb_days_avg"
+    )
+    
+    st.write("---")
+    # Masse de référence pour la formule d'effort pondéré
+    st.number_input(
+        "Poids de référence actuel pour le calcul d'isométrie (kg)", 
+        min_value=40, 
+        max_value=200, 
+        step=1, 
+        key="weight"
+    )
