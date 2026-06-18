@@ -5,17 +5,11 @@ import plotly.express as px
 from supabase import create_client
 
 # =========================================================================
-# 0. CONFIGURATION & CONNEXION CLOUD
+# 0. CONFIGURATION & CONNEXION CLOUD (ISOLÉE PAR UTILISATEUR)
 # =========================================================================
 st.set_page_config(page_title="Sysiphe v13 Cloud", layout="wide")
 
-@st.cache_resource
-def init_connection():
-    return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-
-supabase = init_connection()
-
-# Initialisation des variables de session et des paramètres dynamiques
+# Initialisation des variables de session
 if 'user' not in st.session_state:
     st.session_state.user = None
 if 'date_seance' not in st.session_state:
@@ -27,17 +21,12 @@ if 'nb_days_avg' not in st.session_state:
 if 'include_planche' not in st.session_state:
     st.session_state.include_planche = True
 
-# --- RECONNAISSANCE AUTOMATIQUE DE L'APPAREIL (MÉMORISATION) ---
-def restore_session():
-    if st.session_state.user is None:
-        try:
-            session = supabase.auth.get_session()
-            if session and session.user:
-                st.session_state.user = session.user
-        except Exception:
-            pass
+# 🛑 CRITIQUE : Création d'un client Supabase UNIQUE et isolé par visiteur
+if 'supabase' not in st.session_state:
+    st.session_state.supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
-restore_session()
+# On utilise le client spécifique à cet utilisateur
+supabase = st.session_state.supabase
 
 # =========================================================================
 # 🔐 SYSTÈME D'AUTHENTIFICATION SÉCURISÉ
