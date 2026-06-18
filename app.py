@@ -3,11 +3,18 @@ import pandas as pd
 from datetime import datetime, timedelta
 import plotly.express as px
 from supabase import create_client
+import uuid # <-- NOUVEL IMPORT POUR IDENTIFIER LE VISITEUR
 
 # =========================================================================
-# 0. CONFIGURATION & CONNEXION CLOUD (ISOLÉE PAR UTILISATEUR)
+# 0. CONFIGURATION & CONNEXION CLOUD
 # =========================================================================
 st.set_page_config(page_title="Sysiphe v13 Cloud", layout="wide")
+
+# --- LE COFFRE-FORT GLOBAL POUR SAUVER LA SÉCURITÉ GOOGLE (PKCE) ---
+@st.cache_resource
+def get_pkce_store():
+    return {}
+pkce_store = get_pkce_store()
 
 # Initialisation des variables de session
 if 'user' not in st.session_state:
@@ -21,20 +28,27 @@ if 'nb_days_avg' not in st.session_state:
 if 'include_planche' not in st.session_state:
     st.session_state.include_planche = True
 
-# 🛑 CRITIQUE : Création d'un client Supabase UNIQUE et isolé par visiteur
+# Création d'un client Supabase UNIQUE par visiteur
 if 'supabase' not in st.session_state:
     st.session_state.supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-
-# On utilise le client spécifique à cet utilisateur
 supabase = st.session_state.supabase
 
 # =========================================================================
-# 🔐 SYSTÈME D'AUTHENTIFICATION SÉCURISÉ
+# 🔐 SYSTÈME D'AUTHENTIFICATION SÉCURISÉ (PKCE SURVIE)
 # =========================================================================
 def check_oauth_callback():
     if "code" in st.query_params:
         try:
             code = st.query_params["code"]
+            intent_id_retour = st.query_params.get("intent_id")
+            
+            # 1. On récupère le code secret mis au chaud avant le départ chez Google
+            if intent_id_retour and intent_id_retour in pkce_store:
+                verifier = pkce_store[intent_id_retour]
+                # 2. On le réinjecte de force dans la mémoire de Supabase
+                supabase.auth._storage.set_item("supabase.auth.token-code-verifier", verifier)
+                del pkce_store[intent_id_retour] # On nettoie le coffre-fort
+                
             res = supabase.auth.exchange_code_for_session({"auth_code": code})
             if res.user:
                 st.session_state.user = res.user
@@ -50,12 +64,26 @@ if st.session_state.user is None:
     
     col_auth1, col_auth2, col_auth3 = st.columns([1, 2, 1])
     with col_auth2:
+        # --- PRÉPARATION DU LIEN GOOGLE ---
+        if "oauth_intent" not in st.session_state:
+            st.session_state.oauth_intent = str(uuid.uuid4())
+        intent_id = st.session_state.oauth_intent
+        
+        # On ajoute notre identifiant "intent_id" dans l'URL de retour
+        redirect_url = f"https://sysiphe-voseesdgwwcstfepbdepkh.streamlit.app/?intent_id={intent_id}"
+        
         res = supabase.auth.sign_in_with_oauth({
             "provider": "google",
             "options": {
-                "redirect_to": "https://sysiphe-voseesdgwwcstfepbdepkh.streamlit.app/"
+                "redirect_to": redirect_url
             }
         })
+        
+        # --- MISE AU CHAUD DU CODE SECRET (PKCE) ---
+        verifier = supabase.auth._storage.get_item("supabase.auth.token-code-verifier")
+        if verifier:
+            pkce_store[intent_id] = verifier
+            
         st.link_button("🔵 Se connecter avec Google", url=res.url, type="primary", use_container_width=True)
         
         st.markdown("<div style='text-align: center; margin: 15px 0;'>— OU —</div>", unsafe_allow_html=True)
@@ -79,7 +107,6 @@ if st.session_state.user is None:
                 except Exception as e:
                     st.error("❌ Email ou mot de passe incorrect.")
     st.stop()
-
 # =========================================================================
 # 👤 UTILISATEUR CONNECTÉ : ISOLATION STRICTE
 # =========================================================================
