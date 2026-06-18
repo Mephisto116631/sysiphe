@@ -40,7 +40,7 @@ def restore_session():
 restore_session()
 
 # =========================================================================
-# 🔐 SYSTÈME D'AUTHENTIFICATION SÉCURISÉ (AVEC GOOGLE OAUTH PKCE)
+# 🔐 SYSTÈME D'AUTHENTIFICATION SÉCURISÉ
 # =========================================================================
 def check_oauth_callback():
     if "code" in st.query_params:
@@ -92,7 +92,7 @@ if st.session_state.user is None:
     st.stop()
 
 # =========================================================================
-# 👤 UTILISATEUR CONNECTÉ : ISOLATION STRICTE DES DONNÉES
+# 👤 UTILISATEUR CONNECTÉ : ISOLATION STRICTE
 # =========================================================================
 USER_ID = st.session_state.user.id
 
@@ -118,13 +118,13 @@ def calculer_effort(variante, elastique, tension, forme, temps):
         ratio_t = CONFIG["tensions"].get(tension, 0.70)
         score_v = CONFIG["variantes"].get(variante, 0)
         score_f = CONFIG["formes"].get(forme, 0)
-        if score_v == 0 or score_f == 0 or not temps: return 0.0
+        if score_v == 0 or score_f == 0 or not temps: return 0
         kg_traction = force_e * ratio_t
         poids_eff = st.session_state.weight - kg_traction
         facteur_e = (poids_eff / 100) ** 2
         facteur_m = (score_v * score_f) ** 1.2
-        return round((float(temps) * facteur_e * facteur_m) / 100, 2)
-    except: return 0.0
+        return int(round((float(temps) * facteur_e * facteur_m) / 100))
+    except: return 0
 
 @st.cache_data(ttl=60)
 def load_data(uid, current_weight):
@@ -151,7 +151,7 @@ def load_data(uid, current_weight):
         df['categorie'].fillna('Musculation', inplace=True)
         
         df['effort_pondere'] = df.apply(
-            lambda r: float(calculer_effort(r['variante'], r['elastique'], r['tension'], r['forme'], r['performance'])) if r['exercice'].lower() == 'planche' else 0.0,
+            lambda r: int(calculer_effort(r['variante'], r['elastique'], r['tension'], r['forme'], r['performance'])) if r['exercice'].lower() == 'planche' else 0,
             axis=1
         )
         return df
@@ -185,7 +185,7 @@ with st.sidebar:
         st.session_state.date_seance = date_active
         st.rerun()
 
-    # --- VISUALISATION DES JOURS ENTRAÎNÉS (PASTILLES) ---
+    # --- VISUALISATION DES JOURS ENTRAÎNÉS (BILAN MENSUEL) ---
     if not df_global.empty:
         st.write("") 
         
@@ -199,9 +199,8 @@ with st.sidebar:
         ])
         
         if jours_entraines:
-            st.markdown(f"**🎯 {len(jours_entraines)} séance(s) ce mois-ci :**")
-            pastilles_html = " ".join([f"<span style='background-color: #2e7d32; color: white; padding: 2px 8px; border-radius: 10px; font-size: 14px; font-weight: bold;'>{j}</span>" for j in jours_entraines])
-            st.markdown(pastilles_html, unsafe_allow_html=True)
+            nb_seances = len(jours_entraines)
+            st.markdown(f"**🎯 Bilan de ce mois :** <span style='background-color: #2e7d32; color: white; padding: 4px 12px; border-radius: 12px; font-size: 16px; font-weight: bold;'>{nb_seances} séance(s)</span>", unsafe_allow_html=True)
         else:
             st.caption("ℹ️ Aucune séance enregistrée pour ce mois.")
             
@@ -275,7 +274,7 @@ with col_saisie:
             df_p_historique = df_global[(df_global['exercice'].str.lower() == 'planche') & (df_global['effort_pondere'] > 0)]
             if not df_p_historique.empty:
                 max_effort = df_p_historique['effort_pondere'].max()
-                titre_planche = f"🤸 PLANCHE (Record : {max_effort:.1f} pts)"
+                titre_planche = f"🤸 PLANCHE (Record : {max_effort:.0f} pts)"
 
         with st.expander(titre_planche, expanded=True):
             idx_v = list(CONFIG["variantes"].keys()).index(default_var) if default_var in CONFIG["variantes"] else 0
@@ -296,8 +295,8 @@ with col_saisie:
                 with c3:
                     if t:
                         eff = calculer_effort(var_g, elas_g, tens_g, f, t)
-                        st.metric("Effort", f"{eff}")
-                    else: st.metric("Effort", "0.0")
+                        st.metric("Effort", f"{eff:.0f}")
+                    else: st.metric("Effort", "0")
                 temps_temp[s] = t
                 formes_temp[s] = f
                 
@@ -330,7 +329,7 @@ with col_saisie:
                 total_par_seance = df_historique_exo.groupby('date')['performance'].sum().sort_index(ascending=False)
                 window_size = int(st.session_state.nb_days_avg)
                 volume_moyen_glissant = total_par_seance.head(window_size).mean()
-                titre_dynamique = f"💪 {nom_exo.upper()} (PR : {pr_absolu} | Moy. {window_size} séances : {volume_moyen_glissant:.1f})"
+                titre_dynamique = f"💪 {nom_exo.upper()} (PR : {pr_absolu} | Moy. {window_size} séances : {volume_moyen_glissant:.0f})"
             else:
                 titre_dynamique = f"💪 {nom_exo.upper()} (Nouvel Exercice)"
 
@@ -378,7 +377,7 @@ with col_saisie:
                             lignes.append({
                                 "user_id": USER_ID,
                                 "date": str(date_active), "exercice": nom_exo, "serie": i+1, "performance": float(v),
-                                "variante": "", "elastique": "", "tension": "", "forme": "", "effort_pondere": 0.0,
+                                "variante": "", "elastique": "", "tension": "", "forme": "", "effort_pondere": 0,
                                 "categorie": cat_exo, "unite": "Reps"
                             })
                         if lignes:
@@ -444,7 +443,7 @@ with tab_graph:
                     if not pivot_planche.empty:
                         df_melt_p = pivot_planche.reset_index().melt(id_vars='date', var_name='Variante', value_name='Effort')
                         fig_p = px.line(df_melt_p, x='date', y='Effort', color='Variante')
-                        fig_p.update_traces(connectgaps=True, hovertemplate='%{y:.1f} pts')
+                        fig_p.update_traces(connectgaps=True, hovertemplate='%{y:.0f} pts')
                         fig_p.update_layout(hovermode="x unified", xaxis_title="", yaxis_title="Effort Pondéré")
                         st.plotly_chart(fig_p, use_container_width=True)
             
@@ -490,6 +489,9 @@ with tab_records:
                 df_pr_planche = df_pr_planche[['date', 'variante', 'elastique', 'tension', 'performance', 'effort_pondere']]
                 df_pr_planche.columns = ["Date", "Variante", "Élastique", "Tension", "Temps (s)", "Effort Absolu"]
                 
+                df_pr_planche['Temps (s)'] = df_pr_planche['Temps (s)'].astype(int)
+                df_pr_planche['Effort Absolu'] = df_pr_planche['Effort Absolu'].astype(int)
+                
                 df_styled_planche = df_pr_planche.style.background_gradient(subset=["Effort Absolu", "Temps (s)"], cmap="YlOrRd")
                 st.dataframe(df_styled_planche, use_container_width=True, hide_index=True)
             else:
@@ -502,6 +504,8 @@ with tab_records:
                 df_pr_muscu = df_m.groupby('exercice')['performance'].max().reset_index()
                 df_pr_muscu.columns = ["Exercice", "Reps Max (1 série)"]
                 df_pr_muscu = df_pr_muscu.sort_values('Reps Max (1 série)', ascending=False)
+                
+                df_pr_muscu['Reps Max (1 série)'] = df_pr_muscu['Reps Max (1 série)'].astype(int)
                 
                 df_styled_muscu = df_pr_muscu.style.background_gradient(subset=["Reps Max (1 série)"], cmap="Blues")
                 st.dataframe(df_styled_muscu, use_container_width=True, hide_index=True)
@@ -519,7 +523,7 @@ with tab_repos:
             
             cr1, cr2 = st.columns([1, 2])
             with cr1:
-                st.metric("Moyenne de repos entre séances", f"{round(df_repos_stats['jours_repos'].mean(), 1)} jours")
+                st.metric("Moyenne de repos entre séances", f"{int(round(df_repos_stats['jours_repos'].mean()))} jours")
                 st.metric("Plus longue coupure de repos", f"{int(df_repos_stats['jours_repos'].max())} jours")
                 habitudes = df_repos_stats['jours_repos'].value_counts().reset_index()
                 habitudes.columns = ['Jours de repos', 'Nombre de fois']
@@ -564,3 +568,27 @@ with tab_param:
         step=1, 
         key="weight"
     )
+
+    # --- OUTIL DE RENOMMAGE DES EXERCICES ---
+    st.write("---")
+    st.subheader("✏️ Renommer un exercice")
+    st.markdown("Corrige les fautes de frappe ou uniformise les noms de tes exercices dans tout ton historique.")
+    if tous_les_exos:
+        col_old, col_new, col_btn = st.columns([2, 2, 1])
+        with col_old:
+            exo_a_renommer = st.selectbox("Exercice à modifier", tous_les_exos)
+        with col_new:
+            nouveau_nom = st.text_input("Nouveau nom")
+        with col_btn:
+            st.write("") 
+            if st.button("Renommer", use_container_width=True):
+                if nouveau_nom and nouveau_nom.strip() != "" and nouveau_nom != exo_a_renommer:
+                    try:
+                        supabase.table("perfs").update({"exercice": nouveau_nom.strip()}).eq("user_id", USER_ID).eq("exercice", exo_a_renommer).execute()
+                        st.cache_data.clear()
+                        st.success(f"Exercice renommé en '{nouveau_nom.strip()}' avec succès !")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erreur lors du renommage : {e}")
+    else:
+        st.caption("Aucun exercice personnalisé enregistré pour le moment.")
