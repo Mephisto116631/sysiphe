@@ -461,8 +461,9 @@ with tab_graph:
                             fig_m.update_layout(hovermode="x unified", xaxis_title="", yaxis_title="Répétitions")
                             st.plotly_chart(fig_m, use_container_width=True)
 
+            # --- CORRECTION : Interpolation activée pour le graphique des catégories ---
             df_g_cat = df_period.groupby(['date', 'categorie']).size().reset_index(name='nb_series')
-            pivot_cat = lisser_donnees(df_g_cat, 'date', 'categorie', 'nb_series', fill_zero=True)
+            pivot_cat = lisser_donnees(df_g_cat, 'date', 'categorie', 'nb_series') # fill_zero a été supprimé !
             if not pivot_cat.empty:
                 df_melt_c = pivot_cat.reset_index().melt(id_vars='date', var_name='Catégorie', value_name='Séries')
                 fig_c = px.line(df_melt_c, x='date', y='Séries', color='Catégorie')
