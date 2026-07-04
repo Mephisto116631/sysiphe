@@ -54,25 +54,28 @@ with st.sidebar:
         st.rerun()
     st.markdown("---")
 # =========================================================================
-# CHARGEMENT DES DONNÉES & DEBUG
+# CHARGEMENT DES DONNÉES & DEBUG SIDEBAR
 # =========================================================================
 
 if 'weight' in st.session_state and 'config_variantes' in st.session_state:
     df_global = load_data(USER_ID, float(st.session_state.weight), st.session_state.config_variantes)
     
-    # Zone de Debug à l'écran
-    st.write("### 🔍 Debug Stats")
-    st.write(f"Nombre total de lignes chargées : {len(df_global)}")
-    
-    # Sécurité si la base renvoie 0 ligne
-    if not df_global.empty:
-        st.write(f"Dernière date présente dans la BDD : {df_global['date'].max()}")
-    else:
-        st.write("Dernière date présente : Aucune donnée trouvée.")
+    # Affichage du Debug discrètement dans la barre latérale
+    with st.sidebar:
+        with st.expander("🔍 Debug Stats (Base de données)"):
+            st.write(f"**Lignes chargées :** {len(df_global)}")
+            if not df_global.empty:
+                st.write(f"**Dernière date :** {df_global['date'].max()}")
+            else:
+                st.write("**Dernière date :** Aucune donnée")
 else:
     st.warning("En attente des paramètres de session...")
     df_global = pd.DataFrame() # Évite le crash des fonctions suivantes
+
+# Initialisation de la liste des exercices
 tous_les_exos = []
+if not df_global.empty:
+    tous_les_exos = sorted(df_global[df_global["exercice"].str.lower() != "planche"]["exercice"].unique().tolist())
 if not df_global.empty:
     tous_les_exos = sorted(df_global[df_global["exercice"].str.lower() != "planche"]["exercice"].unique().tolist())
 
