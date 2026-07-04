@@ -18,15 +18,26 @@ def get_supabase_client():
 
 
 @st.cache_data(ttl=60)
+import pandas as pd
+import streamlit as st
+
+@st.cache_data(ttl=60)
 def load_data(uid: str, current_weight: float, variantes_config: dict) -> pd.DataFrame:
     """
     Charge toutes les perfs de l'utilisateur. current_weight et variantes_config
     font partie de la clé de cache pour forcer un recalcul si l'un des deux change.
     """
     supabase = get_supabase_client()
-    response = supabase.table("perfs").select("*").eq("user_id", user_id).limit(10000).execute()        return pd.DataFrame()
+    
+    # Correction 1 & 2 : uid au lieu de user_id, et ajout de limit(10000)
+    response = supabase.table("perfs").select("*").eq("user_id", uid).limit(10000).execute()
+    
+    # Sécurité si aucune donnée n'est renvoyée (remplace le retour à la ligne buggé)
+    if not response.data:
+        return pd.DataFrame()
 
-    df = pd.DataFrame(reponse.data)
+    # Correction 3 : response avec un 's'
+    df = pd.DataFrame(response.data)
     df["date"] = pd.to_datetime(df["date"]).dt.date
 
     for col in ["serie", "forme", "effort_pondere", "unite", "charge"]:
@@ -63,7 +74,6 @@ def load_data(uid: str, current_weight: float, variantes_config: dict) -> pd.Dat
         axis=1
     )
     return df
-
 
 def insert_perfs(rows: list) -> None:
     if rows:
