@@ -81,6 +81,8 @@ def render_calendar_tab(df_global: pd.DataFrame) -> None:
             zmin=0,
             zmax=zmax_val,
         ))
+        
+        # Optimisation des marges pour mobile
         fig.update_layout(
             yaxis=dict(
                 tickmode="array",
@@ -95,7 +97,7 @@ def render_calendar_tab(df_global: pd.DataFrame) -> None:
                 side="top",
             ),
             height=220,
-            margin=dict(l=40, r=20, t=40, b=10),
+            margin=dict(l=30, r=10, t=30, b=10), # Marges réduites
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
         )
@@ -154,7 +156,16 @@ def render_graph_tab(df_global: pd.DataFrame, tous_les_exos: list, include_planc
                 fig_p = px.line(df_melt_p, x="date", y="Effort", color="Variante",
                                 title="Évolution Planche — effort pondéré")
                 fig_p.update_traces(connectgaps=True, hovertemplate="%{y:.0f} pts")
-                fig_p.update_layout(hovermode="x unified", xaxis_title="", yaxis_title="Effort Pondéré")
+                
+                # Optimisation légende et marges
+                fig_p.update_layout(
+                    hovermode="x unified", 
+                    xaxis_title="", 
+                    yaxis_title="Effort Pondéré",
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+                    margin=dict(l=10, r=10, t=40, b=10),
+                    xaxis=dict(tickformat="%d/%m")
+                )
                 st.plotly_chart(fig_p, use_container_width=True)
                 df_best = df_planche.groupby("date")["effort_pondere"].max().reset_index()
                 _plateau_badge(df_best["date"], df_best["effort_pondere"], "Planche")
@@ -170,7 +181,6 @@ def render_graph_tab(df_global: pd.DataFrame, tous_les_exos: list, include_planc
                 df_period["exercice"].str.lower().isin([e.lower().strip() for e in select_exos])
             ].copy()
             if not df_muscu.empty:
-                # Charge défensive : colonne peut ne pas exister (migration SQL non faite)
                 if "charge" not in df_muscu.columns:
                     df_muscu["charge"] = 0.0
                 df_muscu["charge"] = pd.to_numeric(df_muscu["charge"], errors="coerce").fillna(0.0)
@@ -189,7 +199,16 @@ def render_graph_tab(df_global: pd.DataFrame, tous_les_exos: list, include_planc
                     fig_v = px.line(df_melt_v, x="date", y=label_y, color="Exercice",
                                     title=f"Volume total par séance ({label_y.lower()})")
                     fig_v.update_traces(connectgaps=True, hovertemplate="%{y:.0f}")
-                    fig_v.update_layout(hovermode="x unified", xaxis_title="", yaxis_title=label_y)
+                    
+                    # Optimisation légende et marges
+                    fig_v.update_layout(
+                        hovermode="x unified", 
+                        xaxis_title="", 
+                        yaxis_title=label_y,
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+                        margin=dict(l=10, r=10, t=40, b=10),
+                        xaxis=dict(tickformat="%d/%m")
+                    )
                     st.plotly_chart(fig_v, use_container_width=True)
 
                     for exo in select_exos:
@@ -205,7 +224,16 @@ def render_graph_tab(df_global: pd.DataFrame, tous_les_exos: list, include_planc
         fig_c = px.line(df_melt_c, x="date", y="Séries", color="Catégorie",
                         title="Nombre de séries par catégorie")
         fig_c.update_traces(connectgaps=True, hovertemplate="%{y:.0f} Séries")
-        fig_c.update_layout(hovermode="x unified", xaxis_title="", yaxis_title="Volume (Séries)")
+        
+        # Optimisation légende et marges
+        fig_c.update_layout(
+            hovermode="x unified", 
+            xaxis_title="", 
+            yaxis_title="Volume (Séries)",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+            margin=dict(l=10, r=10, t=40, b=10),
+            xaxis=dict(tickformat="%d/%m")
+        )
         st.plotly_chart(fig_c, use_container_width=True)
 
 
@@ -246,7 +274,6 @@ def render_records_tab(df_global: pd.DataFrame) -> None:
         st.write("#### 💪 Top Musculation (Volume max / séance)")
         df_m = df_global[df_global["exercice"].str.lower() != "planche"].copy()
         if not df_m.empty:
-            # Charge défensive
             if "charge" not in df_m.columns:
                 df_m["charge"] = 0.0
             df_m["charge"] = pd.to_numeric(df_m["charge"], errors="coerce").fillna(0.0)
@@ -307,12 +334,22 @@ def render_repos_tab(df_global: pd.DataFrame) -> None:
         habitudes["Jours"] = habitudes["Jours"].astype(int).astype(str) + " j"
         fig_pie = px.pie(habitudes, values="Nb", names="Jours",
                          title="Répartition de tes formats de repos")
+        # Optimisation du graphique en secteurs
+        fig_pie.update_layout(
+            legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
+            margin=dict(l=10, r=10, t=40, b=10)
+        )
         st.plotly_chart(fig_pie, use_container_width=True)
 
     with cr2:
         fig_bar = px.bar(df_repos_stats, x="date_dt", y="jours_repos",
                          title="Chronologie des jours de repos accordés")
-        fig_bar.update_layout(xaxis_title="", yaxis_title="Jours de repos consécutifs")
+        fig_bar.update_layout(
+            xaxis_title="", 
+            yaxis_title="Jours de repos consécutifs",
+            margin=dict(l=10, r=10, t=40, b=10),
+            xaxis=dict(tickformat="%d/%m")
+        )
         fig_bar.update_traces(
             marker_color="#1f77b4",
             hovertemplate="Reprise : %{x}<br>Repos : %{y} jours",
@@ -361,13 +398,13 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
         "Ces scores pondèrent la difficulté de chaque variante. "
         "Sauvegardés sur ton compte, ils persistent entre tes sessions."
     )
-    cols_cal = st.columns(4)
+    # Remplacement des colonnes rigides par un flux naturel plus responsive
     updated_scores = {}
-    for i, (var, score) in enumerate(st.session_state.config_variantes.items()):
-        with cols_cal[i % 4]:
-            updated_scores[var] = st.number_input(
-                var, min_value=1, max_value=20, value=int(score), step=1, key=f"cal_{var}"
-            )
+    for var, score in st.session_state.config_variantes.items():
+        updated_scores[var] = st.number_input(
+            var, min_value=1, max_value=20, value=int(score), step=1, key=f"cal_{var}"
+        )
+        
     if st.button("✅ Appliquer et sauvegarder la calibration", use_container_width=True):
         st.session_state.config_variantes = updated_scores
         ok = save_user_settings(user_id, updated_scores)
@@ -385,27 +422,26 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
     st.subheader("✏️ Renommer un exercice")
     st.markdown("Corrige les fautes de frappe ou uniformise les noms dans tout ton historique.")
     if tous_les_exos:
-        col_old, col_new, col_btn = st.columns([2, 2, 1])
-        with col_old: exo_a_renommer = st.selectbox("Exercice à modifier", tous_les_exos)
-        with col_new: nouveau_nom    = st.text_input("Nouveau nom")
-        with col_btn:
-            st.write("")
-            if st.button("Renommer", use_container_width=True):
-                nv = nouveau_nom.strip()
-                if not nv:
-                    st.error("Le nouveau nom ne peut pas être vide.")
-                elif nv == exo_a_renommer:
-                    st.warning("Le nouveau nom est identique à l'ancien.")
-                elif nv in tous_les_exos:
-                    st.error(f"⚠️ '{nv}' existe déjà.")
-                else:
-                    try:
-                        update_exercise_name(user_id, exo_a_renommer, nv)
-                        st.cache_data.clear()
-                        st.success(f"✅ '{exo_a_renommer}' → '{nv}'")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erreur lors du renommage : {e}")
+        # Adaptation de l'affichage mobile pour le module de renommage
+        exo_a_renommer = st.selectbox("Exercice à modifier", tous_les_exos)
+        nouveau_nom    = st.text_input("Nouveau nom")
+        
+        if st.button("Renommer", use_container_width=True):
+            nv = nouveau_nom.strip()
+            if not nv:
+                st.error("Le nouveau nom ne peut pas être vide.")
+            elif nv == exo_a_renommer:
+                st.warning("Le nouveau nom est identique à l'ancien.")
+            elif nv in tous_les_exos:
+                st.error(f"⚠️ '{nv}' existe déjà.")
+            else:
+                try:
+                    update_exercise_name(user_id, exo_a_renommer, nv)
+                    st.cache_data.clear()
+                    st.success(f"✅ '{exo_a_renommer}' → '{nv}'")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erreur lors du renommage : {e}")
     else:
         st.caption("Aucun exercice personnalisé enregistré pour le moment.")
 
