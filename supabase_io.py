@@ -24,8 +24,7 @@ def load_data(uid: str, current_weight: float, variantes_config: dict) -> pd.Dat
     font partie de la clé de cache pour forcer un recalcul si l'un des deux change.
     """
     supabase = get_supabase_client()
-    reponse = supabase.table("perfs").select("*").eq("user_id", uid).execute()
-    if not reponse.data:
+response = supabase.table("perfs").select("*").eq("user_id", user_id).range(0, 10000).execute()    if not reponse.data:
         return pd.DataFrame()
 
     df = pd.DataFrame(reponse.data)
