@@ -75,8 +75,9 @@ THEMES = {
 # =========================================================================
 def inject_theme_css(theme_name: str) -> None:
     """Applique le thème choisi à l'ensemble de l'interface Streamlit
-    (fond de page, sidebar, cartes/metrics, boutons, onglets), pas
-    seulement aux graphiques Plotly."""
+    (fond de page, sidebar, cartes/metrics, boutons, onglets, labels,
+    champs de saisie, headers d'expander), pas seulement aux graphiques
+    Plotly."""
     t = THEMES.get(theme_name, THEMES["Abysse"])
 
     css = f"""
@@ -100,11 +101,34 @@ def inject_theme_css(theme_name: str) -> None:
         background: {t['sidebar_bg']};
         border-right: 1px solid {t['card_border']};
     }}
+    section[data-testid="stSidebar"] * {{
+        color: {t['text_main']} !important;
+    }}
 
     /* Titres */
-    h1, h2, h3 {{
-        color: {t['text_main']};
+    h1, h2, h3, h4, h5, h6 {{
+        color: {t['text_main']} !important;
         text-shadow: 0 0 18px {t['accent_soft']};
+    }}
+
+    /* Texte courant, markdown, listes */
+    p, li, span, .stMarkdown, div[data-testid="stMarkdownContainer"] {{
+        color: {t['text_main']} !important;
+    }}
+
+    /* Labels de widgets (number_input, text_input, selectbox, checkbox...) */
+    div[data-testid="stWidgetLabel"] p,
+    div[data-testid="stWidgetLabel"] label,
+    label {{
+        color: {t['text_main']} !important;
+        opacity: 1 !important;
+        font-weight: 500;
+    }}
+
+    /* Captions / textes d'aide (petit gris) */
+    [data-testid="stCaptionContainer"], .stCaption, small {{
+        color: {t['text_main']} !important;
+        opacity: 0.75 !important;
     }}
 
     /* Cartes metric (KPI) */
@@ -115,36 +139,101 @@ def inject_theme_css(theme_name: str) -> None:
         padding: 12px 16px;
         box-shadow: 0 0 20px {t['accent_soft']};
     }}
+    div[data-testid="stMetricLabel"], div[data-testid="stMetricValue"], div[data-testid="stMetricDelta"] {{
+        color: {t['text_main']} !important;
+    }}
 
     /* Onglets (st.tabs) */
     button[data-baseweb="tab"] {{
-        color: {t['text_main']};
+        color: {t['text_main']} !important;
         font-family: {t['font']};
+    }}
+    button[data-baseweb="tab"] p {{
+        color: {t['text_main']} !important;
     }}
     button[data-baseweb="tab"][aria-selected="true"] {{
         color: {t['accent']} !important;
+    }}
+    button[data-baseweb="tab"][aria-selected="true"] p {{
+        color: {t['accent']} !important;
+    }}
+    button[data-baseweb="tab"][aria-selected="true"] {{
         border-bottom: 2px solid {t['accent']} !important;
     }}
 
     /* Boutons principaux */
-    .stButton > button {{
+    .stButton > button, .stDownloadButton > button {{
         background: {t['accent_soft']};
         border: 1px solid {t['accent']};
-        color: {t['text_main']};
+        color: {t['text_main']} !important;
         border-radius: 8px;
         transition: all 0.2s ease;
     }}
-    .stButton > button:hover {{
+    .stButton > button p, .stDownloadButton > button p {{
+        color: {t['text_main']} !important;
+    }}
+    .stButton > button:hover, .stDownloadButton > button:hover {{
         background: {t['accent']};
-        color: #05070D;
         box-shadow: 0 0 16px {t['accent_soft']};
     }}
+    .stButton > button:hover p, .stDownloadButton > button:hover p {{
+        color: #05070D !important;
+    }}
 
-    /* Expanders et containers */
+    /* Champs de saisie : text_input, number_input, text_area, selectbox, date_input */
+    div[data-baseweb="input"],
+    div[data-baseweb="textarea"],
+    div[data-baseweb="select"] > div {{
+        background-color: {t['card_bg']} !important;
+        border: 1px solid {t['card_border']} !important;
+        border-radius: 8px !important;
+    }}
+    div[data-baseweb="input"] input,
+    div[data-baseweb="textarea"] textarea,
+    div[data-baseweb="select"] span,
+    .stNumberInput input,
+    .stTextInput input,
+    textarea {{
+        background-color: transparent !important;
+        color: {t['text_main']} !important;
+    }}
+    input::placeholder, textarea::placeholder {{
+        color: {t['text_main']} !important;
+        opacity: 0.45 !important;
+    }}
+    /* Boutons +/- des number_input */
+    button[data-testid="stNumberInputStepDown"],
+    button[data-testid="stNumberInputStepUp"] {{
+        background: {t['accent_soft']} !important;
+        color: {t['text_main']} !important;
+        border: 1px solid {t['card_border']} !important;
+    }}
+
+    /* Expanders — header (résumé cliquable) + contenu */
     div[data-testid="stExpander"] {{
         background: {t['card_bg']};
         border: 1px solid {t['card_border']};
         border-radius: 10px;
+        overflow: hidden;
+    }}
+    div[data-testid="stExpander"] summary {{
+        background: {t['card_bg']} !important;
+        color: {t['text_main']} !important;
+    }}
+    div[data-testid="stExpander"] summary:hover {{
+        background: {t['accent_soft']} !important;
+    }}
+    div[data-testid="stExpander"] summary p,
+    div[data-testid="stExpander"] summary span {{
+        color: {t['text_main']} !important;
+    }}
+    div[data-testid="stExpander"] summary svg {{
+        fill: {t['text_main']} !important;
+    }}
+
+    /* Conteneurs à bordure (st.container(border=True)) */
+    div[data-testid="stVerticalBlockBorderWrapper"] {{
+        border-color: {t['card_border']} !important;
     }}
     </style>
     """
@@ -427,3 +516,4 @@ def render_stats_tabs(df_global: pd.DataFrame, tous_les_exos: list, user_id: str
         render_theme_tab()
     with tab_param:
         render_param_tab(df_global, tous_les_exos, user_id)
+
