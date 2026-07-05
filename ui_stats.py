@@ -170,7 +170,7 @@ def render_graph_tab(df_global: pd.DataFrame, tous_les_exos: list, include_planc
                 df_best = df_planche.groupby("date")["effort_pondere"].max().reset_index()
                 _plateau_badge(df_best["date"], df_best["effort_pondere"], "Planche")
 
-    # Musculation — volume (tonnage si charge renseignée)
+        # Musculation — volume (tonnage si charge renseignée)
     if tous_les_exos:
         select_exos = st.multiselect(
             "Sélectionner les exercices", tous_les_exos,
@@ -180,10 +180,17 @@ def render_graph_tab(df_global: pd.DataFrame, tous_les_exos: list, include_planc
             df_muscu = df_period[
                 df_period["exercice"].str.lower().isin([e.lower().strip() for e in select_exos])
             ].copy()
+            
             if not df_muscu.empty:
                 if "charge" not in df_muscu.columns:
                     df_muscu["charge"] = 0.0
+                
+                # 🔒 SÉCURITÉ : On force la conversion en nombres pour s'assurer 
+                # que 10 + 10 fasse bien 20, et non pas "1010"
                 df_muscu["charge"] = pd.to_numeric(df_muscu["charge"], errors="coerce").fillna(0.0)
+                df_muscu["performance"] = pd.to_numeric(df_muscu["performance"], errors="coerce").fillna(0.0)
+                
+                # Calcul du volume (Tonnage si charge, sinon Reps)
                 df_muscu["volume"] = df_muscu.apply(
                     lambda r: r["performance"] * r["charge"]
                               if r["charge"] > 0 else r["performance"],
@@ -192,29 +199,31 @@ def render_graph_tab(df_global: pd.DataFrame, tous_les_exos: list, include_planc
                 a_du_charge = (df_muscu["charge"] > 0).any()
                 label_y     = "Tonnage (kg)" if a_du_charge else "Reps"
 
-                df_g_vol  = df_muscu.groupby(["date", "exercice"])["volume"].sum().reset_index()
-                pivot_vol = lisser_donnees(df_g_vol, "date", "exercice", "volume", fill_method="ffill")
-                if not pivot_vol.empty:
-                    df_melt_v = pivot_vol.reset_index().melt(id_vars="date", var_name="Exercice", value_name=label_y)
-                    fig_v = px.line(df_melt_v, x="date", y=label_y, color="Exercice",
-                                    title=f"Volume total par séance ({label_y.lower()})")
-                    fig_v.update_traces(connectgaps=True, hovertemplate="%{y:.0f}")
-                    
-                    # Optimisation légende et marges
-                    fig_v.update_layout(
-                        hovermode="x unified", 
-                        xaxis_title="", 
-                        yaxis_title=label_y,
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
-                        margin=dict(l=10, r=10, t=40, b=10),
-                        xaxis=dict(tickformat="%d/%m")
-                    )
-                    st.plotly_chart(fig_v, use_container_width=True)
+                # 📊 VRAIE SOMME par jour (sans aucun lissage)
+                df_g_vol = df_muscu.groupby(["date", "exercice"])["volume"].sum().reset_index()
+                
+                # Affichage avec des points pour bien voir chaque séance
+                fig_v = px.line(
+                    df_g_vol, x="date", y="volume", color="exercice", markers=True,
+                    title=f"Volume brut total par séance ({label_y.lower()})"
+                )
+                fig_v.update_traces(hovertemplate="%{y:.0f}")
+                
+                # Optimisation mobile (déjà en place)
+                fig_v.update_layout(
+                    hovermode="x unified", 
+                    xaxis_title="", 
+                    yaxis_title=label_y,
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+                    margin=dict(l=10, r=10, t=40, b=10),
+                    xaxis=dict(tickformat="%d/%m")
+                )
+                st.plotly_chart(fig_v, use_container_width=True)
 
-                    for exo in select_exos:
-                        sous_df = df_g_vol[df_g_vol["exercice"].str.lower() == exo.lower().strip()]
-                        if not sous_df.empty:
-                            _plateau_badge(sous_df["date"], sous_df["volume"], exo)
+                for exo in select_exos:
+                    sous_df = df_g_vol[df_g_vol["exercice"].str.lower() == exo.lower().strip()]
+                    if not sous_df.empty:
+                        _plateau_badge(sous_df["date"], sous_df["volume"], exo)
 
     # Volume par catégorie — zero fill
     df_g_cat  = df_period.groupby(["date", "categorie"]).size().reset_index(name="nb_series")
