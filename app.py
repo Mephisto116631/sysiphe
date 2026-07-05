@@ -13,7 +13,7 @@ from supabase_io import get_supabase_client, load_data, delete_perfs, load_user_
 from ui_saisie import render_planche_block, render_exercise_block, render_kpi_panel
 from ui_stats import render_stats_tabs, THEMES
 
-APP_URL = https://sysiphe-workout.streamlit.app/"
+APP_URL = https://sysiphe-workout.streamlit.app/
 
 st.set_page_config(page_title="Sysiphe v15 Cloud", layout="wide")
 
