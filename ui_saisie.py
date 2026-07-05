@@ -65,9 +65,30 @@ def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, wei
         idx_t = list(CONFIG["tensions"].keys()).index(defaults["tens"]) if defaults["tens"] in CONFIG["tensions"] else 0
 
         c1, c2, c3 = st.columns(3)
-        with c1: var_g = st.selectbox("Variante", var_keys, index=idx_v, key=f"var_g_{date_active}")
-        with c2: elas_g = st.selectbox("Élastique", list(CONFIG["elastiques"].keys()), index=idx_e, key=f"elas_g_{date_active}")
-        with c3: tens_g = st.selectbox("Tension", list(CONFIG["tensions"].keys()), index=idx_t, key=f"tens_g_{date_active}")
+        elas_keys = list(CONFIG["elastiques"].keys())
+        tens_keys = list(CONFIG["tensions"].keys())
+
+        # segmented_control renvoie None si on clique sur l'option déjà
+        # sélectionnée (comportement togglé natif) : on mémorise donc la
+        # dernière valeur confirmée en session_state pour ne jamais perdre
+        # la sélection en cours.
+        def _persisted_choice(label, options, state_key, default_val, widget_key):
+            if state_key not in st.session_state:
+                st.session_state[state_key] = default_val
+            choice = st.segmented_control(label, options, default=st.session_state[state_key], key=widget_key)
+            if choice is not None:
+                st.session_state[state_key] = choice
+            return st.session_state[state_key]
+
+        with c1:
+            var_g = _persisted_choice("Variante", var_keys, f"var_state_{date_active}",
+                                       var_keys[idx_v], f"var_g_{date_active}")
+        with c2:
+            elas_g = _persisted_choice("Élastique", elas_keys, f"elas_state_{date_active}",
+                                        elas_keys[idx_e], f"elas_g_{date_active}")
+        with c3:
+            tens_g = _persisted_choice("Tension", tens_keys, f"tens_state_{date_active}",
+                                        tens_keys[idx_t], f"tens_g_{date_active}")
 
         st.write("---")
         formes_temp, temps_temp, efforts_jour = {}, {}, []
