@@ -1,5 +1,5 @@
-"""
-Sysiphe — Onglets de statistiques (Graphiques, Records, Repos, Paramètres, Apparence, Calendrier).
+ """
+Sysiphe — Onglets de statistiques (Graphiques, Records, Repos, Paramètres, Apparence).
 """
 from datetime import datetime, timedelta
 import pandas as pd
