@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 import pandas as pd
 import streamlit as st
 import plotly.express as px
-import plotly.graph_objects as go
 
 from data import lisser_donnees, detect_plateau, suggest_next_session
 from supabase_io import update_exercise_name, save_user_settings
@@ -39,7 +38,9 @@ THEMES = {
 def _apply_plotly_theme(fig, theme_name: str):
     t = THEMES.get(theme_name, THEMES["Abysse"])
     fig.update_layout(
-        plot_bgcolor=t["bg"], paper_bgcolor=t["bg"], font=dict(color=t["text"]),
+        plot_bgcolor=t["bg"],
+        paper_bgcolor=t["bg"],
+        font=dict(color=t["text"]),
         xaxis=dict(showgrid=True, gridcolor=t["grid"], tickformat="%d/%m"),
         yaxis=dict(showgrid=True, gridcolor=t["grid"]),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(color=t["text"])),
@@ -51,23 +52,31 @@ def _apply_plotly_theme(fig, theme_name: str):
 def _plateau_badge(dates, values, label: str) -> None:
     result = detect_plateau(list(dates), list(values), window_days=21)
     if result["status"] == "progress":
-        st.success(f"📈 {label} : en progression (21 derniers jours).")
+        st.success(f"📈 {label} : en progression sur les 21 derniers jours.")
     elif result["status"] == "regression":
-        st.warning(f"📉 {label} : en baisse (21 derniers jours).")
+        st.warning(f"📉 {label} : en baisse sur les 21 derniers jours — envisage un deload.")
     elif result["status"] == "plateau":
-        st.info(f"➖ {label} : stable (21 derniers jours).")
+        st.info(f"➖ {label} : stable sur les 21 derniers jours (plateau).")
 
 # =========================================================================
 # GRAPHIQUES
 # =========================================================================
 def render_graph_tab(df_global: pd.DataFrame, tous_les_exos: list, include_planche: bool, current_theme: str) -> None:
-    if df_global.empty: return
+    if df_global.empty:
+        st.write("Pas de données pour les graphiques.")
+        return
+
     col_preset, col_custom = st.columns([1, 2])
     with col_preset:
-        preset = st.selectbox("Période", ["Tout l'historique", "7 derniers jours", "30 derniers jours", "Ce mois", "3 derniers mois", "Personnalisée"])
+        preset = st.selectbox("Période", [
+            "Tout l'historique", "7 derniers jours", "30 derniers jours",
+            "Ce mois", "3 derniers mois", "Personnalisée",
+        ])
+
     today = datetime.now().date()
     min_db_date = df_global["date"].min()
     max_db_date = df_global["date"].max()
+
     if preset == "7 derniers jours": start_date, end_date = today - timedelta(days=7), today
     elif preset == "30 derniers jours": start_date, end_date = today - timedelta(days=30), today
     elif preset == "Ce mois": start_date, end_date = today.replace(day=1), today
@@ -77,12 +86,16 @@ def render_graph_tab(df_global: pd.DataFrame, tous_les_exos: list, include_planc
         with col_custom:
             sel = st.date_input("Période personnalisée", [min_db_date, max_db_date])
             start_date, end_date = (sel[0], sel[1]) if len(sel) == 2 else (min_db_date, max_db_date)
-            
+
     df_period = df_global[(df_global["date"] >= start_date) & (df_global["date"] <= end_date)]
-    if df_period.empty: return
-    
+
+    if df_period.empty:
+        st.warning("Aucune donnée disponible pour cette période.")
+        return
+
     t_colors = THEMES.get(current_theme, THEMES["Abysse"])["colors"]
-    
+
+    # Planche
     if include_planche:
         df_planche = df_period[df_period["exercice"].str.lower() == "planche"]
         if not df_planche.empty:
@@ -90,10 +103,14 @@ def render_graph_tab(df_global: pd.DataFrame, tous_les_exos: list, include_planc
             pivot_p = lisser_donnees(df_g_p, "date", "variante", "effort_pondere", fill_method="ffill")
             if not pivot_p.empty:
                 df_melt_p = pivot_p.reset_index().melt(id_vars="date", var_name="Variante", value_name="Effort")
-                fig_p = px.line(df_melt_p, x="date", y="Effort", color="Variante", title="Évolution Planche", color_discrete_sequence=t_colors)
+                fig_p = px.line(df_melt_p, x="date", y="Effort", color="Variante", title="Évolution Planche — effort pondéré", color_discrete_sequence=t_colors)
+                fig_p.update_traces(connectgaps=True, hovertemplate="%{y:.0f} pts")
                 fig_p = _apply_plotly_theme(fig_p, current_theme)
                 st.plotly_chart(fig_p, use_container_width=True)
-                
+                df_best = df_planche.groupby("date")["effort_pondere"].max().reset_index()
+                _plateau_badge(df_best["date"], df_best["effort_pondere"], "Planche")
+
+    # Musculation
     if tous_les_exos:
         select_exos = st.multiselect("Sélectionner les exercices", tous_les_exos, default=tous_les_exos[:3] if len(tous_les_exos) >= 3 else tous_les_exos)
         if select_exos:
@@ -103,8 +120,11 @@ def render_graph_tab(df_global: pd.DataFrame, tous_les_exos: list, include_planc
                 df_muscu["charge"] = pd.to_numeric(df_muscu["charge"], errors="coerce").fillna(0.0)
                 df_muscu["performance"] = pd.to_numeric(df_muscu["performance"], errors="coerce").fillna(0.0)
                 df_muscu["volume"] = df_muscu.apply(lambda r: r["performance"] * r["charge"] if r["charge"] > 0 else r["performance"], axis=1)
+                label_y = "Tonnage (kg)" if (df_muscu["charge"] > 0).any() else "Reps"
                 df_g_vol = df_muscu.groupby(["date", "exercice"])["volume"].sum().reset_index()
-                fig_v = px.line(df_g_vol, x="date", y="volume", color="exercice", markers=True, title="Volume brut total", color_discrete_sequence=t_colors)
+
+                fig_v = px.line(df_g_vol, x="date", y="volume", color="exercice", markers=True, title=f"Volume brut total ({label_y.lower()})", color_discrete_sequence=t_colors)
+                fig_v.update_traces(hovertemplate="%{y:.0f}")
                 fig_v = _apply_plotly_theme(fig_v, current_theme)
                 st.plotly_chart(fig_v, use_container_width=True)
 
@@ -112,7 +132,10 @@ def render_graph_tab(df_global: pd.DataFrame, tous_les_exos: list, include_planc
 # RECORDS
 # =========================================================================
 def render_records_tab(df_global: pd.DataFrame) -> None:
-    if df_global.empty: return
+    if df_global.empty:
+        st.write("Pas de données.")
+        return
+
     c1, c2 = st.columns(2)
     with c1:
         st.write("#### 🤸 Record Planche")
@@ -120,12 +143,16 @@ def render_records_tab(df_global: pd.DataFrame) -> None:
         if not df_p.empty:
             for col, default in [("variante", "Full"), ("elastique", "Aucun"), ("tension", "N/A")]:
                 df_p[col] = df_p[col].fillna(default).replace("", default)
-            df_p  = df_p.sort_values(["effort_pondere", "performance"], ascending=[False, False])
+            df_p = df_p.sort_values(["effort_pondere", "performance"], ascending=[False, False])
             df_pr = df_p.drop_duplicates(subset=["variante", "elastique", "tension"])[["date", "variante", "elastique", "tension", "performance", "effort_pondere"]].copy()
             df_pr.columns = ["Date", "Variante", "Élastique", "Tension", "Temps (s)", "Effort"]
-            st.dataframe(df_pr, use_container_width=True, hide_index=True)
+            df_pr[["Temps (s)", "Effort"]] = df_pr[["Temps (s)", "Effort"]].astype(int)
+            st.dataframe(df_pr.style.background_gradient(subset=["Effort", "Temps (s)"], cmap="YlOrRd"), use_container_width=True, hide_index=True)
+        else:
+            st.info("Aucun record de Planche enregistré.")
+
     with c2:
-        st.write("#### 💪 Top Musculation")
+        st.write("#### 💪 Top Musculation (Volume max / séance)")
         df_m = df_global[df_global["exercice"].str.lower() != "planche"].copy()
         if not df_m.empty:
             if "charge" not in df_m.columns: df_m["charge"] = 0.0
@@ -133,23 +160,52 @@ def render_records_tab(df_global: pd.DataFrame) -> None:
             df_m["volume"] = df_m.apply(lambda r: r["performance"] * r["charge"] if r["charge"] > 0 else r["performance"], axis=1)
             df_vol = df_m.groupby(["exercice", "date"])["volume"].sum().reset_index()
             idx_max = df_vol.groupby("exercice")["volume"].idxmax()
-            df_pr_muscu = df_vol.loc[idx_max].sort_values("volume", ascending=False)
-            st.dataframe(df_pr_muscu, use_container_width=True, hide_index=True)
+            a_du_charge_global = (df_m["charge"] > 0).any()
+            label = "Tonnage Max (kg)" if a_du_charge_global else "Volume Max (reps)"
+            df_pr_muscu = df_vol.loc[idx_max].rename(columns={"volume": label, "date": "Date du PR", "exercice": "Exercice"})[["Exercice", label, "Date du PR"]].sort_values(label, ascending=False)
+            df_pr_muscu[label] = df_pr_muscu[label].astype(int)
+            st.dataframe(df_pr_muscu.style.background_gradient(subset=[label], cmap="Blues"), use_container_width=True, hide_index=True)
+        else:
+            st.info("Aucun exercice de musculation enregistré.")
 
 # =========================================================================
 # REPOS
 # =========================================================================
 def render_repos_tab(df_global: pd.DataFrame) -> None:
+    st.subheader("💤 Analyse Mathématique de la Récupération")
     if df_global.empty: return
+
     df_all_dates = pd.DataFrame({"date": df_global["date"].unique()}).sort_values("date")
-    if len(df_all_dates) <= 1: return
+    if len(df_all_dates) <= 1:
+        st.info("Ajoute au moins deux séances à des dates différentes pour générer l'analyse.")
+        return
+
     df_all_dates["date_dt"] = pd.to_datetime(df_all_dates["date"])
     df_all_dates["jours_repos"] = df_all_dates["date_dt"].diff().dt.days - 1
+    df_repos_stats = df_all_dates.dropna()
     suggestion = suggest_next_session(df_global["date"].unique().tolist())
-    st.metric("Repos habituel", f"{suggestion['mode_repos']} j")
+
+    cr1, cr2 = st.columns([1, 2])
+    with cr1:
+        st.metric("Repos moyen", f"{int(round(df_repos_stats['jours_repos'].mean()))} j")
+        st.metric("Repos habituel (mode)", f"{suggestion['mode_repos']} j")
+        st.metric("Plus longue coupure", f"{int(df_repos_stats['jours_repos'].max())} j")
+        if suggestion["next_session"] is not None:
+            st.success(f"🔜 Prochaine séance optimale : **{suggestion['next_session'].strftime('%A %d %B')}**")
+        
+        habitudes = df_repos_stats["jours_repos"].value_counts().reset_index()
+        habitudes.columns = ["Jours", "Nb"]
+        habitudes["Jours"] = habitudes["Jours"].astype(int).astype(str) + " j"
+        fig_pie = px.pie(habitudes, values="Nb", names="Jours", title="Répartition des formats de repos")
+        st.plotly_chart(fig_pie, use_container_width=True)
+
+    with cr2:
+        fig_bar = px.bar(df_repos_stats, x="date_dt", y="jours_repos", title="Chronologie des jours de repos accordés")
+        fig_bar.update_traces(marker_color="#1f77b4")
+        st.plotly_chart(fig_bar, use_container_width=True)
 
 # =========================================================================
-# THEMES ET PARAMÈTRES
+# THEMES (Apparence)
 # =========================================================================
 def render_theme_tab():
     st.subheader("🎨 Apparence du Tableau de Bord")
@@ -158,29 +214,99 @@ def render_theme_tab():
     with col1:
         choix = st.radio("Thème global", list(THEMES.keys()), index=list(THEMES.keys()).index(current))
     with col2:
-        st.write("**Aperçu :**")
+        st.write("**Aperçu des couleurs principales :**")
         c_list = THEMES[choix]["colors"]
-        html_colors = "".join([f"<div style='background-color:{c}; width:30px; height:30px; border-radius:50%; display:inline-block; margin-right:10px;'></div>" for c in c_list])
+        html_colors = "".join([f"<div style='background-color:{c}; width:40px; height:40px; border-radius:50%; display:inline-block; margin-right:10px;'></div>" for c in c_list])
         st.markdown(html_colors, unsafe_allow_html=True)
+        st.caption(f"Fond des graphiques : {THEMES[choix]['bg']}")
+
     if st.button("✅ Appliquer le thème", use_container_width=True):
         st.session_state.app_theme = choix
         st.rerun()
 
+# =========================================================================
+# PARAMÈTRES (Le retour !)
+# =========================================================================
 def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str) -> None:
-    st.subheader("⚙️ Configuration")
-    st.checkbox("Inclure la Planche", key="include_planche")
-    if st.button("📥 Exporter CSV"): st.write("Export fonctionnel en production.")
+    st.subheader("⚙️ Configuration Générale")
+
+    st.checkbox("Inclure la Planche dans la saisie", key="include_planche")
+    st.number_input("Taille de la moyenne glissante (séances)", min_value=1, max_value=30, step=1, key="nb_days_avg")
+    st.number_input("Poids de référence pour le calcul d'isométrie (kg)", min_value=40, max_value=200, step=1, key="weight")
+
+    st.write("---")
+    st.subheader("📥 Export de données")
+    if not df_global.empty:
+        st.download_button(
+            "📥 Télécharger tout mon historique (CSV)",
+            data=df_global.to_csv(index=False).encode("utf-8"),
+            file_name=f"sysiphe_export_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+        st.caption(f"{len(df_global)} lignes · {df_global['date'].nunique()} séances")
+    else:
+        st.caption("Aucune donnée à exporter.")
+
+    st.write("---")
+    st.subheader("🎛️ Calibration du modèle isométrique")
+    st.caption("Ces scores pondèrent la difficulté de chaque variante.")
+    
+    updated_scores = {}
+    for var, score in st.session_state.config_variantes.items():
+        updated_scores[var] = st.number_input(var, min_value=1, max_value=20, value=int(score), step=1, key=f"cal_{var}")
+        
+    if st.button("✅ Appliquer et sauvegarder la calibration", use_container_width=True):
+        st.session_state.config_variantes = updated_scores
+        ok = save_user_settings(user_id, updated_scores)
+        st.cache_data.clear()
+        if ok:
+            st.success("Scores mis à jour et sauvegardés.")
+        else:
+            st.warning("Échec de sauvegarde.")
+        st.rerun()
+
+    st.write("---")
+    st.subheader("✏️ Renommer un exercice")
+    if tous_les_exos:
+        exo_a_renommer = st.selectbox("Exercice à modifier", tous_les_exos)
+        nouveau_nom = st.text_input("Nouveau nom")
+        
+        if st.button("Renommer", use_container_width=True):
+            nv = nouveau_nom.strip()
+            if not nv:
+                st.error("Le nouveau nom ne peut pas être vide.")
+            elif nv == exo_a_renommer:
+                st.warning("Le nouveau nom est identique à l'ancien.")
+            elif nv in tous_les_exos:
+                st.error(f"⚠️ '{nv}' existe déjà.")
+            else:
+                try:
+                    update_exercise_name(user_id, exo_a_renommer, nv)
+                    st.cache_data.clear()
+                    st.success(f"✅ '{exo_a_renommer}' → '{nv}'")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erreur : {e}")
+    else:
+        st.caption("Aucun exercice personnalisé enregistré.")
 
 # =========================================================================
-# POINT D'ENTRÉE
+# POINT D'ENTRÉE UNIQUE
 # =========================================================================
 def render_stats_tabs(df_global: pd.DataFrame, tous_les_exos: list, user_id: str) -> None:
     current_theme = st.session_state.get("app_theme", "Abysse")
+    
     tab_graph, tab_records, tab_repos, tab_theme, tab_param = st.tabs([
         "📈 Graphiques", "🏆 Records", "💤 Repos", "🎨 Apparence", "⚙️ Paramètres"
     ])
-    with tab_graph: render_graph_tab(df_global, tous_les_exos, st.session_state.include_planche, current_theme)
-    with tab_records: render_records_tab(df_global)
-    with tab_repos: render_repos_tab(df_global)
-    with tab_theme: render_theme_tab()
-    with tab_param: render_param_tab(df_global, tous_les_exos, user_id)
+    with tab_graph:
+        render_graph_tab(df_global, tous_les_exos, st.session_state.include_planche, current_theme)
+    with tab_records:
+        render_records_tab(df_global)
+    with tab_repos:
+        render_repos_tab(df_global)
+    with tab_theme:
+        render_theme_tab()
+    with tab_param:
+        render_param_tab(df_global, tous_les_exos, user_id)
