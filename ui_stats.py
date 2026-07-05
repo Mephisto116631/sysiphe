@@ -427,4 +427,3 @@ def render_stats_tabs(df_global: pd.DataFrame, tous_les_exos: list, user_id: str
         render_theme_tab()
     with tab_param:
         render_param_tab(df_global, tous_les_exos, user_id)
-
