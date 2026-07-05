@@ -82,10 +82,21 @@ if not df_global.empty:
 st.title("🪨 Sysiphe v15 (Cloud)")
 
 with st.sidebar:
-    st.header("📅 Navigation")
-    date_active = st.date_input("Choisir une date", st.session_state.date_seance, key="date_picker")
-    if date_active != st.session_state.date_seance:
-        st.session_state.date_seance = date_active
+    st.caption(f"Connecté : {st.session_state.user.email}")
+    if st.button("🚪 Se déconnecter", use_container_width=True):
+        # Suppression des cookies
+        from streamlit_cookies_controller import CookieController
+        c = CookieController()
+        c.remove("sys_acc_token")
+        c.remove("sys_ref_token")
+        
+        supabase.auth.sign_out()
+        for k in ["user", "exos_du_jour", "last_seen_date", "oauth_intent", "config_loaded"]:
+            st.session_state.pop(k, None)
+        st.cache_data.clear()
+        st.rerun()
+    st.markdown("---")
+
         st.session_state.confirm_delete_session = False
         st.rerun()
 
