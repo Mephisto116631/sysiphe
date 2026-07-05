@@ -231,6 +231,28 @@ def inject_theme_css(theme_name: str) -> None:
         fill: {t['text_main']} !important;
     }}
 
+    /* segmented_control / pills — remplace les selectbox à popover pour
+       les widgets Variante/Élastique/Tension (entièrement dans le DOM,
+       donc stylable, contrairement au popover du selectbox) */
+    div[data-testid="stSegmentedControl"] label {{
+        background: {t['card_bg']} !important;
+        border: 1px solid {t['card_border']} !important;
+        color: {t['text_main']} !important;
+    }}
+    div[data-testid="stSegmentedControl"] label p {{
+        color: {t['text_main']} !important;
+    }}
+    div[data-testid="stSegmentedControl"] label[data-checked="true"],
+    div[data-testid="stSegmentedControl"] label[aria-checked="true"] {{
+        background: {t['accent']} !important;
+        border-color: {t['accent']} !important;
+    }}
+    div[data-testid="stSegmentedControl"] label[data-checked="true"] p,
+    div[data-testid="stSegmentedControl"] label[aria-checked="true"] p {{
+        color: #05070D !important;
+        font-weight: 600;
+    }}
+
     /* Conteneurs à bordure (st.container(border=True)) */
     div[data-testid="stVerticalBlockBorderWrapper"] {{
         border-color: {t['card_border']} !important;
