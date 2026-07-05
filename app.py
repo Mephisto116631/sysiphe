@@ -10,7 +10,7 @@ from auth import get_pkce_store, check_oauth_callback, render_login_page
 from data import DEFAULT_VARIANTES
 from supabase_io import get_supabase_client, load_data, delete_perfs, load_user_settings
 from ui_saisie import render_planche_block, render_exercise_block, render_kpi_panel
-from ui_stats import render_stats_tabs, THEMES
+from ui_stats import render_stats_tabs, THEMES, inject_theme_css
 
 APP_URL = "https://sysiphe-workout.streamlit.app"
 
@@ -29,6 +29,8 @@ _DEFAULTS = {
 for _k, _v in _DEFAULTS.items():
     if _k not in st.session_state:
         st.session_state[_k] = _v
+
+inject_theme_css(st.session_state.app_theme)
 
 supabase = get_supabase_client()
 pkce_store = get_pkce_store()
