@@ -92,12 +92,11 @@ with st.sidebar:
         
         supabase.auth.sign_out()
         for k in ["user", "exos_du_jour", "last_seen_date", "oauth_intent", "config_loaded"]:
-            st.session_state.pop(k, None)
+        s         st.session_state.pop(k, None)
         st.cache_data.clear()
         st.rerun()
-    st.markdown("---")
-
-        st.session_state.confirm_delete_session = False
+        st.markdown("---")
+     st.session_state.confirm_delete_session = False
         st.rerun()
 
     if not df_global.empty:
@@ -120,8 +119,8 @@ with st.sidebar:
     # --- Suppression de séance avec confirmation à deux étapes ---
     if not st.session_state.confirm_delete_session:
         if st.button("🗑️ Supprimer cette séance", type="secondary", use_container_width=True):
-            st.session_state.confirm_delete_session = True
-            st.rerun()
+           st.session_state.confirm_delete_session = True
+           st.rerun()
     else:
         st.warning(f"⚠️ Confirmer la suppression de la séance du {date_active.strftime('%d/%m/%Y')} ?")
         col_yes, col_no = st.columns(2)
