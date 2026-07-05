@@ -59,7 +59,7 @@ def load_data(uid: str, current_weight: float, variantes_config: dict) -> pd.Dat
              .isin(["force iso", "force isometrique", "statique"]), "categorie"] = "Force Iso"
     df.loc[df["categorie"].str.lower().str.strip()
              .isin(["force", "musculation", ""]), "categorie"] = "Musculation"
-    df["categorie"].fillna("Musculation", inplace=True)
+    df["categorie"] = df["categorie"].fillna("Musculation")
 
     df["effort_pondere"] = df.apply(
         lambda r: calculer_effort(
