@@ -45,24 +45,89 @@ if "config_loaded" not in st.session_state:
     st.session_state.config_variantes = load_user_settings(USER_ID)
     st.session_state.config_loaded = True
 
+from streamlit_calendar import calendar
+from ui_stats import THEMES
+
+st.title("🪨 Sysiphe v15 (Cloud)")
+
+# --- GESTION DU THÈME ---
+if "app_theme" not in st.session_state:
+    st.session_state.app_theme = "Abysse"
+current_theme_colors = THEMES[st.session_state.app_theme]
+
 with st.sidebar:
-    st.caption(f"Connecté : {st.session_state.user.email}")
-    if st.button("🚪 Se déconnecter", use_container_width=True):
-        # Suppression des cookies pour éviter la reconnexion automatique
-        try:
-            from streamlit_cookies_controller import CookieController
-            c = CookieController()
-            c.remove("sys_acc_token")
-            c.remove("sys_ref_token")
-        except ImportError:
-            pass
-            
-        supabase.auth.sign_out()
-        for k in ["user", "exos_du_jour", "last_seen_date", "oauth_intent", "config_loaded"]:
-            st.session_state.pop(k, None)
-        st.cache_data.clear()
-        st.rerun()
+    st.header("📅 Calendrier")
+    
+    # 1. Préparation des événements du calendrier
+    calendar_events = []
+    if not df_global.empty:
+        # On regroupe par jour pour marquer les jours d'entraînement
+        jours_actifs = df_global["date"].unique()
+        for d in jours_actifs:
+            calendar_events.append({
+                "start": str(d),
+                "display": "background",
+                "backgroundColor": current_theme_colors["cal_event"],
+            })
+
+    # 2. Configuration visuelle du calendrier
+    calendar_options = {
+        "headerToolbar": {"left": "prev", "center": "title", "right": "next"},
+        "initialView": "dayGridMonth",
+        "firstDay": 1, # Semaine commence le Lundi
+        "height": 350,
+        "selectable": True,
+        # Astuce CSS intégrée pour cacher l'ascenseur
+        "contentHeight": "auto", 
+    }
+
+    # 3. Affichage du calendrier interactif
+    cal_state = calendar(
+        events=calendar_events,
+        options=calendar_options,
+        custom_css="""
+        .fc-theme-standard td, .fc-theme-standard th { border: 1px solid #444; }
+        .fc-daygrid-day-number { color: #888; text-decoration: none; }
+        .fc-toolbar-title { font-size: 1.1em !important; }
+        """,
+        key="main_calendar"
+    )
+
+    # 4. Écoute des clics sur le calendrier
+    if cal_state.get("dateClick"):
+        clicked_date_str = cal_state["dateClick"]["date"]
+        # Convertir la string ISO (ex: "2026-07-04T00:00:00Z") en objet date
+        date_obj = datetime.strptime(clicked_date_str[:10], "%Y-%m-%d").date()
+        
+        if date_obj != st.session_state.date_seance:
+            st.session_state.date_seance = date_obj
+            st.session_state.confirm_delete_session = False
+            st.rerun()
+
+    st.markdown(f"**Séance active : {st.session_state.date_seance.strftime('%d/%m/%Y')}**")
     st.markdown("---")
+
+    # --- SUPPRESSION DE SÉANCE ---
+    if not st.session_state.confirm_delete_session:
+        if st.button("🗑️ Supprimer cette séance", type="secondary", use_container_width=True):
+            st.session_state.confirm_delete_session = True
+            st.rerun()
+    else:
+        st.warning("⚠️ Confirmer la suppression ?")
+        col_yes, col_no = st.columns(2)
+        with col_yes:
+            if st.button("Oui", type="primary", use_container_width=True):
+                delete_perfs(USER_ID, str(st.session_state.date_seance))
+                st.cache_data.clear()
+                st.session_state.exos_du_jour = []
+                st.session_state.confirm_delete_session = False
+                st.toast("Séance supprimée", icon="🗑️")
+                st.rerun()
+        with col_no:
+            if st.button("Non", use_container_width=True):
+                st.session_state.confirm_delete_session = False
+                st.rerun()
+
 
 # =========================================================================
 # CHARGEMENT DES DONNÉES & DEBUG SIDEBAR
