@@ -7,9 +7,11 @@ import streamlit as st
 
 from data import CONFIG, calculer_effort, parse_reps, compute_period_comparison, build_ics_event, suggest_next_session
 from supabase_io import insert_perfs, delete_perfs
+from ui_helpers import is_debounced
 
 
 def _build_default_planche(df_global: pd.DataFrame, date_active) -> dict:
+    """Calcule les valeurs de préremplissage pour le bloc Planche."""
     defaults = {
         "var": "Full", "elas": "Aucun", "tens": "N/A",
         "forms": {i: "Normal" for i in range(1, 6)},
@@ -66,6 +68,10 @@ def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, wei
         elas_keys = list(CONFIG["elastiques"].keys())
         tens_keys = list(CONFIG["tensions"].keys())
 
+        # segmented_control renvoie None si on clique sur l'option déjà
+        # sélectionnée (comportement togglé natif) : on mémorise donc la
+        # dernière valeur confirmée en session_state pour ne jamais perdre
+        # la sélection en cours.
         def _persisted_choice(label, options, state_key, default_val, widget_key):
             if state_key not in st.session_state:
                 st.session_state[state_key] = default_val
@@ -107,29 +113,30 @@ def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, wei
                 st.info(f"🎯 Meilleur effort aujourd'hui : **{best_today} pts** ({pct}% du record)")
 
         if st.button("💾 Enregistrer la Planche", type="primary", use_container_width=True):
-            delete_perfs(user_id, str(date_active), "Planche")
-            lignes = []
-            for s in range(1, 6):
-                t, f = temps_temp[s], formes_temp[s]
-                if t:
-                    try:
-                        eff = calculer_effort(var_g, elas_g, tens_g, f, t, weight, variantes_config)
-                        lignes.append({
-                            "user_id": user_id, "date": str(date_active),
-                            "exercice": "Planche", "serie": s, "performance": float(t),
-                            "variante": var_g, "elastique": elas_g, "tension": tens_g,
-                            "forme": f, "effort_pondere": eff, "charge": 0,
-                            "categorie": "Force Iso", "unite": "Sec",
-                        })
-                    except ValueError:
-                        st.warning(f"Série {s} ignorée : valeur non numérique.")
-            if lignes:
-                insert_perfs(lignes)
-                st.cache_data.clear()
-                st.success("Planche enregistrée !")
-                st.rerun()
+            if is_debounced(f"save_planche_{date_active}"):
+                st.toast("⏳ Déjà enregistré à l'instant — patiente quelques secondes.")
             else:
-                st.warning("Aucune série renseignée à enregistrer.")
+                delete_perfs(user_id, str(date_active), "Planche")
+                lignes = []
+                for s in range(1, 6):
+                    t, f = temps_temp[s], formes_temp[s]
+                    if t:
+                        try:
+                            eff = calculer_effort(var_g, elas_g, tens_g, f, t, weight, variantes_config)
+                            lignes.append({
+                                "user_id": user_id, "date": str(date_active),
+                                "exercice": "Planche", "serie": s, "performance": float(t),
+                                "variante": var_g, "elastique": elas_g, "tension": tens_g,
+                                "forme": f, "effort_pondere": eff, "charge": 0,
+                                "categorie": "Force Iso", "unite": "Sec",
+                            })
+                        except ValueError:
+                            st.warning(f"Série {s} ignorée : valeur non numérique.")
+                if lignes:
+                    insert_perfs(lignes)
+                    st.cache_data.clear()
+                    st.success("Planche enregistrée !")
+                    st.rerun()
 
 
 def render_exercise_block(nom_exo: str, df_global: pd.DataFrame, date_active, user_id: str) -> None:
@@ -162,7 +169,7 @@ def render_exercise_block(nom_exo: str, df_global: pd.DataFrame, date_active, us
             cat_exo = st.text_input("Catégorie", value=cat_init, key=f"cat_{nom_exo}_{date_active}",
                                     label_visibility="collapsed")
         charge_kg = st.number_input(
-            "Charge externe (kg) — 0 pour poids du corps",
+            "Charge externe (kg) — laisser à 0 pour un exercice au poids du corps",
             min_value=0.0, max_value=300.0, step=0.5, value=charge_init,
             key=f"charge_{nom_exo}_{date_active}",
         )
@@ -195,13 +202,16 @@ def render_exercise_block(nom_exo: str, df_global: pd.DataFrame, date_active, us
             st.success(f"🏆 Nouveau PR en série ! **{max_serie} reps** (ancien : {pr_absolu})")
 
         if st.button(f"Enregistrer {nom_exo}", key=f"save_{nom_exo}_{date_active}"):
-            if liste_reps:
+            action_key = f"save_exo_{nom_exo}_{date_active}"
+            if is_debounced(action_key):
+                st.toast("⏳ Déjà enregistré à l'instant — patiente quelques secondes.")
+            elif liste_reps:
                 delete_perfs(user_id, str(date_active), nom_exo)
                 lignes = [
                     {
                         "user_id": user_id, "date": str(date_active),
-                        "exercice": nom_exo, "serie": i + 1, "performance": v,
-                        "variante": "", "elastique": "", "tension": "", "forme": "",
+                        "exercice": nom_exo, "serie": i + 1, "performance": float(v),
+                        "variante": None, "elastique": None, "tension": None, "forme": None,
                         "effort_pondere": 0, "charge": charge_kg,
                         "categorie": cat_exo, "unite": "Reps",
                     }
@@ -211,11 +221,10 @@ def render_exercise_block(nom_exo: str, df_global: pd.DataFrame, date_active, us
                 st.cache_data.clear()
                 st.success(f"{nom_exo} sauvegardé !")
                 st.rerun()
-            else:
-                st.warning("Aucune série valide à enregistrer.")
 
 
 def render_kpi_panel(df_global: pd.DataFrame, date_active) -> None:
+    """Panneau de droite : stats du jour, comparaison de période, prochaine séance, rappel ICS."""
     st.markdown("### 📊 Aujourd'hui")
     if df_global.empty:
         st.info("Pas encore de données.")
@@ -234,6 +243,7 @@ def render_kpi_panel(df_global: pd.DataFrame, date_active) -> None:
     else:
         st.info("Aucune saisie pour cette date.")
 
+    # --- Comparaison semaine courante vs semaine précédente ---
     st.markdown("---")
     st.markdown("##### 📅 Cette semaine vs précédente")
     today = datetime.now().date()
@@ -255,6 +265,7 @@ def render_kpi_panel(df_global: pd.DataFrame, date_active) -> None:
     else:
         st.caption("Pas encore de séries de musculation enregistrées.")
 
+    # --- Suggestion de prochaine séance + rappel ICS ---
     st.markdown("---")
     suggestion = suggest_next_session(df_global["date"].unique().tolist())
     if suggestion["next_session"] is not None:
