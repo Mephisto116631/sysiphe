@@ -235,6 +235,88 @@ def inject_theme_css(theme_name: str) -> None:
     div[data-testid="stVerticalBlockBorderWrapper"] {{
         border-color: {t['card_border']} !important;
     }}
+
+    /* =====================================================================
+       MENUS SYSTÈME & DROPDOWNS
+       Ces éléments (selectbox, multiselect, menu ⋮ "Clear cache"/Settings,
+       tooltips, st.dialog) sont rendus par Streamlit dans des portails
+       BaseWeb attachés directement au <body>, HORS de .stApp. Il faut donc
+       les cibler explicitement et forcer fond + texte ensemble (sinon on
+       hérite d'un texte clair sur un fond resté blanc = illisible).
+       ===================================================================== */
+
+    /* Liste déroulante ouverte (selectbox, multiselect) */
+    div[data-baseweb="popover"] div[data-baseweb="menu"],
+    ul[data-baseweb="menu"],
+    div[role="listbox"] {{
+        background: {t['sidebar_bg']} !important;
+        border: 1px solid {t['card_border']} !important;
+        border-radius: 8px !important;
+    }}
+    ul[data-baseweb="menu"] li,
+    div[role="listbox"] li,
+    li[role="option"] {{
+        background: transparent !important;
+        color: {t['text_main']} !important;
+    }}
+    ul[data-baseweb="menu"] li:hover,
+    div[role="listbox"] li:hover,
+    li[role="option"]:hover,
+    li[aria-selected="true"] {{
+        background: {t['accent_soft']} !important;
+        color: {t['accent']} !important;
+    }}
+
+    /* Menu hamburger Streamlit (⋮ en haut à droite : Clear cache, Settings, Rerun...) */
+    div[data-testid="stMainMenuPopover"],
+    div[data-baseweb="popover"] ul[role="menu"] {{
+        background: {t['sidebar_bg']} !important;
+        border: 1px solid {t['card_border']} !important;
+    }}
+    div[data-testid="stMainMenuPopover"] li,
+    div[data-baseweb="popover"] ul[role="menu"] li,
+    div[data-baseweb="popover"] [role="menuitem"] {{
+        background: transparent !important;
+        color: {t['text_main']} !important;
+    }}
+    div[data-testid="stMainMenuPopover"] li:hover,
+    div[data-baseweb="popover"] [role="menuitem"]:hover {{
+        background: {t['accent_soft']} !important;
+        color: {t['accent']} !important;
+    }}
+    div[data-testid="stMainMenuPopover"] li span,
+    div[data-baseweb="popover"] [role="menuitem"] span,
+    div[data-baseweb="popover"] [role="menuitem"] p {{
+        color: inherit !important;
+    }}
+
+    /* Icône hamburger elle-même + barre d'outils en haut à droite */
+    header[data-testid="stHeader"] {{
+        background: transparent !important;
+    }}
+    div[data-testid="stToolbarActions"], #MainMenu {{
+        color: {t['text_main']} !important;
+    }}
+    div[data-testid="stToolbarActions"] svg, #MainMenu svg {{
+        fill: {t['text_main']} !important;
+    }}
+
+    /* Tooltips (icône "?" d'aide) */
+    div[data-baseweb="tooltip"] {{
+        background: {t['sidebar_bg']} !important;
+        color: {t['text_main']} !important;
+        border: 1px solid {t['card_border']} !important;
+    }}
+
+    /* Boîtes de dialogue (st.dialog) et toasts */
+    div[role="dialog"], div[data-testid="stToast"] {{
+        background: {t['app_gradient']} !important;
+        color: {t['text_main']} !important;
+        border: 1px solid {t['card_border']} !important;
+    }}
+    div[role="dialog"] * {{
+        color: {t['text_main']} !important;
+    }}
     </style>
     """
     st.markdown(css, unsafe_allow_html=True)
