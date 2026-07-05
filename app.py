@@ -1,279 +1,180 @@
 """
-Sysiphe — Interface de saisie (Planche + Exercices) et panneau KPI du jour.
+Sysiphe v15 — Point d'entrée principal.
 """
-from datetime import datetime, timedelta
+from datetime import datetime
 import pandas as pd
 import streamlit as st
+from streamlit_calendar import calendar
 
-from data import CONFIG, calculer_effort, parse_reps, compute_period_comparison, build_ics_event, suggest_next_session
-from supabase_io import insert_perfs, delete_perfs
+from auth import get_pkce_store, check_oauth_callback, render_login_page
+from data import DEFAULT_VARIANTES
+from supabase_io import get_supabase_client, load_data, delete_perfs, load_user_settings
+from ui_saisie import render_planche_block, render_exercise_block, render_kpi_panel
+from ui_stats import render_stats_tabs, THEMES, inject_theme_css
 
+APP_URL = "https://sysiphe-workout.streamlit.app"
 
-def _build_default_planche(df_global: pd.DataFrame, date_active) -> dict:
-    defaults = {
-        "var": "Full", "elas": "Aucun", "tens": "N/A",
-        "forms": {i: "Normal" for i in range(1, 6)},
-        "times": {i: "" for i in range(1, 6)},
-    }
-    if df_global.empty:
-        return defaults
+st.set_page_config(page_title="Sysiphe v15 Cloud", layout="wide")
 
-    df_active = df_global[(df_global["date"] == date_active) &
-                          (df_global["exercice"].str.lower() == "planche")]
-    if not df_active.empty:
-        last = df_active.iloc[0]
-        defaults["var"], defaults["elas"], defaults["tens"] = last["variante"], last["elastique"], last["tension"]
-        for _, r in df_active.iterrows():
-            s = int(r["serie"])
-            defaults["forms"][s] = r["forme"] if pd.notna(r["forme"]) else "Normal"
-            if pd.notna(r["performance"]):
-                p = float(r["performance"])
-                defaults["times"][s] = str(int(p) if p.is_integer() else p)
-        return defaults
+_DEFAULTS = {
+    "user": None,
+    "date_seance": datetime.now().date(),
+    "weight": 97,
+    "nb_days_avg": 5,
+    "include_planche": True,
+    "config_variantes": dict(DEFAULT_VARIANTES),
+    "confirm_delete_session": False,
+    "app_theme": "Abysse"
+}
+for _k, _v in _DEFAULTS.items():
+    if _k not in st.session_state:
+        st.session_state[_k] = _v
 
-    df_past = df_global[(df_global["date"] < date_active) &
-                        (df_global["exercice"].str.lower() == "planche")]
-    if not df_past.empty:
-        last_date = df_past["date"].max()
-        df_last = df_past[df_past["date"] == last_date]
-        last = df_last.iloc[0]
-        defaults["var"], defaults["elas"], defaults["tens"] = last["variante"], last["elastique"], last["tension"]
-        for _, r in df_last.iterrows():
-            s = int(r["serie"])
-            defaults["forms"][s] = r["forme"] if pd.notna(r["forme"]) else "Normal"
-    return defaults
+inject_theme_css(st.session_state.app_theme)
 
+supabase = get_supabase_client()
+pkce_store = get_pkce_store()
+check_oauth_callback(supabase, pkce_store)
 
-def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, weight: float,
-                         variantes_config: dict) -> None:
-    record_planche = 0
-    titre = "🤸 PLANCHE"
+if st.session_state.user is None:
+    render_login_page(supabase, pkce_store, APP_URL)
+    st.stop()
+
+USER_ID = st.session_state.user.id
+
+if "config_loaded" not in st.session_state:
+    st.session_state.config_variantes = load_user_settings(USER_ID)
+    st.session_state.config_loaded = True
+
+with st.sidebar:
+    st.caption(f"Connecté : {st.session_state.user.email}")
+    if st.button("🚪 Se déconnecter", use_container_width=True):
+        try:
+            from streamlit_cookies_controller import CookieController
+            c = CookieController()
+            c.remove("sys_acc_token")
+            c.remove("sys_ref_token")
+        except ImportError:
+            pass
+
+        supabase.auth.sign_out()
+        for k in ["user", "exos_du_jour", "last_seen_date", "oauth_intent", "config_loaded"]:
+            st.session_state.pop(k, None)
+        st.cache_data.clear()
+        st.rerun()
+    st.markdown("---")
+
+if 'weight' in st.session_state and 'config_variantes' in st.session_state:
+    df_global = load_data(USER_ID, float(st.session_state.weight), st.session_state.config_variantes)
+    with st.sidebar:
+        with st.expander("🔍 Debug Stats (Base de données)"):
+            st.write(f"**Lignes chargées :** {len(df_global)}")
+            if not df_global.empty:
+                st.write(f"**Dernière date :** {df_global['date'].max()}")
+else:
+    df_global = pd.DataFrame()
+
+tous_les_exos = sorted(df_global[df_global["exercice"].str.lower() != "planche"]["exercice"].unique().tolist()) if not df_global.empty else []
+
+st.title("🪨 Sysiphe v15 (Cloud)")
+
+current_theme_colors = THEMES[st.session_state.app_theme]
+
+with st.sidebar:
+    st.header("📅 Calendrier")
+
+    calendar_events = []
     if not df_global.empty:
-        df_hist = df_global[(df_global["exercice"].str.lower() == "planche") & (df_global["effort_pondere"] > 0)]
-        if not df_hist.empty:
-            record_planche = int(df_hist["effort_pondere"].max())
-            titre = f"🤸 PLANCHE (Record : {record_planche} pts)"
+        jours_actifs = df_global["date"].unique()
+        for d in jours_actifs:
+            calendar_events.append({
+                "start": str(d),
+                "display": "background",
+                "backgroundColor": current_theme_colors["cal_event"],
+            })
 
-    defaults = _build_default_planche(df_global, date_active)
+    calendar_options = {
+        "headerToolbar": {"left": "prev", "center": "title", "right": "next"},
+        "initialView": "dayGridMonth",
+        "firstDay": 1,
+        "height": 350,
+        "selectable": True,
+        "contentHeight": "auto",
+    }
 
-    with st.expander(titre, expanded=True):
-        var_keys = list(variantes_config.keys())
-        idx_v = var_keys.index(defaults["var"]) if defaults["var"] in var_keys else 0
-        idx_e = list(CONFIG["elastiques"].keys()).index(defaults["elas"]) if defaults["elas"] in CONFIG["elastiques"] else 0
-        idx_t = list(CONFIG["tensions"].keys()).index(defaults["tens"]) if defaults["tens"] in CONFIG["tensions"] else 0
+    # FIX DE LA BOUCLE : Ajout de callbacks=["dateClick"]
+    cal_state = calendar(
+        events=calendar_events,
+        options=calendar_options,
+        callbacks=["dateClick"],
+        custom_css="""
+        .fc-theme-standard td, .fc-theme-standard th { border: 1px solid #444; }
+        .fc-daygrid-day-number { color: #888; text-decoration: none; }
+        .fc-toolbar-title { font-size: 1.1em !important; }
+        """,
+        key="main_calendar"
+    )
 
-        c1, c2, c3 = st.columns(3)
-        elas_keys = list(CONFIG["elastiques"].keys())
-        tens_keys = list(CONFIG["tensions"].keys())
+    if cal_state and isinstance(cal_state, dict) and "dateClick" in cal_state:
+        clicked_date_str = cal_state["dateClick"]["date"]
+        date_obj = datetime.strptime(clicked_date_str[:10], "%Y-%m-%d").date()
 
-        def _persisted_choice(label, options, state_key, default_val, widget_key):
-            if state_key not in st.session_state:
-                st.session_state[state_key] = default_val
-            choice = st.segmented_control(label, options, default=st.session_state[state_key], key=widget_key)
-            if choice is not None:
-                st.session_state[state_key] = choice
-            return st.session_state[state_key]
+        if date_obj != st.session_state.date_seance:
+            st.session_state.date_seance = date_obj
+            st.session_state.confirm_delete_session = False
+            st.rerun()
 
-        with c1:
-            var_g = _persisted_choice("Variante", var_keys, f"var_state_{date_active}",
-                                       var_keys[idx_v], f"var_g_{date_active}")
-        with c2:
-            elas_g = _persisted_choice("Élastique", elas_keys, f"elas_state_{date_active}",
-                                        elas_keys[idx_e], f"elas_g_{date_active}")
-        with c3:
-            tens_g = _persisted_choice("Tension", tens_keys, f"tens_state_{date_active}",
-                                        tens_keys[idx_t], f"tens_g_{date_active}")
-
-        st.write("---")
-        formes_temp, temps_temp, efforts_jour = {}, {}, []
-        for s in range(1, 6):
-            c1, c2, c3 = st.columns([1, 2, 1])
-            with c1: t = st.text_input(f"S{s}(s)", value=defaults["times"].get(s, ""), key=f"p_t_{s}_{date_active}")
-            with c2: f = st.select_slider(f"F{s}", options=list(CONFIG["formes"].keys()),
-                                          value=defaults["forms"].get(s, "Normal"), key=f"p_f_{s}_{date_active}")
-            with c3:
-                eff = calculer_effort(var_g, elas_g, tens_g, f, t, weight, variantes_config) if t else 0
-                st.metric("Effort", f"{eff:.0f}")
-            temps_temp[s], formes_temp[s] = t, f
-            if t and eff > 0:
-                efforts_jour.append(eff)
-
-        if efforts_jour:
-            best_today = max(efforts_jour)
-            if best_today > record_planche:
-                st.success(f"🏆 Nouveau Record ! **{best_today} pts** (ancien : {record_planche} pts)")
-            else:
-                pct = round(best_today / record_planche * 100) if record_planche else 0
-                st.info(f"🎯 Meilleur effort aujourd'hui : **{best_today} pts** ({pct}% du record)")
-
-        if st.button("💾 Enregistrer la Planche", type="primary", use_container_width=True):
-            delete_perfs(user_id, str(date_active), "Planche")
-            lignes = []
-            for s in range(1, 6):
-                t, f = temps_temp[s], formes_temp[s]
-                if t:
-                    try:
-                        eff = calculer_effort(var_g, elas_g, tens_g, f, t, weight, variantes_config)
-                        lignes.append({
-                            "user_id": user_id, "date": str(date_active),
-                            "exercice": "Planche", "serie": s, "performance": float(t),
-                            "variante": var_g, "elastique": elas_g, "tension": tens_g,
-                            "forme": f, "effort_pondere": eff, "charge": 0,
-                            "categorie": "Force Iso", "unite": "Sec",
-                        })
-                    except ValueError:
-                        st.warning(f"Série {s} ignorée : valeur non numérique.")
-            if lignes:
-                insert_perfs(lignes)
-                st.cache_data.clear()
-                st.success("Planche enregistrée !")
-                st.rerun()
-            else:
-                st.warning("Aucune série renseignée à enregistrer.")
-
-
-def render_exercise_block(nom_exo: str, df_global: pd.DataFrame, date_active, user_id: str) -> None:
-    df_hist = (df_global[df_global["exercice"].str.lower() == nom_exo.lower().strip()]
-              if not df_global.empty else pd.DataFrame())
-    pr_absolu = int(df_hist["performance"].max()) if not df_hist.empty else 0
-    vol_series = (df_hist.groupby("date")["performance"].sum().sort_index(ascending=False)
-                 if not df_hist.empty else pd.Series(dtype=float))
-    vol_moyen = vol_series.head(int(st.session_state.nb_days_avg)).mean() if not vol_series.empty else 0
-
-    titre = (f"💪 {nom_exo.upper()} (PR série : {pr_absolu} | Moy. vol. : {vol_moyen:.0f})"
-            if not df_hist.empty else f"💪 {nom_exo.upper()} (Nouvel Exercice)")
-
-    with st.expander(titre, expanded=True):
-        p_today, cat_init, charge_init = [], "Musculation", 0.0
-        if not df_global.empty:
-            df_today = df_global[(df_global["date"] == date_active) &
-                                 (df_global["exercice"].str.lower() == nom_exo.lower().strip())]
-            if not df_today.empty:
-                p_today = df_today["performance"].tolist()
-                cat_init = df_today.iloc[0]["categorie"]
-                charge_init = float(df_today.iloc[0].get("charge", 0) or 0)
-
-        val_init = " ".join([str(int(p) if float(p).is_integer() else p) for p in p_today if pd.notna(p)])
-
-        c_input, c_m1, c_m2, c_btn = st.columns([2.5, 1, 1, 0.5])
-        with c_input:
-            raw_input = st.text_input("Séries", value=val_init, key=f"perf_{nom_exo}_{date_active}",
-                                      placeholder="ex: 12 10 8", label_visibility="collapsed")
-            cat_exo = st.text_input("Catégorie", value=cat_init, key=f"cat_{nom_exo}_{date_active}",
-                                    label_visibility="collapsed")
-        charge_kg = st.number_input(
-            "Charge externe (kg) — 0 pour poids du corps",
-            min_value=0.0, max_value=300.0, step=0.5, value=charge_init,
-            key=f"charge_{nom_exo}_{date_active}",
-        )
-
-        total_reps, nb_series, max_serie, liste_reps = 0, 0, 0, []
-        if raw_input:
-            try:
-                liste_reps = parse_reps(raw_input)
-                total_reps = int(sum(liste_reps))
-                nb_series = len(liste_reps)
-                max_serie = int(max(liste_reps))
-            except ValueError as e:
-                st.warning(f"Valeur invalide : {e}")
-
-        with c_m1:
-            label_total = "Tonnage (kg)" if charge_kg > 0 else "Total Reps"
-            valeur_total = f"{total_reps * charge_kg:.0f}" if charge_kg > 0 else total_reps
-            st.metric(label_total, valeur_total)
-        with c_m2:
-            st.metric("Séries", nb_series)
-        with c_btn:
-            st.write("")
-            if st.button("🗑️", key=f"rem_{nom_exo}_{date_active}", use_container_width=True):
-                st.session_state.exos_du_jour.remove(nom_exo)
-                delete_perfs(user_id, str(date_active), nom_exo)
-                st.cache_data.clear()
-                st.rerun()
-
-        if max_serie > 0 and pr_absolu > 0 and max_serie > pr_absolu:
-            st.success(f"🏆 Nouveau PR en série ! **{max_serie} reps** (ancien : {pr_absolu})")
-
-        if st.button(f"Enregistrer {nom_exo}", key=f"save_{nom_exo}_{date_active}"):
-            if liste_reps:
-                delete_perfs(user_id, str(date_active), nom_exo)
-                lignes = [
-                    {
-                        "user_id": user_id, "date": str(date_active),
-                        "exercice": nom_exo, "serie": i + 1, "performance": float(v),
-                        "variante": None, "elastique": None, "tension": None, "forme": None,
-                        "effort_pondere": 0, "charge": float(charge_kg),
-                        "categorie": cat_exo, "unite": "Reps",
-                    }
-                    for i, v in enumerate(liste_reps)
-                ]
-                insert_perfs(lignes)
-                st.cache_data.clear()
-                st.success(f"{nom_exo} sauvegardé !")
-                st.rerun()
-            else:
-                st.warning("Aucune série valide à enregistrer.")
-
-
-def render_kpi_panel(df_global: pd.DataFrame, date_active) -> None:
-    st.markdown("### 📊 Aujourd'hui")
-    if df_global.empty:
-        st.info("Pas encore de données.")
-        return
-
-    df_today = df_global[df_global["date"] == date_active]
-    if not df_today.empty:
-        df_reps = df_today[df_today["unite"] == "Reps"]
-        nb_exos = df_today[df_today["exercice"].str.lower() != "planche"]["exercice"].nunique()
-        vol_tot = int(df_reps["performance"].sum()) if not df_reps.empty else 0
-        best_eff = int(df_today["effort_pondere"].max())
-        st.metric("Exercices", nb_exos)
-        st.metric("Volume total (reps)", vol_tot)
-        if best_eff > 0:
-            st.metric("Meilleur effort planche", f"{best_eff} pts")
-    else:
-        st.info("Aucune saisie pour cette date.")
-
+    st.markdown(f"**Séance active : {st.session_state.date_seance.strftime('%d/%m/%Y')}**")
     st.markdown("---")
-    st.markdown("##### 📅 Cette semaine vs précédente")
-    today = datetime.now().date()
-    start_week = today - timedelta(days=today.weekday())
-    end_week = start_week + timedelta(days=6)
-    start_prev = start_week - timedelta(days=7)
-    end_prev = start_week - timedelta(days=1)
 
-    df_reps_global = df_global[df_global["unite"] == "Reps"].copy()
-    if not df_reps_global.empty:
-        df_reps_global["date_dt"] = pd.to_datetime(df_reps_global["date"])
-        comp = compute_period_comparison(
-            df_reps_global, "date_dt", "performance",
-            pd.Timestamp(start_week), pd.Timestamp(end_week),
-            pd.Timestamp(start_prev), pd.Timestamp(end_prev),
-        )
-        delta_label = f"{comp['delta_pct']:+.0f}%" if comp["delta_pct"] is not None else None
-        st.metric("Volume (reps)", f"{comp['current_total']:.0f}", delta=delta_label)
+    if not st.session_state.confirm_delete_session:
+        if st.button("🗑️ Supprimer cette séance", type="secondary", use_container_width=True):
+            st.session_state.confirm_delete_session = True
+            st.rerun()
     else:
-        st.caption("Pas encore de séries de musculation enregistrées.")
+        st.warning("⚠️ Confirmer la suppression ?")
+        col_yes, col_no = st.columns(2)
+        with col_yes:
+            if st.button("Oui", type="primary", use_container_width=True):
+                delete_perfs(USER_ID, str(st.session_state.date_seance))
+                st.cache_data.clear()
+                st.session_state.exos_du_jour = []
+                st.session_state.confirm_delete_session = False
+                st.toast("Séance supprimée", icon="🗑️")
+                st.rerun()
+        with col_no:
+            if st.button("Non", use_container_width=True):
+                st.session_state.confirm_delete_session = False
+                st.rerun()
 
-    st.markdown("---")
-    suggestion = suggest_next_session(df_global["date"].unique().tolist())
-    if suggestion["next_session"] is not None:
-        jours_restants = suggestion["days_until"]
-        next_dt = datetime.combine(suggestion["next_session"], datetime.min.time()).replace(hour=18)
-        if jours_restants <= 0:
-            st.success("💪 Prochaine séance : **Aujourd'hui !**")
-        elif jours_restants == 1:
-            st.info("🔜 Prochaine séance optimale : **Demain**")
+if "last_seen_date" not in st.session_state or st.session_state.last_seen_date != st.session_state.date_seance:
+    st.session_state.last_seen_date = st.session_state.date_seance
+    if not df_global.empty:
+        df_today = df_global[df_global["date"] == st.session_state.date_seance]
+        if not df_today.empty:
+            st.session_state.exos_du_jour = df_today[df_today["exercice"].str.lower() != "planche"]["exercice"].unique().tolist()
         else:
-            st.info(f"🔜 Prochaine séance : **{next_dt.strftime('%A %d/%m')}** ({jours_restants}j)")
-        st.caption(f"Basé sur {suggestion['mode_repos']} jour(s) de repos habituel")
+            dates_passees = df_global[df_global["date"] < st.session_state.date_seance]["date"]
+            if not dates_passees.empty:
+                df_last = df_global[df_global["date"] == dates_passees.max()]
+                st.session_state.exos_du_jour = df_last[df_last["exercice"].str.lower() != "planche"]["exercice"].unique().tolist()
+            else:
+                st.session_state.exos_du_jour = []
+    else:
+        st.session_state.exos_du_jour = []
 
-        ics_content = build_ics_event(
-            next_dt, "Séance Sysiphe 🪨",
-            f"Rappel généré automatiquement — repos habituel : {suggestion['mode_repos']} jour(s)."
-        )
-        st.download_button(
-            "📅 Rappel calendrier (.ics)", data=ics_content,
-            file_name="sysiphe_prochaine_seance.ics", mime="text/calendar",
-            use_container_width=True,
-        )
+col_saisie, col_kpi = st.columns([2, 1])
+
+with col_saisie:
+    if st.session_state.include_planche:
+        render_planche_block(df_global, st.session_state.date_seance, USER_ID,
+                             float(st.session_state.weight), st.session_state.config_variantes)
+
+    for nom_exo in list(st.session_state.exos_du_jour):
+        render_exercise_block(nom_exo, df_global, st.session_state.date_seance, USER_ID)
+
+with col_kpi:
+    render_kpi_panel(df_global, st.session_state.date_seance)
+
+st.markdown("---")
+render_stats_tabs(df_global, tous_les_exos, USER_ID)
