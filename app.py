@@ -102,7 +102,6 @@ with st.sidebar:
         "contentHeight": "auto",
     }
 
-    # FIX DE LA BOUCLE : Ajout de callbacks=["dateClick"]
     cal_state = calendar(
         events=calendar_events,
         options=calendar_options,
@@ -172,6 +171,18 @@ with col_saisie:
 
     for nom_exo in list(st.session_state.exos_du_jour):
         render_exercise_block(nom_exo, df_global, st.session_state.date_seance, USER_ID)
+
+    # --- LE MENU RETROUVÉ EST ICI ---
+    col_sel, col_add = st.columns([3, 1])
+    with col_sel:
+        new_sel = st.selectbox("Exercices Habituels", ["--- Sélectionner ---"] + tous_les_exos)
+        new_txt = st.text_input("...ou taper un nouvel exercice")
+    with col_add:
+        if st.button("➕ Ajouter", use_container_width=True):
+            exo_ok = new_txt.strip() or (new_sel if new_sel != "--- Sélectionner ---" else None)
+            if exo_ok and exo_ok not in st.session_state.exos_du_jour:
+                st.session_state.exos_du_jour.append(exo_ok)
+                st.rerun()
 
 with col_kpi:
     render_kpi_panel(df_global, st.session_state.date_seance)
