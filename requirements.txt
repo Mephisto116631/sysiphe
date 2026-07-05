@@ -3,4 +3,5 @@ pandas
 plotly
 supabase
 matplotlib
+streamlit-calendar
 streamlit-cookies-controller
