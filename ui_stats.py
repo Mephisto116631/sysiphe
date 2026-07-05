@@ -233,22 +233,29 @@ def inject_theme_css(theme_name: str) -> None:
 
     /* segmented_control / pills — remplace les selectbox à popover pour
        les widgets Variante/Élastique/Tension (entièrement dans le DOM,
-       donc stylable, contrairement au popover du selectbox) */
-    div[data-testid="stSegmentedControl"] label {{
+       donc stylable, contrairement au popover du selectbox).
+       Sélecteurs vérifiés dans le bundle JS réel de Streamlit 1.58 :
+       chaque segment est un <button data-testid="stBaseButton-segmented_control">
+       (inactif) ou "stBaseButton-segmented_controlActive" (actif). */
+    button[data-testid="stBaseButton-segmented_control"] {{
         background: {t['card_bg']} !important;
         border: 1px solid {t['card_border']} !important;
         color: {t['text_main']} !important;
     }}
-    div[data-testid="stSegmentedControl"] label p {{
+    button[data-testid="stBaseButton-segmented_control"] p,
+    button[data-testid="stBaseButton-segmented_control"] div {{
         color: {t['text_main']} !important;
     }}
-    div[data-testid="stSegmentedControl"] label[data-checked="true"],
-    div[data-testid="stSegmentedControl"] label[aria-checked="true"] {{
-        background: {t['accent']} !important;
+    button[data-testid="stBaseButton-segmented_control"]:hover {{
+        background: {t['accent_soft']} !important;
         border-color: {t['accent']} !important;
     }}
-    div[data-testid="stSegmentedControl"] label[data-checked="true"] p,
-    div[data-testid="stSegmentedControl"] label[aria-checked="true"] p {{
+    button[data-testid="stBaseButton-segmented_controlActive"] {{
+        background: {t['accent']} !important;
+        border: 1px solid {t['accent']} !important;
+    }}
+    button[data-testid="stBaseButton-segmented_controlActive"] p,
+    button[data-testid="stBaseButton-segmented_controlActive"] div {{
         color: #05070D !important;
         font-weight: 600;
     }}
