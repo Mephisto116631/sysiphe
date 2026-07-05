@@ -1,4 +1,4 @@
- """
+"""
 Sysiphe — Onglets de statistiques (Graphiques, Records, Repos, Paramètres, Apparence).
 """
 from datetime import datetime, timedelta
