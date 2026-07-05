@@ -297,11 +297,13 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
 def render_stats_tabs(df_global: pd.DataFrame, tous_les_exos: list, user_id: str) -> None:
     current_theme = st.session_state.get("app_theme", "Abysse")
     
+    # On affiche TOUJOURS les onglets, même sans données
     tab_graph, tab_records, tab_repos, tab_theme, tab_param = st.tabs([
         "📈 Graphiques", "🏆 Records", "💤 Repos", "🎨 Apparence", "⚙️ Paramètres"
     ])
+    
     with tab_graph:
-        render_graph_tab(df_global, tous_les_exos, st.session_state.include_planche, current_theme)
+        render_graph_tab(df_global, tous_les_exos, st.session_state.get("include_planche", True), current_theme)
     with tab_records:
         render_records_tab(df_global)
     with tab_repos:
@@ -310,3 +312,4 @@ def render_stats_tabs(df_global: pd.DataFrame, tous_les_exos: list, user_id: str
         render_theme_tab()
     with tab_param:
         render_param_tab(df_global, tous_les_exos, user_id)
+
