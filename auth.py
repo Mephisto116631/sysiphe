@@ -1,10 +1,13 @@
 """
-Sysiphe — Authentification (Email/Password + Google OAuth via PKCE).
+Sysiphe — Authentification (Email/Password + Google OAuth via PKCE + Cookies).
 """
 import time
 import uuid
 import streamlit as st
+from streamlit_cookies_controller import CookieController
 
+# Initialisation du gestionnaire de cookies
+controller = CookieController()
 
 def get_pkce_store() -> dict:
     @st.cache_resource
@@ -24,27 +27,53 @@ def _clean_pkce_store(store: dict, max_age: int = 600) -> None:
 
 
 def check_oauth_callback(supabase, pkce_store: dict) -> None:
-    """Traite le retour OAuth Google si un code est présent dans l'URL."""
+    """Traite le retour OAuth Google ou la reconnexion automatique via Cookie."""
+    
+    # 1. Si on est déjà connecté en mémoire de session, on ne fait rien
     if st.session_state.get("user") is not None:
         return
+
+    # 2. TENTATIVE DE RECONNEXION SILENCIEUSE (Cookies)
+    saved_token = controller.get("sys_acc_token")
+    saved_refresh = controller.get("sys_ref_token")
+
+    if saved_token and saved_refresh:
+        try:
+            # Restauration de la session Supabase depuis les cookies
+            res = supabase.auth.set_session(saved_token, saved_refresh)
+            if res.user:
+                st.session_state.user = res.user
+                return
+        except Exception:
+            # Si le token est expiré ou corrompu, on nettoie les cookies
+            controller.remove("sys_acc_token")
+            controller.remove("sys_ref_token")
+
+    # 3. TRAITEMENT DU RETOUR OAUTH (GOOGLE)
     if "code" not in st.query_params:
         return
+        
     try:
         code = st.query_params["code"]
         intent_id = st.query_params.get("intent_id")
         if intent_id and intent_id in pkce_store:
             verifier, _ = pkce_store.pop(intent_id)
             supabase.auth._storage.set_item("supabase.auth.token-code-verifier", verifier)
+            
         res = supabase.auth.exchange_code_for_session({"auth_code": code})
         if res.user:
             st.session_state.user = res.user
+            # SAUVEGARDE EN COOKIE (valable 30 jours)
+            controller.set("sys_acc_token", res.session.access_token, max_age=2592000)
+            controller.set("sys_ref_token", res.session.refresh_token, max_age=2592000)
+            
         st.query_params.clear()
     except Exception as e:
         st.error(f"Erreur de validation OAuth : {e}")
 
 
 def render_login_page(supabase, pkce_store: dict, app_url: str) -> None:
-    """Affiche l'écran de connexion (Google OAuth + email/password)."""
+    """Affiche l'écran de connexion."""
     st.title("🔐 Accès Sécurisé Sysiphe")
     st.markdown("Connecte-toi pour accéder à ton tableau de bord personnel.")
 
@@ -80,6 +109,9 @@ def render_login_page(supabase, pkce_store: dict, app_url: str) -> None:
                 else:
                     resp = supabase.auth.sign_in_with_password({"email": email, "password": password})
                     st.session_state.user = resp.user
+                    # SAUVEGARDE EN COOKIE (valable 30 jours)
+                    controller.set("sys_acc_token", resp.session.access_token, max_age=2592000)
+                    controller.set("sys_ref_token", resp.session.refresh_token, max_age=2592000)
                     st.rerun()
             except Exception as e:
                 st.error(f"❌ Erreur : {e}")
