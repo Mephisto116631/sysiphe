@@ -12,28 +12,143 @@ from supabase_io import update_exercise_name, save_user_settings
 # =========================================================================
 # CONFIGURATION DES THÈMES
 # =========================================================================
+# Clés "historiques" (utilisées par Plotly) : bg, text, grid, colors, cal_event
+# Nouvelles clés (immersion CSS globale) : app_gradient, sidebar_bg, accent,
+#   accent_soft, text_main, font, card_bg, card_border
 THEMES = {
     "Abysse": {
         "bg": "rgba(0,0,0,0)", "text": "#E2E8F0", "grid": "#334155",
         "colors": ["#00E5FF", "#39FF14", "#B026FF", "#FFD700"],
-        "cal_event": "#00E5FF"
+        "cal_event": "#00E5FF",
+        "app_gradient": "linear-gradient(160deg, #050810 0%, #0A1128 45%, #0D1B3E 100%)",
+        "sidebar_bg": "linear-gradient(180deg, #030509 0%, #0A1128 100%)",
+        "accent": "#00E5FF",
+        "accent_soft": "rgba(0, 229, 255, 0.15)",
+        "text_main": "#E2E8F0",
+        "font": "'JetBrains Mono', 'Courier New', monospace",
+        "card_bg": "rgba(13, 27, 62, 0.55)",
+        "card_border": "rgba(0, 229, 255, 0.35)",
     },
     "Magma": {
         "bg": "#1E1E1E", "text": "#F5F5F5", "grid": "#424242",
         "colors": ["#F44336", "#FF9800", "#FFEB3B", "#FFFFFF"],
-        "cal_event": "#FF9800"
+        "cal_event": "#FF9800",
+        "app_gradient": "linear-gradient(160deg, #140505 0%, #2B0E0E 45%, #3D1204 100%)",
+        "sidebar_bg": "linear-gradient(180deg, #0D0303 0%, #2B0E0E 100%)",
+        "accent": "#FF9800",
+        "accent_soft": "rgba(255, 152, 0, 0.18)",
+        "text_main": "#F5F5F5",
+        "font": "'Barlow Condensed', 'Arial Narrow', sans-serif",
+        "card_bg": "rgba(61, 18, 4, 0.55)",
+        "card_border": "rgba(255, 152, 0, 0.35)",
     },
     "Analytique": {
         "bg": "#0F172A", "text": "#CBD5E1", "grid": "#1E293B",
         "colors": ["#38BDF8", "#818CF8", "#34D399", "#F472B6"],
-        "cal_event": "#38BDF8"
+        "cal_event": "#38BDF8",
+        "app_gradient": "linear-gradient(160deg, #05070D 0%, #0F172A 50%, #131C33 100%)",
+        "sidebar_bg": "linear-gradient(180deg, #05070D 0%, #0F172A 100%)",
+        "accent": "#818CF8",
+        "accent_soft": "rgba(129, 140, 248, 0.15)",
+        "text_main": "#CBD5E1",
+        "font": "'Inter', 'Segoe UI', sans-serif",
+        "card_bg": "rgba(19, 28, 51, 0.55)",
+        "card_border": "rgba(129, 140, 248, 0.35)",
     },
     "Épuré": {
         "bg": "#FFFFFF", "text": "#333333", "grid": "#E5E7EB",
         "colors": ["#1E3A8A", "#059669", "#D97706", "#DC2626"],
-        "cal_event": "#1E3A8A"
+        "cal_event": "#1E3A8A",
+        "app_gradient": "linear-gradient(160deg, #FFFFFF 0%, #F8FAFC 50%, #F1F5F9 100%)",
+        "sidebar_bg": "linear-gradient(180deg, #FFFFFF 0%, #F1F5F9 100%)",
+        "accent": "#1E3A8A",
+        "accent_soft": "rgba(30, 58, 138, 0.08)",
+        "text_main": "#1E293B",
+        "font": "'Source Serif Pro', Georgia, serif",
+        "card_bg": "rgba(255, 255, 255, 0.7)",
+        "card_border": "rgba(30, 58, 138, 0.2)",
     }
 }
+
+# =========================================================================
+# INJECTION CSS — IMMERSION DU THÈME DANS TOUTE L'APP
+# =========================================================================
+def inject_theme_css(theme_name: str) -> None:
+    """Applique le thème choisi à l'ensemble de l'interface Streamlit
+    (fond de page, sidebar, cartes/metrics, boutons, onglets), pas
+    seulement aux graphiques Plotly."""
+    t = THEMES.get(theme_name, THEMES["Abysse"])
+
+    css = f"""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Barlow+Condensed:wght@400;600&family=Inter:wght@400;600&family=Source+Serif+Pro:wght@400;600&display=swap');
+
+    /* Fond principal de l'app */
+    .stApp {{
+        background: {t['app_gradient']};
+        transition: background 0.4s ease;
+    }}
+
+    /* Typo globale */
+    html, body, [class*="css"] {{
+        font-family: {t['font']};
+        color: {t['text_main']};
+    }}
+
+    /* Sidebar */
+    section[data-testid="stSidebar"] {{
+        background: {t['sidebar_bg']};
+        border-right: 1px solid {t['card_border']};
+    }}
+
+    /* Titres */
+    h1, h2, h3 {{
+        color: {t['text_main']};
+        text-shadow: 0 0 18px {t['accent_soft']};
+    }}
+
+    /* Cartes metric (KPI) */
+    div[data-testid="stMetric"] {{
+        background: {t['card_bg']};
+        border: 1px solid {t['card_border']};
+        border-radius: 12px;
+        padding: 12px 16px;
+        box-shadow: 0 0 20px {t['accent_soft']};
+    }}
+
+    /* Onglets (st.tabs) */
+    button[data-baseweb="tab"] {{
+        color: {t['text_main']};
+        font-family: {t['font']};
+    }}
+    button[data-baseweb="tab"][aria-selected="true"] {{
+        color: {t['accent']} !important;
+        border-bottom: 2px solid {t['accent']} !important;
+    }}
+
+    /* Boutons principaux */
+    .stButton > button {{
+        background: {t['accent_soft']};
+        border: 1px solid {t['accent']};
+        color: {t['text_main']};
+        border-radius: 8px;
+        transition: all 0.2s ease;
+    }}
+    .stButton > button:hover {{
+        background: {t['accent']};
+        color: #05070D;
+        box-shadow: 0 0 16px {t['accent_soft']};
+    }}
+
+    /* Expanders et containers */
+    div[data-testid="stExpander"] {{
+        background: {t['card_bg']};
+        border: 1px solid {t['card_border']};
+        border-radius: 10px;
+    }}
+    </style>
+    """
+    st.markdown(css, unsafe_allow_html=True)
 
 def _apply_plotly_theme(fig, theme_name: str):
     t = THEMES.get(theme_name, THEMES["Abysse"])
