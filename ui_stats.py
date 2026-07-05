@@ -245,7 +245,10 @@ def inject_theme_css(theme_name: str) -> None:
        hérite d'un texte clair sur un fond resté blanc = illisible).
        ===================================================================== */
 
-    /* Liste déroulante ouverte (selectbox, multiselect) */
+    /* Liste déroulante ouverte (selectbox, multiselect) — Streamlit rend
+       ceci en liste virtualisée avec ce testid précis */
+    div[data-testid="stSelectboxVirtualDropdown"],
+    div[data-testid="stSelectboxVirtualDropdown"] > div,
     div[data-baseweb="popover"] div[data-baseweb="menu"],
     ul[data-baseweb="menu"],
     div[role="listbox"] {{
@@ -253,18 +256,26 @@ def inject_theme_css(theme_name: str) -> None:
         border: 1px solid {t['card_border']} !important;
         border-radius: 8px !important;
     }}
-    ul[data-baseweb="menu"] li,
-    div[role="listbox"] li,
-    li[role="option"] {{
+    div[data-testid="stSelectboxVirtualDropdown"] * {{
         background: transparent !important;
         color: {t['text_main']} !important;
     }}
+    div[data-testid="stSelectboxVirtualDropdown"] li[aria-selected="true"],
+    div[data-testid="stSelectboxVirtualDropdown"] div[aria-selected="true"],
+    div[data-testid="stSelectboxVirtualDropdown"] li:hover,
+    div[data-testid="stSelectboxVirtualDropdown"] div[role="option"]:hover,
     ul[data-baseweb="menu"] li:hover,
     div[role="listbox"] li:hover,
     li[role="option"]:hover,
     li[aria-selected="true"] {{
         background: {t['accent_soft']} !important;
         color: {t['accent']} !important;
+    }}
+    ul[data-baseweb="menu"] li,
+    div[role="listbox"] li,
+    li[role="option"] {{
+        background: transparent !important;
+        color: {t['text_main']} !important;
     }}
 
     /* Menu hamburger Streamlit (⋮ en haut à droite : Clear cache, Settings, Rerun...) */
