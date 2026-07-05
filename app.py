@@ -170,5 +170,3 @@ with col_saisie:
 
     for nom_exo in list(st.session_state.exos_du_jour):
         render_exercise_block(nom_exo, df_global, st.session_state.date_seance, USER_ID)
-
-    col
