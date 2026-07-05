@@ -54,7 +54,7 @@ with st.sidebar:
             c.remove("sys_ref_token")
         except ImportError:
             pass
-            
+
         supabase.auth.sign_out()
         for k in ["user", "exos_du_jour", "last_seen_date", "oauth_intent", "config_loaded"]:
             st.session_state.pop(k, None)
@@ -70,7 +70,7 @@ if 'weight' in st.session_state and 'config_variantes' in st.session_state:
             if not df_global.empty:
                 st.write(f"**Dernière date :** {df_global['date'].max()}")
 else:
-    df_global = pd.DataFrame() 
+    df_global = pd.DataFrame()
 
 tous_les_exos = sorted(df_global[df_global["exercice"].str.lower() != "planche"]["exercice"].unique().tolist()) if not df_global.empty else []
 
@@ -80,7 +80,7 @@ current_theme_colors = THEMES[st.session_state.app_theme]
 
 with st.sidebar:
     st.header("📅 Calendrier")
-    
+
     calendar_events = []
     if not df_global.empty:
         jours_actifs = df_global["date"].unique()
@@ -94,10 +94,10 @@ with st.sidebar:
     calendar_options = {
         "headerToolbar": {"left": "prev", "center": "title", "right": "next"},
         "initialView": "dayGridMonth",
-        "firstDay": 1, 
+        "firstDay": 1,
         "height": 350,
         "selectable": True,
-        "contentHeight": "auto", 
+        "contentHeight": "auto",
     }
 
     # FIX DE LA BOUCLE : Ajout de callbacks=["dateClick"]
@@ -116,7 +116,7 @@ with st.sidebar:
     if cal_state and isinstance(cal_state, dict) and "dateClick" in cal_state:
         clicked_date_str = cal_state["dateClick"]["date"]
         date_obj = datetime.strptime(clicked_date_str[:10], "%Y-%m-%d").date()
-        
+
         if date_obj != st.session_state.date_seance:
             st.session_state.date_seance = date_obj
             st.session_state.confirm_delete_session = False
@@ -170,3 +170,9 @@ with col_saisie:
 
     for nom_exo in list(st.session_state.exos_du_jour):
         render_exercise_block(nom_exo, df_global, st.session_state.date_seance, USER_ID)
+
+with col_kpi:
+    render_kpi_panel(df_global, st.session_state.date_seance)
+
+st.markdown("---")
+render_stats_tabs(df_global, tous_les_exos, USER_ID)
