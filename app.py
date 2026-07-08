@@ -8,7 +8,7 @@ from streamlit_calendar import calendar
 
 from auth import get_pkce_store, check_oauth_callback, render_login_page
 from data import DEFAULT_VARIANTES
-from supabase_io import get_supabase_client, load_data, delete_perfs, load_user_settings
+from supabase_io import get_supabase_client, load_data, delete_perfs, load_user_settings, load_app_theme
 from ui_saisie import render_planche_block, render_exercise_block, render_kpi_panel
 from ui_stats import render_stats_tabs, THEMES, inject_theme_css
 
@@ -30,8 +30,6 @@ for _k, _v in _DEFAULTS.items():
     if _k not in st.session_state:
         st.session_state[_k] = _v
 
-inject_theme_css(st.session_state.app_theme)
-
 supabase = get_supabase_client()
 pkce_store = get_pkce_store()
 check_oauth_callback(supabase, pkce_store)
@@ -44,7 +42,10 @@ USER_ID = st.session_state.user.id
 
 if "config_loaded" not in st.session_state:
     st.session_state.config_variantes = load_user_settings(USER_ID)
+    st.session_state.app_theme = load_app_theme(USER_ID, default=st.session_state.app_theme)
     st.session_state.config_loaded = True
+
+inject_theme_css(st.session_state.app_theme)
 
 with st.sidebar:
     st.caption(f"Connecté : {st.session_state.user.email}")
