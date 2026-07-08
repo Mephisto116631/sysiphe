@@ -533,7 +533,7 @@ def render_repos_tab(df_global: pd.DataFrame) -> None:
 # =========================================================================
 # THEMES (Apparence)
 # =========================================================================
-def render_theme_tab():
+def render_theme_tab(user_id: str = None):
     st.subheader("🎨 Apparence du Tableau de Bord")
     current = st.session_state.get("app_theme", "Abysse")
     col1, col2 = st.columns([1, 2])
@@ -548,6 +548,9 @@ def render_theme_tab():
 
     if st.button("✅ Appliquer le thème", use_container_width=True):
         st.session_state.app_theme = choix
+        if user_id:
+            from supabase_io import save_app_theme
+            save_app_theme(user_id, choix)
         st.rerun()
 
 # =========================================================================
@@ -635,7 +638,7 @@ def render_stats_tabs(df_global: pd.DataFrame, tous_les_exos: list, user_id: str
     with tab_repos:
         render_repos_tab(df_global)
     with tab_theme:
-        render_theme_tab()
+        render_theme_tab(user_id)
     with tab_param:
         render_param_tab(df_global, tous_les_exos, user_id)
 
