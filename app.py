@@ -26,7 +26,7 @@ _DEFAULTS = {
     "config_formes": dict(DEFAULT_FORMES),
     "confirm_delete_session": False,
     "app_theme": "Épuré",
-    "inactivity_days": 2,
+    "inactivity_days": 4,
 }
 for _k, _v in _DEFAULTS.items():
     if _k not in st.session_state:
