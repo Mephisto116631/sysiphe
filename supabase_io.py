@@ -6,7 +6,7 @@ import streamlit as st
 import pandas as pd
 from supabase import create_client
 
-from data import calculer_effort, DEFAULT_VARIANTES
+from data import calculer_effort, DEFAULT_VARIANTES, DEFAULT_FORMES
 
 
 def get_supabase_client():
@@ -119,7 +119,7 @@ def save_user_settings(uid: str, variantes_config: dict) -> bool:
         return False
 
 
-def load_app_theme(uid: str, default: str = "Abysse") -> str:
+def load_app_theme(uid: str, default: str = "Épuré") -> str:
     """Charge le thème visuel sauvegardé par l'utilisateur. Retourne `default`
     si jamais sauvegardé ou si la colonne/table n'existe pas encore."""
     try:
@@ -138,6 +138,31 @@ def save_app_theme(uid: str, theme_name: str) -> bool:
         get_supabase_client().table("user_settings").upsert({
             "user_id": uid,
             "app_theme": theme_name,
+        }).execute()
+        return True
+    except Exception:
+        return False
+
+
+def load_formes_config(uid: str) -> dict:
+    """Charge la calibration des formes (indices de difficulté) depuis Supabase.
+    Retourne DEFAULT_FORMES si jamais sauvegardée (dégradation gracieuse)."""
+    try:
+        res = get_supabase_client().table("user_settings") \
+            .select("formes_config").eq("user_id", uid).execute()
+        if res.data and res.data[0].get("formes_config"):
+            return {**DEFAULT_FORMES, **res.data[0]["formes_config"]}
+    except Exception:
+        pass
+    return dict(DEFAULT_FORMES)
+
+
+def save_formes_config(uid: str, formes_config: dict) -> bool:
+    """Sauvegarde (upsert) la calibration des formes. Retourne False si échec."""
+    try:
+        get_supabase_client().table("user_settings").upsert({
+            "user_id": uid,
+            "formes_config": formes_config,
         }).execute()
         return True
     except Exception:
