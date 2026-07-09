@@ -1,14 +1,14 @@
 """
 Sysiphe v15 — Point d'entrée principal.
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 import streamlit as st
 from streamlit_calendar import calendar
 
 from auth import get_pkce_store, check_oauth_callback, render_login_page
 from data import DEFAULT_VARIANTES, DEFAULT_FORMES
-from supabase_io import get_supabase_client, load_data, delete_perfs, load_user_settings, load_app_theme, load_formes_config
+from supabase_io import get_supabase_client, load_data, delete_perfs, load_user_settings, load_app_theme, load_formes_config, load_inactivity_days
 from ui_saisie import render_planche_block, render_exercise_block, render_kpi_panel
 from ui_stats import render_stats_tabs, THEMES, inject_theme_css
 
@@ -25,7 +25,8 @@ _DEFAULTS = {
     "config_variantes": dict(DEFAULT_VARIANTES),
     "config_formes": dict(DEFAULT_FORMES),
     "confirm_delete_session": False,
-    "app_theme": "Épuré"
+    "app_theme": "Épuré",
+    "inactivity_days": 2,
 }
 for _k, _v in _DEFAULTS.items():
     if _k not in st.session_state:
@@ -45,6 +46,7 @@ if "config_loaded" not in st.session_state:
     st.session_state.config_variantes = load_user_settings(USER_ID)
     st.session_state.config_formes = load_formes_config(USER_ID)
     st.session_state.app_theme = load_app_theme(USER_ID, default=st.session_state.app_theme)
+    st.session_state.inactivity_days = load_inactivity_days(USER_ID, default=st.session_state.inactivity_days)
     st.session_state.config_loaded = True
 
 inject_theme_css(st.session_state.app_theme)
@@ -161,12 +163,16 @@ if "last_seen_date" not in st.session_state or st.session_state.last_seen_date !
         if not df_today.empty:
             st.session_state.exos_du_jour = df_today[df_today["exercice"].str.lower() != "planche"]["exercice"].unique().tolist()
         else:
-            dates_passees = df_global[df_global["date"] < st.session_state.date_seance]["date"]
-            if not dates_passees.empty:
-                df_last = df_global[df_global["date"] == dates_passees.max()]
-                st.session_state.exos_du_jour = df_last[df_last["exercice"].str.lower() != "planche"]["exercice"].unique().tolist()
-            else:
-                st.session_state.exos_du_jour = []
+            # Fenêtre glissante : on garde tout exercice pratiqué au cours des
+            # `inactivity_days` derniers jours (pas juste le dernier jour actif),
+            # pour ne pas perdre un exercice fait il y a 1-2 jours pendant qu'un
+            # autre a été fait hier.
+            seuil = st.session_state.date_seance - timedelta(days=st.session_state.inactivity_days)
+            df_recent = df_global[
+                (df_global["date"] < st.session_state.date_seance) &
+                (df_global["date"] >= seuil)
+            ]
+            st.session_state.exos_du_jour = df_recent[df_recent["exercice"].str.lower() != "planche"]["exercice"].unique().tolist()
     else:
         st.session_state.exos_du_jour = []
 
