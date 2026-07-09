@@ -12,8 +12,11 @@ from datetime import datetime, timedelta, timezone
 CONFIG = {
     "elastiques": {"Aucun": 0, "Rouge/Violet": 35, "Jaune+Bleu": 40, "Jaune": 25, "Bleu": 15, "Vert": 45},
     "tensions":   {"N/A": 0.70, "Ecarté": 0.85, "Normal": 0.70, "Serré": 0.60},
-    "formes":     {"Normal": 47.6, "High": 34, "Bas": 66.64, "Dead": 93.296},
 }
+
+# Formes désormais calibrables par l'utilisateur (voir user_settings.formes_config).
+# Ordre = difficulté croissante (score le plus bas → le plus haut).
+DEFAULT_FORMES = {"High": 34, "Normal": 47.6, "Bas": 66.64, "Dead": 93.296}
 
 DEFAULT_VARIANTES = {
     "Full": 10, "Straddle": 9, "Half_Lay": 9,
@@ -25,19 +28,22 @@ DEFAULT_VARIANTES = {
 # CALCUL D'EFFORT PLANCHE
 # =========================================================================
 def calculer_effort(variante: str, elastique: str, tension: str, forme: str,
-                     temps, weight: float, variantes_config: dict = None) -> int:
+                     temps, weight: float, variantes_config: dict = None,
+                     formes_config: dict = None) -> int:
     """
     Calcule l'effort pondéré d'un hold de planche isométrique.
 
-    Fonction pure : variantes_config et weight sont passés explicitement,
-    jamais lus depuis st.session_state (testabilité + évite les bugs de cache).
+    Fonction pure : variantes_config, formes_config et weight sont passés
+    explicitement, jamais lus depuis st.session_state (testabilité + évite
+    les bugs de cache).
     """
     variantes_config = variantes_config or DEFAULT_VARIANTES
+    formes_config = formes_config or DEFAULT_FORMES
     try:
         force_e = CONFIG["elastiques"].get(elastique, 0)
         ratio_t = CONFIG["tensions"].get(tension, 0.70)
         score_v = variantes_config.get(variante, 0)
-        score_f = CONFIG["formes"].get(forme, 0)
+        score_f = formes_config.get(forme, 0)
         if score_v == 0 or score_f == 0 or not temps:
             return 0
         kg_traction = force_e * ratio_t
