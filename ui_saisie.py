@@ -150,7 +150,7 @@ def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, wei
                 pct = round(best_today / record_planche * 100) if record_planche else 0
                 st.info(f"🎯 Meilleur effort aujourd'hui : **{best_today} pts** ({pct}% du record)")
 
-        if st.button("💾 Enregistrer la Planche", type="primary", use_container_width=True):
+        if st.button("💾 Enregistrer la Planche", type="primary", width='stretch'):
             if is_debounced(f"save_planche_{date_active}"):
                 st.toast("⏳ Déjà enregistré à l'instant — patiente quelques secondes.")
             else:
@@ -234,7 +234,7 @@ def render_exercise_block(nom_exo: str, df_global: pd.DataFrame, date_active, us
             st.metric("Séries", nb_series)
         with c_btn:
             st.write("")
-            if st.button("🗑️", key=f"rem_{nom_exo}_{date_active}", use_container_width=True):
+            if st.button("🗑️", key=f"rem_{nom_exo}_{date_active}", width='stretch'):
                 st.session_state.exos_du_jour.remove(nom_exo)
                 delete_perfs(user_id, str(date_active), nom_exo)
                 st.cache_data.clear()
@@ -328,5 +328,5 @@ def render_kpi_panel(df_global: pd.DataFrame, date_active) -> None:
         st.download_button(
             "📅 Rappel calendrier (.ics)", data=ics_content,
             file_name="sysiphe_prochaine_seance.ics", mime="text/calendar",
-            use_container_width=True,
+            width='stretch',
         )
