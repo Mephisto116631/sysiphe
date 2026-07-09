@@ -7,7 +7,7 @@ import streamlit as st
 import plotly.express as px
 
 from data import lisser_donnees, detect_plateau, suggest_next_session
-from supabase_io import update_exercise_name, save_user_settings, save_formes_config
+from supabase_io import update_exercise_name, save_user_settings, save_formes_config, save_inactivity_days
 
 # =========================================================================
 # CONFIGURATION DES THÈMES
@@ -571,6 +571,23 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
     st.checkbox("Inclure la Planche dans la saisie", key="include_planche")
     st.number_input("Taille de la moyenne glissante (séances)", min_value=1, max_value=30, step=1, key="nb_days_avg")
     st.number_input("Poids de référence pour le calcul d'isométrie (kg)", min_value=40, max_value=200, step=1, key="weight")
+
+    st.write("---")
+    st.subheader("🗓️ Persistance des exercices sur la page d'accueil")
+    st.caption("Un exercice reste affiché sur la page d'accueil tant qu'il a été pratiqué "
+               "au moins une fois dans les N derniers jours. Au-delà, il disparaît (mais "
+               "reste bien sûr dans ton historique).")
+    nb_jours = st.number_input("Jours d'inactivité avant disparition", min_value=1, max_value=30,
+                                step=1, value=int(st.session_state.inactivity_days), key="inactivity_days_input")
+    if st.button("✅ Sauvegarder ce paramètre", use_container_width=True):
+        st.session_state.inactivity_days = int(nb_jours)
+        ok = save_inactivity_days(user_id, int(nb_jours))
+        st.session_state.pop("last_seen_date", None)  # force le recalcul de la liste du jour
+        if ok:
+            st.success(f"Seuil mis à jour : {nb_jours} jour(s).")
+        else:
+            st.warning("Échec de sauvegarde.")
+        st.rerun()
 
     st.write("---")
     st.subheader("📥 Export de données")
