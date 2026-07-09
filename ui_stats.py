@@ -441,7 +441,7 @@ def render_graph_tab(df_global: pd.DataFrame, tous_les_exos: list, include_planc
                 fig_p = px.line(df_melt_p, x="date", y="Effort", color="Variante", title="Évolution Planche — effort pondéré", color_discrete_sequence=t_colors)
                 fig_p.update_traces(connectgaps=True, hovertemplate="%{y:.0f} pts")
                 fig_p = _apply_plotly_theme(fig_p, current_theme)
-                st.plotly_chart(fig_p, use_container_width=True)
+                st.plotly_chart(fig_p, width='stretch')
                 df_best = df_planche.groupby("date")["effort_pondere"].max().reset_index()
                 _plateau_badge(df_best["date"], df_best["effort_pondere"], "Planche")
 
@@ -461,7 +461,7 @@ def render_graph_tab(df_global: pd.DataFrame, tous_les_exos: list, include_planc
                 fig_v = px.line(df_g_vol, x="date", y="volume", color="exercice", markers=True, title=f"Volume brut total ({label_y.lower()})", color_discrete_sequence=t_colors)
                 fig_v.update_traces(hovertemplate="%{y:.0f}")
                 fig_v = _apply_plotly_theme(fig_v, current_theme)
-                st.plotly_chart(fig_v, use_container_width=True)
+                st.plotly_chart(fig_v, width='stretch')
 
 # =========================================================================
 # RECORDS
@@ -482,7 +482,7 @@ def render_records_tab(df_global: pd.DataFrame) -> None:
             df_pr = df_p.drop_duplicates(subset=["variante", "elastique", "tension"])[["date", "variante", "elastique", "tension", "performance", "effort_pondere"]].copy()
             df_pr.columns = ["Date", "Variante", "Élastique", "Tension", "Temps (s)", "Effort"]
             df_pr[["Temps (s)", "Effort"]] = df_pr[["Temps (s)", "Effort"]].astype(int)
-            st.dataframe(df_pr.style.background_gradient(subset=["Effort", "Temps (s)"], cmap="YlOrRd"), use_container_width=True, hide_index=True)
+            st.dataframe(df_pr.style.background_gradient(subset=["Effort", "Temps (s)"], cmap="YlOrRd"), width='stretch', hide_index=True)
         else:
             st.info("Aucun record de Planche enregistré.")
 
@@ -499,7 +499,7 @@ def render_records_tab(df_global: pd.DataFrame) -> None:
             label = "Tonnage Max (kg)" if a_du_charge_global else "Volume Max (reps)"
             df_pr_muscu = df_vol.loc[idx_max].rename(columns={"volume": label, "date": "Date du PR", "exercice": "Exercice"})[["Exercice", label, "Date du PR"]].sort_values(label, ascending=False)
             df_pr_muscu[label] = df_pr_muscu[label].astype(int)
-            st.dataframe(df_pr_muscu.style.background_gradient(subset=[label], cmap="Blues"), use_container_width=True, hide_index=True)
+            st.dataframe(df_pr_muscu.style.background_gradient(subset=[label], cmap="Blues"), width='stretch', hide_index=True)
         else:
             st.info("Aucun exercice de musculation enregistré.")
 
@@ -532,12 +532,12 @@ def render_repos_tab(df_global: pd.DataFrame) -> None:
         habitudes.columns = ["Jours", "Nb"]
         habitudes["Jours"] = habitudes["Jours"].astype(int).astype(str) + " j"
         fig_pie = px.pie(habitudes, values="Nb", names="Jours", title="Répartition des formats de repos")
-        st.plotly_chart(fig_pie, use_container_width=True)
+        st.plotly_chart(fig_pie, width='stretch')
 
     with cr2:
         fig_bar = px.bar(df_repos_stats, x="date_dt", y="jours_repos", title="Chronologie des jours de repos accordés")
         fig_bar.update_traces(marker_color="#1f77b4")
-        st.plotly_chart(fig_bar, use_container_width=True)
+        st.plotly_chart(fig_bar, width='stretch')
 
 # =========================================================================
 # THEMES (Apparence)
@@ -555,7 +555,7 @@ def render_theme_tab(user_id: str = None):
         st.markdown(html_colors, unsafe_allow_html=True)
         st.caption(f"Fond des graphiques : {THEMES[choix]['bg']}")
 
-    if st.button("✅ Appliquer le thème", use_container_width=True):
+    if st.button("✅ Appliquer le thème", width='stretch'):
         st.session_state.app_theme = choix
         if user_id:
             from supabase_io import save_app_theme
@@ -580,7 +580,7 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
                "bien sûr dans ton historique).")
     nb_seances = st.number_input("Nombre de dernières séances à considérer", min_value=1, max_value=30,
                                   step=1, value=int(st.session_state.inactivity_days), key="inactivity_days_input")
-    if st.button("✅ Sauvegarder ce paramètre", use_container_width=True):
+    if st.button("✅ Sauvegarder ce paramètre", width='stretch'):
         st.session_state.inactivity_days = int(nb_seances)
         ok = save_inactivity_days(user_id, int(nb_seances))
         st.session_state.pop("last_seen_date", None)  # force le recalcul de la liste du jour
@@ -598,7 +598,7 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
             data=df_global.to_csv(index=False).encode("utf-8"),
             file_name=f"sysiphe_export_{datetime.now().strftime('%Y%m%d')}.csv",
             mime="text/csv",
-            use_container_width=True,
+            width='stretch',
         )
         st.caption(f"{len(df_global)} lignes · {df_global['date'].nunique()} séances")
     else:
@@ -612,7 +612,7 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
     for var, score in st.session_state.config_variantes.items():
         updated_scores[var] = st.number_input(var, min_value=1, max_value=20, value=int(score), step=1, key=f"cal_{var}")
         
-    if st.button("✅ Appliquer et sauvegarder la calibration", use_container_width=True):
+    if st.button("✅ Appliquer et sauvegarder la calibration", width='stretch'):
         st.session_state.config_variantes = updated_scores
         ok = save_user_settings(user_id, updated_scores)
         st.cache_data.clear()
@@ -633,7 +633,7 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
             forme, min_value=1.0, max_value=200.0, value=float(score), step=0.1, key=f"cal_forme_{forme}"
         )
 
-    if st.button("✅ Appliquer et sauvegarder les formes", use_container_width=True):
+    if st.button("✅ Appliquer et sauvegarder les formes", width='stretch'):
         st.session_state.config_formes = updated_formes
         ok = save_formes_config(user_id, updated_formes)
         st.cache_data.clear()
@@ -649,7 +649,7 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
             nouvelle_forme = st.text_input("Nom de la forme", placeholder="ex: Straddle_High", key="new_forme_nom")
         with c_score:
             nouveau_score = st.number_input("Indice de difficulté", min_value=1.0, max_value=200.0, value=50.0, step=0.1, key="new_forme_score")
-        if st.button("➕ Ajouter cette forme", use_container_width=True):
+        if st.button("➕ Ajouter cette forme", width='stretch'):
             nom = nouvelle_forme.strip()
             if not nom:
                 st.error("Le nom ne peut pas être vide.")
@@ -670,7 +670,7 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
         exo_a_renommer = st.selectbox("Exercice à modifier", tous_les_exos)
         nouveau_nom = st.text_input("Nouveau nom")
         
-        if st.button("Renommer", use_container_width=True):
+        if st.button("Renommer", width='stretch'):
             nv = nouveau_nom.strip()
             if not nv:
                 st.error("Le nouveau nom ne peut pas être vide.")
