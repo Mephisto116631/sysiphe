@@ -1,7 +1,7 @@
 """
 Sysiphe v15 — Point d'entrée principal.
 """
-from datetime import datetime, timedelta
+from datetime import datetime
 import pandas as pd
 import streamlit as st
 from streamlit_calendar import calendar
@@ -163,15 +163,15 @@ if "last_seen_date" not in st.session_state or st.session_state.last_seen_date !
         if not df_today.empty:
             st.session_state.exos_du_jour = df_today[df_today["exercice"].str.lower() != "planche"]["exercice"].unique().tolist()
         else:
-            # Fenêtre glissante : on garde tout exercice pratiqué au cours des
-            # `inactivity_days` derniers jours (pas juste le dernier jour actif),
-            # pour ne pas perdre un exercice fait il y a 1-2 jours pendant qu'un
-            # autre a été fait hier.
-            seuil = st.session_state.date_seance - timedelta(days=st.session_state.inactivity_days)
-            df_recent = df_global[
-                (df_global["date"] < st.session_state.date_seance) &
-                (df_global["date"] >= seuil)
-            ]
+            # On garde tout exercice pratiqué au cours des N DERNIÈRES SÉANCES
+            # (dates distinctes avec données), pas une fenêtre calendaire —
+            # utile si l'entraînement n'est pas quotidien.
+            dates_passees = sorted(
+                df_global[df_global["date"] < st.session_state.date_seance]["date"].unique(),
+                reverse=True,
+            )
+            dates_retenues = dates_passees[: st.session_state.inactivity_days]
+            df_recent = df_global[df_global["date"].isin(dates_retenues)]
             st.session_state.exos_du_jour = df_recent[df_recent["exercice"].str.lower() != "planche"]["exercice"].unique().tolist()
     else:
         st.session_state.exos_du_jour = []
