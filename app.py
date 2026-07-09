@@ -57,8 +57,11 @@ with st.sidebar:
         try:
             from streamlit_cookies_controller import CookieController
             c = CookieController()
-            c.remove("sys_acc_token")
-            c.remove("sys_ref_token")
+            for cookie_name in ("sys_acc_token", "sys_ref_token"):
+                try:
+                    c.remove(cookie_name)
+                except KeyError:
+                    pass  # cookie déjà absent, rien à faire
         except ImportError:
             pass
 
