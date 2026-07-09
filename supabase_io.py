@@ -167,3 +167,27 @@ def save_formes_config(uid: str, formes_config: dict) -> bool:
         return True
     except Exception:
         return False
+
+
+def load_inactivity_days(uid: str, default: int = 2) -> int:
+    """Nombre de jours d'inactivité avant qu'un exercice disparaisse de la
+    page d'accueil. Retourne `default` si jamais sauvegardé."""
+    try:
+        res = get_supabase_client().table("user_settings") \
+            .select("inactivity_days").eq("user_id", uid).execute()
+        if res.data and res.data[0].get("inactivity_days") is not None:
+            return int(res.data[0]["inactivity_days"])
+    except Exception:
+        pass
+    return default
+
+
+def save_inactivity_days(uid: str, days: int) -> bool:
+    try:
+        get_supabase_client().table("user_settings").upsert({
+            "user_id": uid,
+            "inactivity_days": int(days),
+        }).execute()
+        return True
+    except Exception:
+        return False
