@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 import streamlit as st
 
-from data import CONFIG, calculer_effort, parse_reps, compute_period_comparison, build_ics_event, suggest_next_session
+from data import CONFIG, DEFAULT_FORMES, calculer_effort, parse_reps, compute_period_comparison, build_ics_event, suggest_next_session
 from supabase_io import insert_perfs, delete_perfs
 from ui_helpers import is_debounced
 
@@ -47,7 +47,8 @@ def _build_default_planche(df_global: pd.DataFrame, date_active) -> dict:
 
 
 def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, weight: float,
-                         variantes_config: dict) -> None:
+                         variantes_config: dict, formes_config: dict = None) -> None:
+    formes_config = formes_config or DEFAULT_FORMES
     record_planche = 0
     titre = "🤸 PLANCHE"
     if not df_global.empty:
@@ -67,6 +68,8 @@ def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, wei
         c1, c2, c3 = st.columns(3)
         elas_keys = list(CONFIG["elastiques"].keys())
         tens_keys = list(CONFIG["tensions"].keys())
+        # Ordre chronologique = difficulté croissante (score le plus bas → le plus haut)
+        forme_keys = [k for k, _ in sorted(formes_config.items(), key=lambda kv: kv[1])]
 
         # segmented_control renvoie None si on clique sur l'option déjà
         # sélectionnée (comportement togglé natif) : on mémorise donc la
@@ -95,10 +98,12 @@ def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, wei
         for s in range(1, 6):
             c1, c2, c3 = st.columns([1, 2, 1])
             with c1: t = st.text_input(f"S{s}(s)", value=defaults["times"].get(s, ""), key=f"p_t_{s}_{date_active}")
-            with c2: f = st.select_slider(f"F{s}", options=list(CONFIG["formes"].keys()),
-                                          value=defaults["forms"].get(s, "Normal"), key=f"p_f_{s}_{date_active}")
+            with c2:
+                f = _persisted_choice(f"F{s}", forme_keys,
+                                       f"forme_state_{s}_{date_active}",
+                                       defaults["forms"].get(s, "Normal"), f"p_f_{s}_{date_active}")
             with c3:
-                eff = calculer_effort(var_g, elas_g, tens_g, f, t, weight, variantes_config) if t else 0
+                eff = calculer_effort(var_g, elas_g, tens_g, f, t, weight, variantes_config, formes_config) if t else 0
                 st.metric("Effort", f"{eff:.0f}")
             temps_temp[s], formes_temp[s] = t, f
             if t and eff > 0:
@@ -122,7 +127,7 @@ def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, wei
                     t, f = temps_temp[s], formes_temp[s]
                     if t:
                         try:
-                            eff = calculer_effort(var_g, elas_g, tens_g, f, t, weight, variantes_config)
+                            eff = calculer_effort(var_g, elas_g, tens_g, f, t, weight, variantes_config, formes_config)
                             lignes.append({
                                 "user_id": user_id, "date": str(date_active),
                                 "exercice": "Planche", "serie": s, "performance": float(t),
