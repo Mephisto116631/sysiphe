@@ -10,6 +10,20 @@ from supabase_io import insert_perfs, delete_perfs
 from ui_helpers import is_debounced
 
 
+def _intensity_color(ratio: float) -> str:
+    """Vert -> Orange -> Rouge selon un ratio 0..1+ (ex: effort/record, score/max_score)."""
+    ratio = max(0.0, min(1.0, ratio))
+    if ratio < 0.5:
+        # Vert -> Orange sur [0, 0.5]
+        t = ratio / 0.5
+        r, g, b = (int(34 + t * (245 - 34)), int(197 + t * (158 - 197)), int(94 + t * (11 - 94)))
+    else:
+        # Orange -> Rouge sur [0.5, 1]
+        t = (ratio - 0.5) / 0.5
+        r, g, b = (int(245 + t * (239 - 245)), int(158 + t * (68 - 158)), int(11 + t * (68 - 11)))
+    return f"rgb({r},{g},{b})"
+
+
 def _build_default_planche(df_global: pd.DataFrame, date_active) -> dict:
     """Calcule les valeurs de préremplissage pour le bloc Planche."""
     defaults = {
@@ -95,6 +109,7 @@ def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, wei
 
         st.write("---")
         formes_temp, temps_temp, efforts_jour = {}, {}, []
+        min_score, max_score = min(formes_config.values()), max(formes_config.values())
         for s in range(1, 6):
             c1, c2, c3 = st.columns([1, 2, 1])
             with c1: t = st.text_input(f"S{s}(s)", value=defaults["times"].get(s, ""), key=f"p_t_{s}_{date_active}")
@@ -102,9 +117,27 @@ def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, wei
                 f = _persisted_choice(f"F{s}", forme_keys,
                                        f"forme_state_{s}_{date_active}",
                                        defaults["forms"].get(s, "Normal"), f"p_f_{s}_{date_active}")
+                # Colore le bouton actif du dropdown Forme selon sa difficulté relative
+                ratio_f = ((formes_config.get(f, min_score) - min_score) / (max_score - min_score)
+                          if max_score > min_score else 0.5)
+                color_f = _intensity_color(ratio_f)
+                st.markdown(
+                    f"<style>.st-key-p_f_{s}_{date_active} "
+                    f"button[data-testid='stBaseButton-segmented_controlActive']"
+                    f"{{background:{color_f} !important; border-color:{color_f} !important;}}</style>",
+                    unsafe_allow_html=True,
+                )
             with c3:
                 eff = calculer_effort(var_g, elas_g, tens_g, f, t, weight, variantes_config, formes_config) if t else 0
-                st.metric("Effort", f"{eff:.0f}")
+                ratio_e = (eff / record_planche) if record_planche else 0
+                color_e = _intensity_color(ratio_e) if eff > 0 else "inherit"
+                st.markdown(
+                    f"<div style='text-align:center;'>"
+                    f"<div style='font-size:0.8rem;opacity:0.7;'>Effort</div>"
+                    f"<div style='font-size:1.6rem;font-weight:700;color:{color_e};'>{eff:.0f}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
             temps_temp[s], formes_temp[s] = t, f
             if t and eff > 0:
                 efforts_jour.append(eff)
@@ -192,7 +225,11 @@ def render_exercise_block(nom_exo: str, df_global: pd.DataFrame, date_active, us
         with c_m1:
             label_total = "Tonnage (kg)" if charge_kg > 0 else "Total Reps"
             valeur_total = f"{total_reps * charge_kg:.0f}" if charge_kg > 0 else total_reps
-            st.metric(label_total, valeur_total)
+            delta_pct = None
+            if vol_moyen > 0 and total_reps > 0:
+                pct = (total_reps / vol_moyen - 1) * 100
+                delta_pct = f"{pct:+.0f}% vs moy."
+            st.metric(label_total, valeur_total, delta=delta_pct)
         with c_m2:
             st.metric("Séries", nb_series)
         with c_btn:
