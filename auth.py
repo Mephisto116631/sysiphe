@@ -93,7 +93,7 @@ def render_login_page(supabase, pkce_store: dict, app_url: str) -> None:
             pkce_store[intent_id] = (verifier, time.time())
 
         st.link_button("🔵 Se connecter avec Google", url=res.url,
-                        type="primary", use_container_width=True)
+                        type="primary", width='stretch')
         st.markdown("<div style='text-align:center;margin:15px 0;'>— OU —</div>",
                     unsafe_allow_html=True)
 
@@ -101,7 +101,7 @@ def render_login_page(supabase, pkce_store: dict, app_url: str) -> None:
         email = st.text_input("Adresse Email")
         password = st.text_input("Mot de passe", type="password")
 
-        if st.button("Valider", use_container_width=True):
+        if st.button("Valider", width='stretch'):
             try:
                 if choix == "Créer un compte":
                     supabase.auth.sign_up({"email": email, "password": password})
