@@ -53,7 +53,7 @@ inject_theme_css(st.session_state.app_theme)
 
 with st.sidebar:
     st.caption(f"Connecté : {st.session_state.user.email}")
-    if st.button("🚪 Se déconnecter", use_container_width=True):
+    if st.button("🚪 Se déconnecter", width='stretch'):
         try:
             from streamlit_cookies_controller import CookieController
             c = CookieController()
@@ -91,18 +91,28 @@ current_theme_colors = THEMES[st.session_state.app_theme]
 with st.sidebar:
     st.header("📅 Calendrier")
 
+    # Heatmap verte façon GitHub (4 paliers d'intensité), indépendante du
+    # thème choisi — sert de repère visuel constant pour le volume/jour.
+    GREEN_SCALE = ["#9BE9A8", "#40C463", "#30A14E", "#216E39"]
+
     calendar_events = []
     if not df_global.empty:
         vol_par_jour = df_global.groupby("date")["performance"].sum()
         vmax = vol_par_jour.max() or 1
-        hex_c = current_theme_colors["cal_event"].lstrip("#")
-        r, g, b = int(hex_c[0:2], 16), int(hex_c[2:4], 16), int(hex_c[4:6], 16)
         for d, vol in vol_par_jour.items():
-            intensite = 0.25 + 0.75 * (vol / vmax)  # 25% à 100% d'opacité
+            ratio = vol / vmax
+            if ratio <= 0.25:
+                couleur = GREEN_SCALE[0]
+            elif ratio <= 0.5:
+                couleur = GREEN_SCALE[1]
+            elif ratio <= 0.75:
+                couleur = GREEN_SCALE[2]
+            else:
+                couleur = GREEN_SCALE[3]
             calendar_events.append({
                 "start": str(d),
                 "display": "background",
-                "backgroundColor": f"rgba({r},{g},{b},{intensite:.2f})",
+                "backgroundColor": couleur,
             })
 
     calendar_options = {
@@ -114,15 +124,62 @@ with st.sidebar:
         "contentHeight": "auto",
     }
 
-    # FIX DE LA BOUCLE : Ajout de callbacks=["dateClick"]
     cal_state = calendar(
         events=calendar_events,
         options=calendar_options,
         callbacks=["dateClick"],
-        custom_css="""
-        .fc-theme-standard td, .fc-theme-standard th { border: 1px solid #444; }
-        .fc-daygrid-day-number { color: #888; text-decoration: none; }
-        .fc-toolbar-title { font-size: 1.1em !important; }
+        custom_css=f"""
+        .fc {{
+            font-family: {current_theme_colors['font']};
+            --fc-border-color: {current_theme_colors['card_border']};
+        }}
+        .fc-theme-standard td, .fc-theme-standard th {{
+            border: 1px solid {current_theme_colors['card_border']};
+        }}
+        .fc-daygrid-day {{
+            transition: background 0.15s ease;
+        }}
+        .fc-daygrid-day:hover {{
+            background: {current_theme_colors['accent_soft']};
+        }}
+        .fc-daygrid-day-frame {{
+            border-radius: 6px;
+            overflow: hidden;
+        }}
+        .fc-daygrid-day-number {{
+            color: {current_theme_colors['text_main']};
+            opacity: 0.85;
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.85em;
+        }}
+        .fc-day-today {{
+            background: {current_theme_colors['accent_soft']} !important;
+        }}
+        .fc-day-today .fc-daygrid-day-number {{
+            color: {current_theme_colors['accent']};
+            font-weight: 700;
+        }}
+        .fc-toolbar-title {{
+            font-size: 1.05em !important;
+            color: {current_theme_colors['text_main']};
+            font-weight: 600;
+        }}
+        .fc-prev-button, .fc-next-button {{
+            background: {current_theme_colors['accent_soft']} !important;
+            border: 1px solid {current_theme_colors['accent']} !important;
+            color: {current_theme_colors['accent']} !important;
+        }}
+        .fc-prev-button:hover, .fc-next-button:hover {{
+            background: {current_theme_colors['accent']} !important;
+            color: #fff !important;
+        }}
+        .fc-col-header-cell {{
+            color: {current_theme_colors['text_main']};
+            opacity: 0.6;
+            font-size: 0.75em;
+            text-transform: uppercase;
+        }}
         """,
         key="main_calendar"
     )
@@ -136,18 +193,28 @@ with st.sidebar:
             st.session_state.confirm_delete_session = False
             st.rerun()
 
+    st.markdown(
+        "<div style='display:flex;align-items:center;gap:4px;font-size:0.75rem;"
+        f"opacity:0.7;margin-top:4px;color:{current_theme_colors['text_main']};'>"
+        "Léger"
+        + "".join(f"<div style='width:14px;height:14px;border-radius:3px;"
+                  f"background:{c};'></div>" for c in GREEN_SCALE)
+        + "Intense</div>",
+        unsafe_allow_html=True,
+    )
+
     st.markdown(f"**Séance active : {st.session_state.date_seance.strftime('%d/%m/%Y')}**")
     st.markdown("---")
 
     if not st.session_state.confirm_delete_session:
-        if st.button("🗑️ Supprimer cette séance", type="secondary", use_container_width=True):
+        if st.button("🗑️ Supprimer cette séance", type="secondary", width='stretch'):
             st.session_state.confirm_delete_session = True
             st.rerun()
     else:
         st.warning("⚠️ Confirmer la suppression ?")
         col_yes, col_no = st.columns(2)
         with col_yes:
-            if st.button("Oui", type="primary", use_container_width=True):
+            if st.button("Oui", type="primary", width='stretch'):
                 delete_perfs(USER_ID, str(st.session_state.date_seance))
                 st.cache_data.clear()
                 st.session_state.exos_du_jour = []
@@ -155,7 +222,7 @@ with st.sidebar:
                 st.toast("Séance supprimée", icon="🗑️")
                 st.rerun()
         with col_no:
-            if st.button("Non", use_container_width=True):
+            if st.button("Non", width='stretch'):
                 st.session_state.confirm_delete_session = False
                 st.rerun()
 
@@ -201,7 +268,7 @@ with col_saisie:
             nouvel_exo = st.text_input("Ajouter un exercice", placeholder="Nom de l'exercice (ex: Tractions, Squats...)",
                                        label_visibility="collapsed")
         with c_add:
-            submitted = st.form_submit_button("➕ Ajouter", use_container_width=True)
+            submitted = st.form_submit_button("➕ Ajouter", width='stretch')
         if submitted:
             nom_propre = nouvel_exo.strip()
             if not nom_propre:
