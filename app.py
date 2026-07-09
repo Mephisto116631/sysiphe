@@ -88,12 +88,16 @@ with st.sidebar:
 
     calendar_events = []
     if not df_global.empty:
-        jours_actifs = df_global["date"].unique()
-        for d in jours_actifs:
+        vol_par_jour = df_global.groupby("date")["performance"].sum()
+        vmax = vol_par_jour.max() or 1
+        hex_c = current_theme_colors["cal_event"].lstrip("#")
+        r, g, b = int(hex_c[0:2], 16), int(hex_c[2:4], 16), int(hex_c[4:6], 16)
+        for d, vol in vol_par_jour.items():
+            intensite = 0.25 + 0.75 * (vol / vmax)  # 25% à 100% d'opacité
             calendar_events.append({
                 "start": str(d),
                 "display": "background",
-                "backgroundColor": current_theme_colors["cal_event"],
+                "backgroundColor": f"rgba({r},{g},{b},{intensite:.2f})",
             })
 
     calendar_options = {
@@ -180,7 +184,7 @@ with col_saisie:
     with st.form(f"add_exo_form_{st.session_state.date_seance}", clear_on_submit=True):
         c_new, c_add = st.columns([4, 1])
         with c_new:
-            nouvel_exo = st.text_input("Ajouter un exercice", placeholder="➕ Ajouter un exercice (ex: Tractions, Squats...)",
+            nouvel_exo = st.text_input("Ajouter un exercice", placeholder="Nom de l'exercice (ex: Tractions, Squats...)",
                                        label_visibility="collapsed")
         with c_add:
             submitted = st.form_submit_button("➕ Ajouter", use_container_width=True)
