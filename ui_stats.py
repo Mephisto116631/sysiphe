@@ -7,7 +7,7 @@ import streamlit as st
 import plotly.express as px
 
 from data import lisser_donnees, detect_plateau, suggest_next_session
-from supabase_io import update_exercise_name, save_user_settings
+from supabase_io import update_exercise_name, save_user_settings, save_formes_config
 
 # =========================================================================
 # CONFIGURATION DES THÈMES
@@ -180,7 +180,15 @@ def inject_theme_css(theme_name: str) -> None:
         color: #05070D !important;
     }}
 
-    /* Champs de saisie : text_input, number_input, text_area, selectbox, date_input */
+    /* Champs de saisie — sélecteurs vérifiés dans le bundle JS réel de
+       Streamlit 1.58 (TextInput.js / NumberInput.js) :
+       - text_input : boîte visible = div[data-testid="stTextInputRootElement"]
+       - number_input : boîte visible = div[data-testid="stNumberInputContainer"],
+         champ réel = input[data-testid="stNumberInputField"]
+       (.stNumberInput / .stTextInput en tant que CLASSES CSS n'existent pas :
+       ce sont des attributs data-testid, pas des classes — d'où l'échec précédent) */
+    div[data-testid="stTextInputRootElement"],
+    div[data-testid="stNumberInputContainer"],
     div[data-baseweb="input"],
     div[data-baseweb="textarea"],
     div[data-baseweb="select"] > div {{
@@ -188,14 +196,15 @@ def inject_theme_css(theme_name: str) -> None:
         border: 1px solid {t['card_border']} !important;
         border-radius: 8px !important;
     }}
+    div[data-testid="stTextInputRootElement"] input,
+    input[data-testid="stNumberInputField"],
     div[data-baseweb="input"] input,
     div[data-baseweb="textarea"] textarea,
     div[data-baseweb="select"] span,
-    .stNumberInput input,
-    .stTextInput input,
     textarea {{
         background-color: transparent !important;
         color: {t['text_main']} !important;
+        -webkit-text-fill-color: {t['text_main']} !important;
     }}
     input::placeholder, textarea::placeholder {{
         color: {t['text_main']} !important;
@@ -594,6 +603,48 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
         else:
             st.warning("Échec de sauvegarde.")
         st.rerun()
+
+    st.write("---")
+    st.subheader("🤸 Calibration des formes (Planche)")
+    st.caption("Indice de difficulté de chaque forme — plus le score est haut, plus l'effort pondéré est élevé. "
+               "L'ordre d'affichage (F1-F5) suit automatiquement ces scores, du plus facile au plus dur.")
+
+    updated_formes = {}
+    for forme, score in sorted(st.session_state.config_formes.items(), key=lambda kv: kv[1]):
+        updated_formes[forme] = st.number_input(
+            forme, min_value=1.0, max_value=200.0, value=float(score), step=0.1, key=f"cal_forme_{forme}"
+        )
+
+    if st.button("✅ Appliquer et sauvegarder les formes", use_container_width=True):
+        st.session_state.config_formes = updated_formes
+        ok = save_formes_config(user_id, updated_formes)
+        st.cache_data.clear()
+        if ok:
+            st.success("Formes mises à jour et sauvegardées.")
+        else:
+            st.warning("Échec de sauvegarde.")
+        st.rerun()
+
+    with st.expander("➕ Ajouter une nouvelle forme"):
+        c_nom, c_score = st.columns([2, 1])
+        with c_nom:
+            nouvelle_forme = st.text_input("Nom de la forme", placeholder="ex: Straddle_High", key="new_forme_nom")
+        with c_score:
+            nouveau_score = st.number_input("Indice de difficulté", min_value=1.0, max_value=200.0, value=50.0, step=0.1, key="new_forme_score")
+        if st.button("➕ Ajouter cette forme", use_container_width=True):
+            nom = nouvelle_forme.strip()
+            if not nom:
+                st.error("Le nom ne peut pas être vide.")
+            elif nom in st.session_state.config_formes:
+                st.error(f"⚠️ '{nom}' existe déjà.")
+            else:
+                st.session_state.config_formes[nom] = float(nouveau_score)
+                ok = save_formes_config(user_id, st.session_state.config_formes)
+                if ok:
+                    st.success(f"✅ '{nom}' ajoutée (indice {nouveau_score}).")
+                else:
+                    st.warning("Échec de sauvegarde.")
+                st.rerun()
 
     st.write("---")
     st.subheader("✏️ Renommer un exercice")
