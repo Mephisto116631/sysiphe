@@ -7,8 +7,8 @@ import streamlit as st
 from streamlit_calendar import calendar
 
 from auth import get_pkce_store, check_oauth_callback, render_login_page
-from data import DEFAULT_VARIANTES
-from supabase_io import get_supabase_client, load_data, delete_perfs, load_user_settings, load_app_theme
+from data import DEFAULT_VARIANTES, DEFAULT_FORMES
+from supabase_io import get_supabase_client, load_data, delete_perfs, load_user_settings, load_app_theme, load_formes_config
 from ui_saisie import render_planche_block, render_exercise_block, render_kpi_panel
 from ui_stats import render_stats_tabs, THEMES, inject_theme_css
 
@@ -23,8 +23,9 @@ _DEFAULTS = {
     "nb_days_avg": 5,
     "include_planche": True,
     "config_variantes": dict(DEFAULT_VARIANTES),
+    "config_formes": dict(DEFAULT_FORMES),
     "confirm_delete_session": False,
-    "app_theme": "Abysse"
+    "app_theme": "Épuré"
 }
 for _k, _v in _DEFAULTS.items():
     if _k not in st.session_state:
@@ -42,6 +43,7 @@ USER_ID = st.session_state.user.id
 
 if "config_loaded" not in st.session_state:
     st.session_state.config_variantes = load_user_settings(USER_ID)
+    st.session_state.config_formes = load_formes_config(USER_ID)
     st.session_state.app_theme = load_app_theme(USER_ID, default=st.session_state.app_theme)
     st.session_state.config_loaded = True
 
@@ -169,10 +171,28 @@ col_saisie, col_kpi = st.columns([2, 1])
 with col_saisie:
     if st.session_state.include_planche:
         render_planche_block(df_global, st.session_state.date_seance, USER_ID,
-                             float(st.session_state.weight), st.session_state.config_variantes)
+                             float(st.session_state.weight), st.session_state.config_variantes,
+                             st.session_state.config_formes)
 
     for nom_exo in list(st.session_state.exos_du_jour):
         render_exercise_block(nom_exo, df_global, st.session_state.date_seance, USER_ID)
+
+    with st.form(f"add_exo_form_{st.session_state.date_seance}", clear_on_submit=True):
+        c_new, c_add = st.columns([4, 1])
+        with c_new:
+            nouvel_exo = st.text_input("Ajouter un exercice", placeholder="➕ Ajouter un exercice (ex: Tractions, Squats...)",
+                                       label_visibility="collapsed")
+        with c_add:
+            submitted = st.form_submit_button("➕ Ajouter", use_container_width=True)
+        if submitted:
+            nom_propre = nouvel_exo.strip()
+            if not nom_propre:
+                st.warning("Le nom de l'exercice ne peut pas être vide.")
+            elif any(e.lower() == nom_propre.lower() for e in st.session_state.exos_du_jour):
+                st.warning(f"'{nom_propre}' est déjà dans la séance du jour.")
+            else:
+                st.session_state.exos_du_jour.append(nom_propre)
+                st.rerun()
 
 with col_kpi:
     render_kpi_panel(df_global, st.session_state.date_seance)
