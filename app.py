@@ -160,19 +160,24 @@ if "last_seen_date" not in st.session_state or st.session_state.last_seen_date !
     st.session_state.last_seen_date = st.session_state.date_seance
     if not df_global.empty:
         df_today = df_global[df_global["date"] == st.session_state.date_seance]
-        if not df_today.empty:
-            st.session_state.exos_du_jour = df_today[df_today["exercice"].str.lower() != "planche"]["exercice"].unique().tolist()
-        else:
-            # On garde tout exercice pratiqué au cours des N DERNIÈRES SÉANCES
-            # (dates distinctes avec données), pas une fenêtre calendaire —
-            # utile si l'entraînement n'est pas quotidien.
-            dates_passees = sorted(
-                df_global[df_global["date"] < st.session_state.date_seance]["date"].unique(),
-                reverse=True,
-            )
-            dates_retenues = dates_passees[: st.session_state.inactivity_days]
-            df_recent = df_global[df_global["date"].isin(dates_retenues)]
-            st.session_state.exos_du_jour = df_recent[df_recent["exercice"].str.lower() != "planche"]["exercice"].unique().tolist()
+        exos_today = (df_today[df_today["exercice"].str.lower() != "planche"]["exercice"].unique().tolist()
+                      if not df_today.empty else [])
+
+        # On garde en plus tout exercice pratiqué au cours des N DERNIÈRES
+        # SÉANCES passées (dates distinctes avec données, pas une fenêtre
+        # calendaire) — utile si l'entraînement n'est pas quotidien. On fusionne
+        # avec exos_today au lieu de choisir l'un OU l'autre : sinon, dès qu'on
+        # a déjà loggé quelque chose aujourd'hui (ex: la Planche), les exercices
+        # des séances précédentes disparaissaient complètement.
+        dates_passees = sorted(
+            df_global[df_global["date"] < st.session_state.date_seance]["date"].unique(),
+            reverse=True,
+        )
+        dates_retenues = dates_passees[: st.session_state.inactivity_days]
+        df_recent = df_global[df_global["date"].isin(dates_retenues)]
+        exos_recent = df_recent[df_recent["exercice"].str.lower() != "planche"]["exercice"].unique().tolist()
+
+        st.session_state.exos_du_jour = list(dict.fromkeys(exos_today + exos_recent))
     else:
         st.session_state.exos_du_jour = []
 
