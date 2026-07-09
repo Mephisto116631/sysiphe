@@ -575,16 +575,17 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
     st.write("---")
     st.subheader("🗓️ Persistance des exercices sur la page d'accueil")
     st.caption("Un exercice reste affiché sur la page d'accueil tant qu'il a été pratiqué "
-               "au moins une fois dans les N derniers jours. Au-delà, il disparaît (mais "
-               "reste bien sûr dans ton historique).")
-    nb_jours = st.number_input("Jours d'inactivité avant disparition", min_value=1, max_value=30,
-                                step=1, value=int(st.session_state.inactivity_days), key="inactivity_days_input")
+               "lors d'une des N dernières séances enregistrées (peu importe le nombre de "
+               "jours calendaires écoulés entre elles). Au-delà, il disparaît (mais reste "
+               "bien sûr dans ton historique).")
+    nb_seances = st.number_input("Nombre de dernières séances à considérer", min_value=1, max_value=30,
+                                  step=1, value=int(st.session_state.inactivity_days), key="inactivity_days_input")
     if st.button("✅ Sauvegarder ce paramètre", use_container_width=True):
-        st.session_state.inactivity_days = int(nb_jours)
-        ok = save_inactivity_days(user_id, int(nb_jours))
+        st.session_state.inactivity_days = int(nb_seances)
+        ok = save_inactivity_days(user_id, int(nb_seances))
         st.session_state.pop("last_seen_date", None)  # force le recalcul de la liste du jour
         if ok:
-            st.success(f"Seuil mis à jour : {nb_jours} jour(s).")
+            st.success(f"Seuil mis à jour : {nb_seances} dernière(s) séance(s).")
         else:
             st.warning("Échec de sauvegarde.")
         st.rerun()
