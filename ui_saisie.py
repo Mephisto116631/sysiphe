@@ -84,26 +84,27 @@ def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, wei
         tens_keys = list(CONFIG["tensions"].keys())
         forme_keys = [k for k, _ in sorted(formes_config.items(), key=lambda kv: kv[1])]
 
-        def _persisted_choice(label, options, default_val, widget_key):
-            """Version sécurisée : évite les conflits entre session_state et Streamlit."""
-            if widget_key not in st.session_state:
-                st.session_state[widget_key] = default_val
-                
-            choice = st.segmented_control(label, options, key=widget_key)
-            
-            # Empêche la désélection totale qui renverrait None et casserait les calculs
-            if choice is None:
-                st.session_state[widget_key] = default_val
-                st.rerun()
-                
-            return st.session_state[widget_key]
+        def _persisted_choice(label, options, state_key, default_val, widget_key):
+            """N'appelle jamais st.rerun() : le segmented_control renvoie None
+            quand on désélectionne (clic sur l'option déjà active) — dans ce
+            cas on garde simplement la dernière valeur confirmée (state_key),
+            sans jamais interrompre le script en plein rendu."""
+            if state_key not in st.session_state:
+                st.session_state[state_key] = default_val
+            choice = st.segmented_control(label, options, default=st.session_state[state_key], key=widget_key)
+            if choice is not None:
+                st.session_state[state_key] = choice
+            return st.session_state[state_key]
 
         with c1:
-            var_g = _persisted_choice("Variante", var_keys, var_keys[idx_v], f"var_g_{date_active}")
+            var_g = _persisted_choice("Variante", var_keys, f"var_state_{date_active}",
+                                       var_keys[idx_v], f"var_g_{date_active}")
         with c2:
-            elas_g = _persisted_choice("Élastique", elas_keys, elas_keys[idx_e], f"elas_g_{date_active}")
+            elas_g = _persisted_choice("Élastique", elas_keys, f"elas_state_{date_active}",
+                                        elas_keys[idx_e], f"elas_g_{date_active}")
         with c3:
-            tens_g = _persisted_choice("Tension", tens_keys, tens_keys[idx_t], f"tens_g_{date_active}")
+            tens_g = _persisted_choice("Tension", tens_keys, f"tens_state_{date_active}",
+                                        tens_keys[idx_t], f"tens_g_{date_active}")
 
         st.write("---")
         formes_temp, temps_temp, efforts_jour = {}, {}, []
@@ -120,7 +121,8 @@ def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, wei
                 
             with c2:
                 f_default = defaults["forms"].get(s, "Normal")
-                f = _persisted_choice(f"F{s}", forme_keys, f_default, f"p_f_{s}_{date_active}")
+                f = _persisted_choice(f"F{s}", forme_keys, f"forme_state_{s}_{date_active}",
+                                       f_default, f"p_f_{s}_{date_active}")
                 
                 ratio_f = ((formes_config.get(f, min_score) - min_score) / (max_score - min_score)
                           if max_score > min_score else 0.5)
@@ -291,7 +293,7 @@ def render_save_all_button(user_id: str, date_active, exos_du_jour: list) -> Non
         return
 
     st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("💾 Tout sauvegarder (Séries du jour)", type="primary", use_container_width=True):
+    if st.button("💾 Tout sauvegarder (Séries du jour)", type="primary", width='stretch'):
         lignes = []
         exos_to_delete = []
 
