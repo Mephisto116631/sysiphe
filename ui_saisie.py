@@ -84,34 +84,44 @@ def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, wei
         tens_keys = list(CONFIG["tensions"].keys())
         forme_keys = [k for k, _ in sorted(formes_config.items(), key=lambda kv: kv[1])]
 
-        def _persisted_choice(label, options, state_key, default_val, widget_key):
-            if state_key not in st.session_state:
-                st.session_state[state_key] = default_val
-            choice = st.segmented_control(label, options, default=st.session_state[state_key], key=widget_key)
-            if choice is not None:
-                st.session_state[state_key] = choice
-            return st.session_state[state_key]
+        def _persisted_choice(label, options, default_val, widget_key):
+            """Version sécurisée : évite les conflits entre session_state et Streamlit."""
+            if widget_key not in st.session_state:
+                st.session_state[widget_key] = default_val
+                
+            choice = st.segmented_control(label, options, key=widget_key)
+            
+            # Empêche la désélection totale qui renverrait None et casserait les calculs
+            if choice is None:
+                st.session_state[widget_key] = default_val
+                st.rerun()
+                
+            return st.session_state[widget_key]
 
         with c1:
-            var_g = _persisted_choice("Variante", var_keys, f"var_state_{date_active}",
-                                       var_keys[idx_v], f"var_g_{date_active}")
+            var_g = _persisted_choice("Variante", var_keys, var_keys[idx_v], f"var_g_{date_active}")
         with c2:
-            elas_g = _persisted_choice("Élastique", elas_keys, f"elas_state_{date_active}",
-                                        elas_keys[idx_e], f"elas_g_{date_active}")
+            elas_g = _persisted_choice("Élastique", elas_keys, elas_keys[idx_e], f"elas_g_{date_active}")
         with c3:
-            tens_g = _persisted_choice("Tension", tens_keys, f"tens_state_{date_active}",
-                                        tens_keys[idx_t], f"tens_g_{date_active}")
+            tens_g = _persisted_choice("Tension", tens_keys, tens_keys[idx_t], f"tens_g_{date_active}")
 
         st.write("---")
         formes_temp, temps_temp, efforts_jour = {}, {}, []
         min_score, max_score = min(formes_config.values()), max(formes_config.values())
+        
         for s in range(1, 6):
             c1, c2, c3 = st.columns([1, 2, 1])
-            with c1: t = st.text_input(f"S{s}(s)", value=defaults["times"].get(s, ""), key=f"p_t_{s}_{date_active}")
+            with c1: 
+                # Initialisation sécurisée du champ texte
+                t_key = f"p_t_{s}_{date_active}"
+                if t_key not in st.session_state:
+                    st.session_state[t_key] = defaults["times"].get(s, "")
+                t = st.text_input(f"S{s}(s)", key=t_key)
+                
             with c2:
-                f = _persisted_choice(f"F{s}", forme_keys,
-                                       f"forme_state_{s}_{date_active}",
-                                       defaults["forms"].get(s, "Normal"), f"p_f_{s}_{date_active}")
+                f_default = defaults["forms"].get(s, "Normal")
+                f = _persisted_choice(f"F{s}", forme_keys, f_default, f"p_f_{s}_{date_active}")
+                
                 ratio_f = ((formes_config.get(f, min_score) - min_score) / (max_score - min_score)
                           if max_score > min_score else 0.5)
                 color_f = _intensity_color(ratio_f)
@@ -121,6 +131,7 @@ def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, wei
                     f"{{background:{color_f} !important; border-color:{color_f} !important;}}</style>",
                     unsafe_allow_html=True,
                 )
+                
             with c3:
                 eff = calculer_effort(var_g, elas_g, tens_g, f, t, weight, variantes_config, formes_config) if t else 0
                 ratio_e = (eff / record_planche) if record_planche else 0
@@ -132,6 +143,7 @@ def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, wei
                     f"</div>",
                     unsafe_allow_html=True,
                 )
+                
             temps_temp[s], formes_temp[s] = t, f
             if t and eff > 0:
                 efforts_jour.append(eff)
@@ -196,21 +208,29 @@ def render_exercise_block(nom_exo: str, df_global: pd.DataFrame, date_active, us
 
         c_input, c_m1, c_m2, c_btn = st.columns([2.5, 1, 1, 0.5])
         with c_input:
-            raw_input = st.text_input("Séries", value=val_init, key=f"perf_{nom_exo}_{date_active}",
-                                      placeholder="ex: 12 10 8", label_visibility="collapsed")
-            cat_exo = st.text_input("Catégorie", value=cat_init, key=f"cat_{nom_exo}_{date_active}",
-                                    label_visibility="collapsed")
+            # Initialisations sécurisées
+            raw_key = f"perf_{nom_exo}_{date_active}"
+            if raw_key not in st.session_state:
+                st.session_state[raw_key] = val_init
+            raw_input = st.text_input("Séries", key=raw_key, placeholder="ex: 12 10 8", label_visibility="collapsed")
+            
+            cat_key = f"cat_{nom_exo}_{date_active}"
+            if cat_key not in st.session_state:
+                st.session_state[cat_key] = cat_init
+            cat_exo = st.text_input("Catégorie", key=cat_key, label_visibility="collapsed")
                                     
-        # ---- MODIFICATION : CONDITIONNEMENT DE LA CHARGE ----
         if st.session_state.get("enable_charges", True):
+            charge_key = f"charge_{nom_exo}_{date_active}"
+            if charge_key not in st.session_state:
+                st.session_state[charge_key] = float(charge_init)
+                
             charge_kg = st.number_input(
                 "Charge externe (kg) — laisser à 0 pour un exercice au poids du corps",
-                min_value=0.0, max_value=300.0, step=0.5, value=charge_init,
-                key=f"charge_{nom_exo}_{date_active}",
+                min_value=0.0, max_value=300.0, step=0.5,
+                key=charge_key,
             )
         else:
             charge_kg = 0.0
-        # -----------------------------------------------------
 
         total_reps, nb_series, max_serie, liste_reps = 0, 0, 0, []
         if raw_input:
