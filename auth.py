@@ -33,15 +33,19 @@ def check_oauth_callback(supabase, pkce_store: dict) -> None:
     """Traite le retour OAuth Google ou la reconnexion automatique via Cookie."""
     controller = get_cookie_controller()
     
-    # --- CORRECTIF : GESTION DE L'ASYNCHRONISME DES COOKIES ---
-    # Streamlit lit le code trop vite. Au premier chargement de la page, le composant 
-    # React des cookies n'a pas le temps d'envoyer les données à Python.
-    # On force donc une micro-pause et un rechargement pour lui laisser le temps.
-    if "cookies_initialized" not in st.session_state:
-        time.sleep(0.4) # Pause de 400ms
+    # --- CORRECTIF : GESTION DE L'ASYNCHRONISME DES COOKIES VS OAUTH ---
+    # Si on revient de Google (présence de 'code' dans l'URL), on NE FAIT PAS 
+    # de pause ni de rerun. Interrompre le flux OAuth ici corrompt la validation 
+    # (l'erreur "invalid flow state").
+    is_oauth_return = "code" in st.query_params
+    
+    if is_oauth_return:
+        st.session_state.cookies_initialized = True # Marqué comme fait pour la suite
+    elif "cookies_initialized" not in st.session_state:
+        time.sleep(0.4) # Pause de 400ms pour laisser le composant React s'initialiser
         st.session_state.cookies_initialized = True
         st.rerun()
-    # ----------------------------------------------------------
+    # -------------------------------------------------------------------
 
     # 1. Si on est déjà connecté en mémoire de session, on ne fait rien
     if st.session_state.get("user") is not None:
@@ -64,12 +68,14 @@ def check_oauth_callback(supabase, pkce_store: dict) -> None:
             controller.remove("sys_ref_token")
 
     # 3. TRAITEMENT DU RETOUR OAUTH (GOOGLE)
-    if "code" not in st.query_params:
+    if not is_oauth_return:
         return
         
     try:
         code = st.query_params["code"]
         intent_id = st.query_params.get("intent_id")
+        
+        # Restauration du verifier PKCE
         if intent_id and intent_id in pkce_store:
             verifier, _ = pkce_store.pop(intent_id)
             supabase.auth._storage.set_item("supabase.auth.token-code-verifier", verifier)
