@@ -82,13 +82,8 @@ def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, wei
         c1, c2, c3 = st.columns(3)
         elas_keys = list(CONFIG["elastiques"].keys())
         tens_keys = list(CONFIG["tensions"].keys())
-        # Ordre chronologique = difficulté croissante (score le plus bas → le plus haut)
         forme_keys = [k for k, _ in sorted(formes_config.items(), key=lambda kv: kv[1])]
 
-        # segmented_control renvoie None si on clique sur l'option déjà
-        # sélectionnée (comportement togglé natif) : on mémorise donc la
-        # dernière valeur confirmée en session_state pour ne jamais perdre
-        # la sélection en cours.
         def _persisted_choice(label, options, state_key, default_val, widget_key):
             if state_key not in st.session_state:
                 st.session_state[state_key] = default_val
@@ -117,7 +112,6 @@ def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, wei
                 f = _persisted_choice(f"F{s}", forme_keys,
                                        f"forme_state_{s}_{date_active}",
                                        defaults["forms"].get(s, "Normal"), f"p_f_{s}_{date_active}")
-                # Colore le bouton actif du dropdown Forme selon sa difficulté relative
                 ratio_f = ((formes_config.get(f, min_score) - min_score) / (max_score - min_score)
                           if max_score > min_score else 0.5)
                 color_f = _intensity_color(ratio_f)
@@ -206,11 +200,17 @@ def render_exercise_block(nom_exo: str, df_global: pd.DataFrame, date_active, us
                                       placeholder="ex: 12 10 8", label_visibility="collapsed")
             cat_exo = st.text_input("Catégorie", value=cat_init, key=f"cat_{nom_exo}_{date_active}",
                                     label_visibility="collapsed")
-        charge_kg = st.number_input(
-            "Charge externe (kg) — laisser à 0 pour un exercice au poids du corps",
-            min_value=0.0, max_value=300.0, step=0.5, value=charge_init,
-            key=f"charge_{nom_exo}_{date_active}",
-        )
+                                    
+        # ---- MODIFICATION : CONDITIONNEMENT DE LA CHARGE ----
+        if st.session_state.get("enable_charges", True):
+            charge_kg = st.number_input(
+                "Charge externe (kg) — laisser à 0 pour un exercice au poids du corps",
+                min_value=0.0, max_value=300.0, step=0.5, value=charge_init,
+                key=f"charge_{nom_exo}_{date_active}",
+            )
+        else:
+            charge_kg = 0.0
+        # -----------------------------------------------------
 
         total_reps, nb_series, max_serie, liste_reps = 0, 0, 0, []
         if raw_input:
@@ -263,6 +263,48 @@ def render_exercise_block(nom_exo: str, df_global: pd.DataFrame, date_active, us
                 st.cache_data.clear()
                 st.success(f"{nom_exo} sauvegardé !")
                 st.rerun()
+
+
+def render_save_all_button(user_id: str, date_active, exos_du_jour: list) -> None:
+    """Nouveau bouton pour sauvegarder toutes les séries de musculation de la page en un seul clic."""
+    if not exos_du_jour:
+        return
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("💾 Tout sauvegarder (Séries du jour)", type="primary", use_container_width=True):
+        lignes = []
+        exos_to_delete = []
+
+        for nom_exo in exos_du_jour:
+            raw_input = st.session_state.get(f"perf_{nom_exo}_{date_active}", "")
+            cat_exo = st.session_state.get(f"cat_{nom_exo}_{date_active}", "Musculation")
+            charge_kg = st.session_state.get(f"charge_{nom_exo}_{date_active}", 0.0)
+
+            if raw_input.strip():
+                try:
+                    liste_reps = parse_reps(raw_input)
+                    if liste_reps:
+                        exos_to_delete.append(nom_exo)
+                        for i, v in enumerate(liste_reps):
+                            lignes.append({
+                                "user_id": user_id, "date": str(date_active),
+                                "exercice": nom_exo, "serie": i + 1, "performance": float(v),
+                                "variante": None, "elastique": None, "tension": None, "forme": None,
+                                "effort_pondere": 0, "charge": float(charge_kg),
+                                "categorie": cat_exo, "unite": "Reps",
+                            })
+                except ValueError:
+                    pass # On ignore silencieusement les inputs invalides pour éviter de bloquer la bulk save
+
+        if lignes:
+            for nom_exo in exos_to_delete:
+                delete_perfs(user_id, str(date_active), nom_exo)
+            insert_perfs(lignes)
+            st.cache_data.clear()
+            st.success("✅ Toutes les séries ont été sauvegardées avec succès !")
+            st.rerun()
+        else:
+            st.warning("⚠️ Aucune série valide à sauvegarder.")
 
 
 def render_kpi_panel(df_global: pd.DataFrame, date_active) -> None:
