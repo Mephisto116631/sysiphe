@@ -191,3 +191,27 @@ def save_inactivity_days(uid: str, days: int) -> bool:
         return True
     except Exception:
         return False
+
+
+def load_enable_charges(uid: str, default: bool = True) -> bool:
+    """Charge la préférence d'affichage des charges externes."""
+    try:
+        res = get_supabase_client().table("user_settings") \
+            .select("enable_charges").eq("user_id", uid).execute()
+        if res.data and res.data[0].get("enable_charges") is not None:
+            return bool(res.data[0]["enable_charges"])
+    except Exception:
+        pass
+    return default
+
+
+def save_enable_charges(uid: str, enable: bool) -> bool:
+    """Sauvegarde la préférence d'affichage des charges externes."""
+    try:
+        get_supabase_client().table("user_settings").upsert({
+            "user_id": uid,
+            "enable_charges": bool(enable),
+        }).execute()
+        return True
+    except Exception:
+        return False
