@@ -6,8 +6,11 @@ import uuid
 import streamlit as st
 from streamlit_cookies_controller import CookieController
 
-# Initialisation du gestionnaire de cookies
-controller = CookieController()
+def get_cookie_controller():
+    """Isole le gestionnaire de cookies par session utilisateur."""
+    if "cookie_controller" not in st.session_state:
+        st.session_state.cookie_controller = CookieController(key="sysiphe_cookies")
+    return st.session_state.cookie_controller
 
 def get_pkce_store() -> dict:
     @st.cache_resource
@@ -28,7 +31,18 @@ def _clean_pkce_store(store: dict, max_age: int = 600) -> None:
 
 def check_oauth_callback(supabase, pkce_store: dict) -> None:
     """Traite le retour OAuth Google ou la reconnexion automatique via Cookie."""
+    controller = get_cookie_controller()
     
+    # --- CORRECTIF : GESTION DE L'ASYNCHRONISME DES COOKIES ---
+    # Streamlit lit le code trop vite. Au premier chargement de la page, le composant 
+    # React des cookies n'a pas le temps d'envoyer les données à Python.
+    # On force donc une micro-pause et un rechargement pour lui laisser le temps.
+    if "cookies_initialized" not in st.session_state:
+        time.sleep(0.4) # Pause de 400ms
+        st.session_state.cookies_initialized = True
+        st.rerun()
+    # ----------------------------------------------------------
+
     # 1. Si on est déjà connecté en mémoire de session, on ne fait rien
     if st.session_state.get("user") is not None:
         return
@@ -74,6 +88,7 @@ def check_oauth_callback(supabase, pkce_store: dict) -> None:
 
 def render_login_page(supabase, pkce_store: dict, app_url: str) -> None:
     """Affiche l'écran de connexion."""
+    controller = get_cookie_controller()
     st.title("🔐 Accès Sécurisé Sysiphe")
     st.markdown("Connecte-toi pour accéder à ton tableau de bord personnel.")
 
