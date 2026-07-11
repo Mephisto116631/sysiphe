@@ -33,19 +33,16 @@ def check_oauth_callback(supabase, pkce_store: dict) -> None:
     """Traite le retour OAuth Google ou la reconnexion automatique via Cookie."""
     controller = get_cookie_controller()
     
-    # --- CORRECTIF : GESTION DE L'ASYNCHRONISME DES COOKIES VS OAUTH ---
-    # Si on revient de Google (présence de 'code' dans l'URL), on NE FAIT PAS 
-    # de pause ni de rerun. Interrompre le flux OAuth ici corrompt la validation 
-    # (l'erreur "invalid flow state").
+    # --- GESTION DE L'ASYNCHRONISME DES COOKIES VS OAUTH ---
     is_oauth_return = "code" in st.query_params
     
     if is_oauth_return:
-        st.session_state.cookies_initialized = True # Marqué comme fait pour la suite
+        st.session_state.cookies_initialized = True
     elif "cookies_initialized" not in st.session_state:
-        time.sleep(0.4) # Pause de 400ms pour laisser le composant React s'initialiser
+        time.sleep(0.4)
         st.session_state.cookies_initialized = True
         st.rerun()
-    # -------------------------------------------------------------------
+    # -------------------------------------------------------
 
     # 1. Si on est déjà connecté en mémoire de session, on ne fait rien
     if st.session_state.get("user") is not None:
@@ -75,21 +72,33 @@ def check_oauth_callback(supabase, pkce_store: dict) -> None:
         code = st.query_params["code"]
         intent_id = st.query_params.get("intent_id")
         
-        # Restauration du verifier PKCE
+        # Restauration du verifier PKCE (utilisation de .get au lieu de .pop)
         if intent_id and intent_id in pkce_store:
-            verifier, _ = pkce_store.pop(intent_id)
+            verifier, _ = pkce_store.get(intent_id)
             supabase.auth._storage.set_item("supabase.auth.token-code-verifier", verifier)
             
         res = supabase.auth.exchange_code_for_session({"auth_code": code})
+        
         if res.user:
             st.session_state.user = res.user
             # SAUVEGARDE EN COOKIE (valable 30 jours)
             controller.set("sys_acc_token", res.session.access_token, max_age=2592000)
             controller.set("sys_ref_token", res.session.refresh_token, max_age=2592000)
             
+            # Nettoyage manuel du store PKCE maintenant que le code est validé
+            if intent_id in pkce_store:
+                del pkce_store[intent_id]
+                
+        # IMPORTANT : On vide l'URL et on redémarre l'appli pour effacer le paramètre 'code'
         st.query_params.clear()
+        st.rerun()
+        
     except Exception as e:
+        # En cas d'erreur (ex: refresh manuel sur un vieux code), on purge l'URL et on relance
+        st.query_params.clear()
         st.error(f"Erreur de validation OAuth : {e}")
+        time.sleep(2)
+        st.rerun()
 
 
 def render_login_page(supabase, pkce_store: dict, app_url: str) -> None:
