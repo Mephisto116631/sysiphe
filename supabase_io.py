@@ -18,15 +18,15 @@ def get_supabase_client():
 
 
 @st.cache_data(ttl=60)
-def load_data(uid: str, current_weight: float, variantes_config: dict) -> pd.DataFrame:
+def load_data(_supabase, uid: str, current_weight: float, variantes_config: dict) -> pd.DataFrame:
     """
     Charge toutes les perfs de l'utilisateur. current_weight et variantes_config
     font partie de la clé de cache pour forcer un recalcul si l'un des deux change.
+    Le client _supabase est injecté pour éviter les appels au session_state dans le cache.
     """
-    supabase = get_supabase_client()
     
     # Correction : utilisation de uid et limite à 10 000 lignes
-    response = supabase.table("perfs").select("*").eq("user_id", uid).limit(10000).execute()
+    response = _supabase.table("perfs").select("*").eq("user_id", uid).limit(10000).execute()
     
     # Sécurité si aucune donnée n'est renvoyée
     if not response.data:
