@@ -8,8 +8,12 @@ from streamlit_calendar import calendar
 
 from auth import get_pkce_store, check_oauth_callback, render_login_page, get_cookie_controller
 from data import DEFAULT_VARIANTES, DEFAULT_FORMES
-from supabase_io import get_supabase_client, load_data, delete_perfs, load_user_settings, load_app_theme, load_formes_config, load_inactivity_days
-from ui_saisie import render_planche_block, render_exercise_block, render_kpi_panel
+from supabase_io import (
+    get_supabase_client, load_data, delete_perfs, 
+    load_user_settings, load_app_theme, load_formes_config, 
+    load_inactivity_days, load_enable_charges, save_enable_charges
+)
+from ui_saisie import render_planche_block, render_exercise_block, render_kpi_panel, render_save_all_button
 from ui_stats import render_stats_tabs, THEMES, inject_theme_css
 
 APP_URL = "https://sysiphe-workout.streamlit.app"
@@ -27,6 +31,7 @@ _DEFAULTS = {
     "confirm_delete_session": False,
     "app_theme": "Épuré",
     "inactivity_days": 4,
+    "enable_charges": True, # <-- Ajout par défaut
 }
 for _k, _v in _DEFAULTS.items():
     if _k not in st.session_state:
@@ -47,6 +52,7 @@ if "config_loaded" not in st.session_state:
     st.session_state.config_formes = load_formes_config(USER_ID)
     st.session_state.app_theme = load_app_theme(USER_ID, default=st.session_state.app_theme)
     st.session_state.inactivity_days = load_inactivity_days(USER_ID, default=st.session_state.inactivity_days)
+    st.session_state.enable_charges = load_enable_charges(USER_ID, default=st.session_state.enable_charges)
     st.session_state.config_loaded = True
 
 inject_theme_css(st.session_state.app_theme)
@@ -70,6 +76,16 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
     st.markdown("---")
+    
+    # ---- NOUVEAU MENU PARAMÈTRES ----
+    st.header("⚙️ Paramètres")
+    new_enable_charges = st.toggle("Afficher les charges externes", value=st.session_state.enable_charges)
+    if new_enable_charges != st.session_state.enable_charges:
+        st.session_state.enable_charges = new_enable_charges
+        save_enable_charges(USER_ID, new_enable_charges)
+        st.rerun()
+    st.markdown("---")
+    # ---------------------------------
 
 if 'weight' in st.session_state and 'config_variantes' in st.session_state:
     df_global = load_data(supabase, USER_ID, float(st.session_state.weight), st.session_state.config_variantes)
@@ -260,6 +276,10 @@ with col_saisie:
 
     for nom_exo in list(st.session_state.exos_du_jour):
         render_exercise_block(nom_exo, df_global, st.session_state.date_seance, USER_ID)
+        
+    # --- APPEL DU NOUVEAU BOUTON SAVE ALL ---
+    render_save_all_button(USER_ID, st.session_state.date_seance, st.session_state.exos_du_jour)
+    # ----------------------------------------
 
     with st.form(f"add_exo_form_{st.session_state.date_seance}", clear_on_submit=True):
         c_new, c_add = st.columns([4, 1])
