@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 from streamlit_calendar import calendar
 
-from auth import get_pkce_store, check_oauth_callback, render_login_page
+from auth import get_pkce_store, check_oauth_callback, render_login_page, get_cookie_controller
 from data import DEFAULT_VARIANTES, DEFAULT_FORMES
 from supabase_io import get_supabase_client, load_data, delete_perfs, load_user_settings, load_app_theme, load_formes_config, load_inactivity_days
 from ui_saisie import render_planche_block, render_exercise_block, render_kpi_panel
@@ -55,14 +55,13 @@ with st.sidebar:
     st.caption(f"Connecté : {st.session_state.user.email}")
     if st.button("🚪 Se déconnecter", width='stretch'):
         try:
-            from streamlit_cookies_controller import CookieController
-            c = CookieController()
+            c = get_cookie_controller()
             for cookie_name in ("sys_acc_token", "sys_ref_token"):
                 try:
                     c.remove(cookie_name)
                 except KeyError:
                     pass  # cookie déjà absent, rien à faire
-        except ImportError:
+        except Exception:
             pass
 
         supabase.auth.sign_out()
@@ -73,7 +72,7 @@ with st.sidebar:
     st.markdown("---")
 
 if 'weight' in st.session_state and 'config_variantes' in st.session_state:
-    df_global = load_data(USER_ID, float(st.session_state.weight), st.session_state.config_variantes)
+    df_global = load_data(supabase, USER_ID, float(st.session_state.weight), st.session_state.config_variantes)
     with st.sidebar:
         with st.expander("🔍 Debug Stats (Base de données)"):
             st.write(f"**Lignes chargées :** {len(df_global)}")
