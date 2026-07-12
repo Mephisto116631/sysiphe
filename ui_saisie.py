@@ -236,7 +236,10 @@ def render_exercise_block(nom_exo: str, df_global: pd.DataFrame, date_active, us
                 key=charge_key,
             )
         else:
-            charge_kg = 0.0
+            # Le champ est juste MASQUÉ (préférence d'affichage) : on ne doit
+            # surtout pas écraser une charge déjà enregistrée par 0 lors de la
+            # prochaine sauvegarde — on réutilise la valeur existante en base.
+            charge_kg = float(charge_init)
 
         total_reps, nb_series, max_serie, liste_reps = 0, 0, 0, []
         if raw_input:
