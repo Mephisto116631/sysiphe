@@ -88,7 +88,8 @@ with st.sidebar:
     # ---------------------------------
 
 if 'weight' in st.session_state and 'config_variantes' in st.session_state:
-    df_global = load_data(supabase, USER_ID, float(st.session_state.weight), st.session_state.config_variantes)
+    df_global = load_data(supabase, USER_ID, float(st.session_state.weight), st.session_state.config_variantes,
+                          st.session_state.config_formes)
     with st.sidebar:
         with st.expander("🔍 Debug Stats (Base de données)"):
             st.write(f"**Lignes chargées :** {len(df_global)}")
