@@ -18,10 +18,11 @@ def get_supabase_client():
 
 
 @st.cache_data(ttl=60)
-def load_data(_supabase, uid: str, current_weight: float, variantes_config: dict) -> pd.DataFrame:
+def load_data(_supabase, uid: str, current_weight: float, variantes_config: dict, formes_config: dict = None) -> pd.DataFrame:
     """
-    Charge toutes les perfs de l'utilisateur. current_weight et variantes_config
-    font partie de la clé de cache pour forcer un recalcul si l'un des deux change.
+    Charge toutes les perfs de l'utilisateur. current_weight, variantes_config
+    et formes_config font partie de la clé de cache pour forcer un recalcul
+    rétroactif de effort_pondere si l'un des trois change.
     Le client _supabase est injecté pour éviter les appels au session_state dans le cache.
     """
     
@@ -64,7 +65,7 @@ def load_data(_supabase, uid: str, current_weight: float, variantes_config: dict
     df["effort_pondere"] = df.apply(
         lambda r: calculer_effort(
             r["variante"], r["elastique"], r["tension"], r["forme"],
-            r["performance"], current_weight, variantes_config
+            r["performance"], current_weight, variantes_config, formes_config
         ) if r["exercice"].lower() == "planche" else 0,
         axis=1
     )
