@@ -568,7 +568,9 @@ def render_theme_tab(user_id: str = None):
 def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str) -> None:
     st.subheader("⚙️ Configuration Générale")
 
-    st.checkbox("Inclure la Planche dans la saisie", key="include_planche")
+    if "include_planche_widget" not in st.session_state:
+        st.session_state["include_planche_widget"] = st.session_state.get("include_planche", True)
+    st.session_state.include_planche = st.checkbox("Inclure la Planche dans la saisie", key="include_planche_widget")
     st.number_input("Taille de la moyenne glissante (séances)", min_value=1, max_value=30, step=1, key="nb_days_avg")
     st.number_input("Poids de référence pour le calcul d'isométrie (kg)", min_value=40, max_value=200, step=1, key="weight")
 
