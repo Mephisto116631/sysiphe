@@ -85,16 +85,20 @@ def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, wei
         forme_keys = [k for k, _ in sorted(formes_config.items(), key=lambda kv: kv[1])]
 
         def _persisted_choice(label, options, state_key, default_val, widget_key):
-            """N'appelle jamais st.rerun() : le segmented_control renvoie None
-            quand on désélectionne (clic sur l'option déjà active) — dans ce
-            cas on garde simplement la dernière valeur confirmée (state_key),
-            sans jamais interrompre le script en plein rendu."""
-            if state_key not in st.session_state:
-                st.session_state[state_key] = default_val
-            choice = st.segmented_control(label, options, default=st.session_state[state_key], key=widget_key)
+            """Ne JAMAIS passer default= en même temps que key= à un widget déjà
+            initialisé : Streamlit lève une StreamlitAPIException dès le 2e run
+            ('widget created with a default value but also had its value set
+            via Session State'), ce qui affichait une zone d'erreur vide à la
+            place des boutons. On initialise donc session_state[widget_key]
+            UNE SEULE FOIS avant la création du widget, sans jamais utiliser
+            default= par la suite."""
+            if widget_key not in st.session_state:
+                st.session_state[widget_key] = st.session_state.get(state_key, default_val)
+            choice = st.segmented_control(label, options, key=widget_key)
             if choice is not None:
                 st.session_state[state_key] = choice
-            return st.session_state[state_key]
+                return choice
+            return st.session_state.get(state_key, default_val)
 
         with c1:
             var_g = _persisted_choice("Variante", var_keys, f"var_state_{date_active}",
