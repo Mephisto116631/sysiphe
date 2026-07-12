@@ -578,8 +578,10 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
                "lors d'une des N dernières séances enregistrées (peu importe le nombre de "
                "jours calendaires écoulés entre elles). Au-delà, il disparaît (mais reste "
                "bien sûr dans ton historique).")
+    if "inactivity_days_input" not in st.session_state:
+        st.session_state["inactivity_days_input"] = int(st.session_state.inactivity_days)
     nb_seances = st.number_input("Nombre de dernières séances à considérer", min_value=1, max_value=30,
-                                  step=1, value=int(st.session_state.inactivity_days), key="inactivity_days_input")
+                                  step=1, key="inactivity_days_input")
     if st.button("✅ Sauvegarder ce paramètre", width='stretch'):
         st.session_state.inactivity_days = int(nb_seances)
         ok = save_inactivity_days(user_id, int(nb_seances))
@@ -610,7 +612,10 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
     
     updated_scores = {}
     for var, score in st.session_state.config_variantes.items():
-        updated_scores[var] = st.number_input(var, min_value=1, max_value=20, value=int(score), step=1, key=f"cal_{var}")
+        cal_key = f"cal_{var}"
+        if cal_key not in st.session_state:
+            st.session_state[cal_key] = int(score)
+        updated_scores[var] = st.number_input(var, min_value=1, max_value=20, step=1, key=cal_key)
         
     if st.button("✅ Appliquer et sauvegarder la calibration", width='stretch'):
         st.session_state.config_variantes = updated_scores
@@ -629,9 +634,10 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
 
     updated_formes = {}
     for forme, score in sorted(st.session_state.config_formes.items(), key=lambda kv: kv[1]):
-        updated_formes[forme] = st.number_input(
-            forme, min_value=1.0, max_value=200.0, value=float(score), step=0.1, key=f"cal_forme_{forme}"
-        )
+        cal_forme_key = f"cal_forme_{forme}"
+        if cal_forme_key not in st.session_state:
+            st.session_state[cal_forme_key] = float(score)
+        updated_formes[forme] = st.number_input(forme, min_value=1.0, max_value=200.0, step=0.1, key=cal_forme_key)
 
     if st.button("✅ Appliquer et sauvegarder les formes", width='stretch'):
         st.session_state.config_formes = updated_formes
@@ -648,7 +654,9 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
         with c_nom:
             nouvelle_forme = st.text_input("Nom de la forme", placeholder="ex: Straddle_High", key="new_forme_nom")
         with c_score:
-            nouveau_score = st.number_input("Indice de difficulté", min_value=1.0, max_value=200.0, value=50.0, step=0.1, key="new_forme_score")
+            if "new_forme_score" not in st.session_state:
+                st.session_state["new_forme_score"] = 50.0
+            nouveau_score = st.number_input("Indice de difficulté", min_value=1.0, max_value=200.0, step=0.1, key="new_forme_score")
         if st.button("➕ Ajouter cette forme", width='stretch'):
             nom = nouvelle_forme.strip()
             if not nom:
