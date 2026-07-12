@@ -269,7 +269,7 @@ if "last_seen_date" not in st.session_state or st.session_state.last_seen_date !
 col_saisie, col_kpi = st.columns([2, 1])
 
 with col_saisie:
-    if st.session_state.include_planche:
+    if st.session_state.get("include_planche", True):
         render_planche_block(df_global, st.session_state.date_seance, USER_ID,
                              float(st.session_state.weight), st.session_state.config_variantes,
                              st.session_state.config_formes)
