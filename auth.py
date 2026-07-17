@@ -18,7 +18,7 @@ from streamlit_cookies_controller import CookieController
 # `python3 -c "import uuid; print(uuid.uuid4())"`).
 PROFILES = {
     "Medhi": "9250e548-1d5a-48d1-98c0-5c97089a77d8",   # ton compte historique
-    "Profil 2": "7c1a2ca2-9b9d-43d9-af21-3f84578fe53e",  # <- renomme-moi
+    "Dilbert 🐶": "7c1a2ca2-9b9d-43d9-af21-3f84578fe53e",  # <- renomme-moi
     "Profil 3": "a03fb31f-f0d0-4871-a903-a4a1f3924531",  # <- renomme-moi
 }
 # ---------------------------------------------------------------------------
