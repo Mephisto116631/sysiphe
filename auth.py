@@ -34,12 +34,18 @@ def check_oauth_callback(supabase, pkce_store: dict) -> None:
     controller = get_cookie_controller()
     
     # --- GESTION DE L'ASYNCHRONISME DES COOKIES VS OAUTH ---
+    # Sur mobile, revenir sur l'onglet après avoir quitté l'app (ex: pour
+    # filmer) tue souvent la connexion WebSocket de Streamlit : au retour,
+    # la page recharge à froid et le composant JS des cookies peut mettre
+    # plus de temps à s'initialiser qu'un simple chargement desktop. On
+    # attend donc un peu plus longtemps, et on retente une fois de plus
+    # avant de conclure "pas de cookie" à tort.
     is_oauth_return = "code" in st.query_params
-    
+
     if is_oauth_return:
         st.session_state.cookies_initialized = True
     elif "cookies_initialized" not in st.session_state:
-        time.sleep(0.4)
+        time.sleep(0.6)
         st.session_state.cookies_initialized = True
         st.rerun()
     # -------------------------------------------------------
@@ -49,8 +55,20 @@ def check_oauth_callback(supabase, pkce_store: dict) -> None:
         return
 
     # 2. TENTATIVE DE RECONNEXION SILENCIEUSE (Cookies)
-    saved_token = controller.get("sys_acc_token")
-    saved_refresh = controller.get("sys_ref_token")
+    try:
+        saved_token = controller.get("sys_acc_token")
+        saved_refresh = controller.get("sys_ref_token")
+    except KeyError:
+        saved_token, saved_refresh = None, None
+
+    # Si aucun cookie trouvé et qu'on n'a pas encore retenté avec un délai
+    # plus long, on réessaie une fois avant d'afficher l'écran de login —
+    # évite de conclure trop vite après une reprise d'arrière-plan lente.
+    if not (saved_token and saved_refresh) and not is_oauth_return \
+            and "cookies_retry_done" not in st.session_state:
+        st.session_state.cookies_retry_done = True
+        time.sleep(0.8)
+        st.rerun()
 
     if saved_token and saved_refresh:
         try:
@@ -61,8 +79,11 @@ def check_oauth_callback(supabase, pkce_store: dict) -> None:
                 return
         except Exception:
             # Si le token est expiré ou corrompu, on nettoie les cookies
-            controller.remove("sys_acc_token")
-            controller.remove("sys_ref_token")
+            for cookie_name in ("sys_acc_token", "sys_ref_token"):
+                try:
+                    controller.remove(cookie_name)
+                except KeyError:
+                    pass
 
     # 3. TRAITEMENT DU RETOUR OAUTH (GOOGLE)
     if not is_oauth_return:
