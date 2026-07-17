@@ -242,6 +242,9 @@ with st.sidebar:
                 st.session_state.confirm_delete_session = False
                 st.rerun()
 
+    st.markdown("---")
+    render_stats_tabs(df_global, tous_les_exos, USER_ID)
+
 if "last_seen_date" not in st.session_state or st.session_state.last_seen_date != st.session_state.date_seance:
     st.session_state.last_seen_date = st.session_state.date_seance
     if not df_global.empty:
@@ -267,6 +270,11 @@ if "last_seen_date" not in st.session_state or st.session_state.last_seen_date !
     else:
         st.session_state.exos_du_jour = []
 
+# Bouton "Tout sauvegarder" collant en haut de la page : reste visible en
+# permanence pendant le scroll (position: sticky, cf. inject_theme_css).
+with st.container(key="save_all_sticky"):
+    render_save_all_button(USER_ID, st.session_state.date_seance, st.session_state.exos_du_jour)
+
 col_saisie, col_kpi = st.columns([2, 1])
 
 with col_saisie:
@@ -277,10 +285,6 @@ with col_saisie:
 
     for nom_exo in list(st.session_state.exos_du_jour):
         render_exercise_block(nom_exo, df_global, st.session_state.date_seance, USER_ID)
-        
-    # --- APPEL DU NOUVEAU BOUTON SAVE ALL ---
-    render_save_all_button(USER_ID, st.session_state.date_seance, st.session_state.exos_du_jour)
-    # ----------------------------------------
 
     with st.form(f"add_exo_form_{st.session_state.date_seance}", clear_on_submit=True):
         c_new, c_add = st.columns([4, 1])
@@ -301,6 +305,3 @@ with col_saisie:
 
 with col_kpi:
     render_kpi_panel(df_global, st.session_state.date_seance)
-
-st.markdown("---")
-render_stats_tabs(df_global, tous_les_exos, USER_ID)
