@@ -45,6 +45,13 @@ if st.session_state.user is None:
     render_login_page(supabase, pkce_store, APP_URL)
     st.stop()
 
+# Re-récupération DÉLIBÉRÉE : au premier appel ci-dessus, auth_mode n'était
+# pas encore connu (avant login/reconnexion), donc le client obtenu était
+# potentiellement celui du mauvais mode (anon par défaut). Maintenant que
+# st.session_state.user et auth_mode sont définitivement fixés, on relit le
+# bon client (mis en cache séparément par mode dans get_supabase_client).
+supabase = get_supabase_client()
+
 USER_ID = st.session_state.user.id
 
 if "config_loaded" not in st.session_state:
@@ -73,7 +80,8 @@ with st.sidebar:
         if st.session_state.get("auth_mode") != "profile":
             # Pas de vraie session Supabase Auth à clôturer en mode profil
             supabase.auth.sign_out()
-        for k in ["user", "exos_du_jour", "last_seen_date", "oauth_intent", "config_loaded", "auth_mode", "supabase"]:
+        for k in ["user", "exos_du_jour", "last_seen_date", "oauth_intent", "config_loaded", "auth_mode",
+                  "supabase_client_oauth", "supabase_client_profile"]:
             st.session_state.pop(k, None)
         st.cache_data.clear()
         st.rerun()
