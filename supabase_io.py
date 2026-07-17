@@ -11,9 +11,20 @@ from data import calculer_effort, DEFAULT_VARIANTES, DEFAULT_FORMES
 
 def get_supabase_client():
     if "supabase" not in st.session_state:
-        st.session_state.supabase = create_client(
-            st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"]
-        )
+        if st.session_state.get("auth_mode") == "profile":
+            # Mode profil : pas de vraie session Supabase Auth (auth.uid()
+            # serait NULL), donc RLS bloquerait tout avec la clé anon. On
+            # utilise la clé service_role — reste côté serveur Streamlit,
+            # jamais exposée au navigateur — qui contourne RLS. Le filtrage
+            # par utilisateur repose alors entièrement sur le user_id passé
+            # explicitement dans chaque requête (voir PROFILES dans auth.py).
+            st.session_state.supabase = create_client(
+                st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_SERVICE_KEY"]
+            )
+        else:
+            st.session_state.supabase = create_client(
+                st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"]
+            )
     return st.session_state.supabase
 
 
