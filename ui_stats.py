@@ -269,6 +269,17 @@ def inject_theme_css(theme_name: str) -> None:
         font-weight: 600;
     }}
 
+    /* Bouton "Tout sauvegarder" — collant en haut de page au scroll */
+    .st-key-save_all_sticky {{
+        position: sticky;
+        top: 0;
+        z-index: 999;
+        padding: 8px 0;
+        background: {t['sidebar_bg']};
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid {t['card_border']};
+    }}
+
     /* Conteneurs à bordure (st.container(border=True)) */
     div[data-testid="stVerticalBlockBorderWrapper"] {{
         border-color: {t['card_border']} !important;
