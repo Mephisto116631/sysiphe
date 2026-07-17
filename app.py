@@ -62,7 +62,7 @@ with st.sidebar:
     if st.button("🚪 Se déconnecter", width='stretch'):
         try:
             c = get_cookie_controller()
-            for cookie_name in ("sys_acc_token", "sys_ref_token"):
+            for cookie_name in ("sys_acc_token", "sys_ref_token", "sys_profile"):
                 try:
                     c.remove(cookie_name)
                 except KeyError:
@@ -70,8 +70,10 @@ with st.sidebar:
         except Exception:
             pass
 
-        supabase.auth.sign_out()
-        for k in ["user", "exos_du_jour", "last_seen_date", "oauth_intent", "config_loaded"]:
+        if st.session_state.get("auth_mode") != "profile":
+            # Pas de vraie session Supabase Auth à clôturer en mode profil
+            supabase.auth.sign_out()
+        for k in ["user", "exos_du_jour", "last_seen_date", "oauth_intent", "config_loaded", "auth_mode", "supabase"]:
             st.session_state.pop(k, None)
         st.cache_data.clear()
         st.rerun()
