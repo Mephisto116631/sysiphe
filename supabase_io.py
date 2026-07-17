@@ -10,22 +10,28 @@ from data import calculer_effort, DEFAULT_VARIANTES, DEFAULT_FORMES
 
 
 def get_supabase_client():
-    if "supabase" not in st.session_state:
-        if st.session_state.get("auth_mode") == "profile":
+    # Mis en cache PAR MODE (profile vs oauth), pas globalement : sinon un
+    # premier appel fait avant de savoir quel mode est actif (ex: au tout
+    # début du script, avant le login) fige le mauvais type de clé pour
+    # le reste de la session.
+    mode = st.session_state.get("auth_mode", "oauth")
+    cache_key = f"supabase_client_{mode}"
+    if cache_key not in st.session_state:
+        if mode == "profile":
             # Mode profil : pas de vraie session Supabase Auth (auth.uid()
             # serait NULL), donc RLS bloquerait tout avec la clé anon. On
             # utilise la clé service_role — reste côté serveur Streamlit,
             # jamais exposée au navigateur — qui contourne RLS. Le filtrage
             # par utilisateur repose alors entièrement sur le user_id passé
             # explicitement dans chaque requête (voir PROFILES dans auth.py).
-            st.session_state.supabase = create_client(
+            st.session_state[cache_key] = create_client(
                 st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_SERVICE_KEY"]
             )
         else:
-            st.session_state.supabase = create_client(
+            st.session_state[cache_key] = create_client(
                 st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"]
             )
-    return st.session_state.supabase
+    return st.session_state[cache_key]
 
 
 @st.cache_data(ttl=60)
