@@ -11,7 +11,8 @@ from data import DEFAULT_VARIANTES, DEFAULT_FORMES
 from supabase_io import (
     get_supabase_client, load_data, delete_perfs, 
     load_user_settings, load_app_theme, load_formes_config, 
-    load_inactivity_days, load_enable_charges, save_enable_charges
+    load_inactivity_days, load_enable_charges, save_enable_charges,
+    load_weight, load_nb_days_avg, load_include_planche, load_graph_period
 )
 from ui_saisie import render_planche_block, render_exercise_block, render_kpi_panel, render_save_all_button
 from ui_stats import render_stats_tabs, THEMES, inject_theme_css
@@ -60,6 +61,10 @@ if "config_loaded" not in st.session_state:
     st.session_state.app_theme = load_app_theme(USER_ID, default=st.session_state.app_theme)
     st.session_state.inactivity_days = load_inactivity_days(USER_ID, default=st.session_state.inactivity_days)
     st.session_state.enable_charges = load_enable_charges(USER_ID, default=st.session_state.enable_charges)
+    st.session_state.weight = load_weight(USER_ID, default=st.session_state.weight)
+    st.session_state.nb_days_avg = load_nb_days_avg(USER_ID, default=st.session_state.nb_days_avg)
+    st.session_state.include_planche = load_include_planche(USER_ID, default=st.session_state.include_planche)
+    st.session_state.graph_period = load_graph_period(USER_ID)
     st.session_state.config_loaded = True
 
 inject_theme_css(st.session_state.app_theme)
