@@ -233,3 +233,94 @@ def save_enable_charges(uid: str, enable: bool) -> bool:
         return True
     except Exception:
         return False
+
+
+def load_weight(uid: str, default: float = 97.0) -> float:
+    """Poids de référence pour le calcul d'effort isométrique."""
+    try:
+        res = get_supabase_client().table("user_settings") \
+            .select("weight").eq("user_id", uid).execute()
+        if res.data and res.data[0].get("weight") is not None:
+            return float(res.data[0]["weight"])
+    except Exception:
+        pass
+    return default
+
+
+def save_weight(uid: str, weight: float) -> bool:
+    try:
+        get_supabase_client().table("user_settings").upsert({
+            "user_id": uid,
+            "weight": float(weight),
+        }).execute()
+        return True
+    except Exception:
+        return False
+
+
+def load_nb_days_avg(uid: str, default: int = 5) -> int:
+    """Taille de la moyenne glissante (nombre de séances)."""
+    try:
+        res = get_supabase_client().table("user_settings") \
+            .select("nb_days_avg").eq("user_id", uid).execute()
+        if res.data and res.data[0].get("nb_days_avg") is not None:
+            return int(res.data[0]["nb_days_avg"])
+    except Exception:
+        pass
+    return default
+
+
+def save_nb_days_avg(uid: str, nb_days: int) -> bool:
+    try:
+        get_supabase_client().table("user_settings").upsert({
+            "user_id": uid,
+            "nb_days_avg": int(nb_days),
+        }).execute()
+        return True
+    except Exception:
+        return False
+
+
+def load_include_planche(uid: str, default: bool = True) -> bool:
+    try:
+        res = get_supabase_client().table("user_settings") \
+            .select("include_planche").eq("user_id", uid).execute()
+        if res.data and res.data[0].get("include_planche") is not None:
+            return bool(res.data[0]["include_planche"])
+    except Exception:
+        pass
+    return default
+
+
+def save_include_planche(uid: str, include: bool) -> bool:
+    try:
+        get_supabase_client().table("user_settings").upsert({
+            "user_id": uid,
+            "include_planche": bool(include),
+        }).execute()
+        return True
+    except Exception:
+        return False
+
+
+def load_graph_period(uid: str, default: str = "Tout l'historique") -> str:
+    """Préréglage de période mémorisé pour l'onglet Graphiques."""
+    try:
+        res = get_supabase_client().table("user_settings") \
+            .select("graph_period").eq("user_id", uid).execute()
+        if res.data and res.data[0].get("graph_period"):
+            return res.data[0]["graph_period"]
+    except Exception:
+        pass
+    return default
+
+
+def save_graph_period(uid: str, period: str) -> bool:
+    try:
+        get_supabase_client().table("user_settings").upsert({
+            "user_id": uid,
+            "graph_period": period,
+        }).execute()
+        return True
+    except Exception:
+        return False
