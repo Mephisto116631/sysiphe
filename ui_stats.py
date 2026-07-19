@@ -400,7 +400,11 @@ def _apply_plotly_theme(fig, theme_name: str):
         margin=dict(l=5, r=5, t=35, b=5),
         title=dict(font=dict(size=12))
     )
-    fig.update_traces(line=dict(width=2))
+    # selector= limite l'effet aux traces scatter/line : un pie chart ou un
+    # bar chart n'a pas de propriété "line" au niveau trace, et plante sinon
+    # ("Bad property path: line") — désormais ces traces sont simplement
+    # ignorées par le sélecteur au lieu de faire planter la page.
+    fig.update_traces(selector=dict(type="scatter"), line=dict(width=2))
     return fig
 
 def _plateau_badge(dates, values, label: str) -> None:
