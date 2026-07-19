@@ -7,7 +7,10 @@ import streamlit as st
 import plotly.express as px
 
 from data import lisser_donnees, detect_plateau, suggest_next_session
-from supabase_io import update_exercise_name, save_user_settings, save_formes_config, save_inactivity_days
+from supabase_io import (
+    update_exercise_name, save_user_settings, save_formes_config, save_inactivity_days,
+    save_weight, save_nb_days_avg, save_include_planche, save_graph_period
+)
 
 # =========================================================================
 # CONFIGURATION DES THÈMES
@@ -412,17 +415,24 @@ def _plateau_badge(dates, values, label: str) -> None:
 # =========================================================================
 # GRAPHIQUES
 # =========================================================================
-def render_graph_tab(df_global: pd.DataFrame, tous_les_exos: list, include_planche: bool, current_theme: str) -> None:
+def render_graph_tab(df_global: pd.DataFrame, tous_les_exos: list, include_planche: bool, current_theme: str, user_id: str = None) -> None:
     if df_global.empty:
         st.write("Pas de données pour les graphiques.")
         return
 
+    periodes = ["Tout l'historique", "7 derniers jours", "30 derniers jours",
+                "Ce mois", "3 derniers mois", "Personnalisée"]
+    if "graph_period_widget" not in st.session_state:
+        pref = st.session_state.get("graph_period", "Tout l'historique")
+        st.session_state["graph_period_widget"] = pref if pref in periodes else "Tout l'historique"
+
     col_preset, col_custom = st.columns([1, 2])
     with col_preset:
-        preset = st.selectbox("Période", [
-            "Tout l'historique", "7 derniers jours", "30 derniers jours",
-            "Ce mois", "3 derniers mois", "Personnalisée",
-        ])
+        preset = st.selectbox("Période", periodes, key="graph_period_widget")
+        if preset != st.session_state.get("graph_period"):
+            st.session_state.graph_period = preset
+            if user_id:
+                save_graph_period(user_id, preset)
 
     today = datetime.now().date()
     min_db_date = df_global["date"].min()
@@ -590,6 +600,16 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
     st.number_input("Taille de la moyenne glissante (séances)", min_value=1, max_value=30, step=1, key="nb_days_avg")
     st.number_input("Poids de référence pour le calcul d'isométrie (kg)", min_value=40, max_value=200, step=1, key="weight")
 
+    if st.button("✅ Sauvegarder ces réglages", width='stretch'):
+        ok1 = save_include_planche(user_id, st.session_state.include_planche)
+        ok2 = save_nb_days_avg(user_id, st.session_state.nb_days_avg)
+        ok3 = save_weight(user_id, st.session_state.weight)
+        st.cache_data.clear()
+        if ok1 and ok2 and ok3:
+            st.success("Réglages sauvegardés.")
+        else:
+            st.warning("Échec de sauvegarde d'au moins un réglage.")
+
     st.write("---")
     st.subheader("🗓️ Persistance des exercices sur la page d'accueil")
     st.caption("Un exercice reste affiché sur la page d'accueil tant qu'il a été pratiqué "
@@ -727,7 +747,7 @@ def render_stats_tabs(df_global: pd.DataFrame, tous_les_exos: list, user_id: str
     ])
     
     with tab_graph:
-        render_graph_tab(df_global, tous_les_exos, st.session_state.get("include_planche", True), current_theme)
+        render_graph_tab(df_global, tous_les_exos, st.session_state.get("include_planche", True), current_theme, user_id)
     with tab_records:
         render_records_tab(df_global)
     with tab_repos:
