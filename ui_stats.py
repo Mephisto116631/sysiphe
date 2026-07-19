@@ -386,13 +386,18 @@ def _apply_plotly_theme(fig, theme_name: str):
     fig.update_layout(
         plot_bgcolor=t["bg"],
         paper_bgcolor=t["bg"],
-        font=dict(color=t["text"]),
-        xaxis=dict(showgrid=True, gridcolor=t["grid"], tickformat="%d/%m"),
-        yaxis=dict(showgrid=True, gridcolor=t["grid"]),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(color=t["text"])),
-        margin=dict(l=10, r=10, t=40, b=10)
+        font=dict(color=t["text"], size=11),
+        # Hauteur réduite + angle des dates : la sidebar est une colonne
+        # étroite (surtout sur mobile), la hauteur par défaut de Plotly
+        # (~450px) donnait un ratio écrasé/illisible.
+        height=280,
+        xaxis=dict(showgrid=True, gridcolor=t["grid"], tickformat="%d/%m", tickangle=-45, tickfont=dict(size=9)),
+        yaxis=dict(showgrid=True, gridcolor=t["grid"], tickfont=dict(size=9)),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(color=t["text"], size=9)),
+        margin=dict(l=5, r=5, t=35, b=5),
+        title=dict(font=dict(size=12))
     )
-    fig.update_traces(line=dict(width=3))
+    fig.update_traces(line=dict(width=2))
     return fig
 
 def _plateau_badge(dates, values, label: str) -> None:
@@ -531,24 +536,24 @@ def render_repos_tab(df_global: pd.DataFrame) -> None:
     df_repos_stats = df_all_dates.dropna()
     suggestion = suggest_next_session(df_global["date"].unique().tolist())
 
-    cr1, cr2 = st.columns([1, 2])
-    with cr1:
-        st.metric("Repos moyen", f"{int(round(df_repos_stats['jours_repos'].mean()))} j")
-        st.metric("Repos habituel (mode)", f"{suggestion['mode_repos']} j")
-        st.metric("Plus longue coupure", f"{int(df_repos_stats['jours_repos'].max())} j")
-        if suggestion["next_session"] is not None:
-            st.success(f"🔜 Prochaine séance optimale : **{suggestion['next_session'].strftime('%A %d %B')}**")
-        
-        habitudes = df_repos_stats["jours_repos"].value_counts().reset_index()
-        habitudes.columns = ["Jours", "Nb"]
-        habitudes["Jours"] = habitudes["Jours"].astype(int).astype(str) + " j"
-        fig_pie = px.pie(habitudes, values="Nb", names="Jours", title="Répartition des formats de repos")
-        st.plotly_chart(fig_pie, width='stretch')
+    st.metric("Repos moyen", f"{int(round(df_repos_stats['jours_repos'].mean()))} j")
+    st.metric("Repos habituel (mode)", f"{suggestion['mode_repos']} j")
+    st.metric("Plus longue coupure", f"{int(df_repos_stats['jours_repos'].max())} j")
+    if suggestion["next_session"] is not None:
+        st.success(f"🔜 Prochaine séance optimale : **{suggestion['next_session'].strftime('%A %d %B')}**")
 
-    with cr2:
-        fig_bar = px.bar(df_repos_stats, x="date_dt", y="jours_repos", title="Chronologie des jours de repos accordés")
-        fig_bar.update_traces(marker_color="#1f77b4")
-        st.plotly_chart(fig_bar, width='stretch')
+    habitudes = df_repos_stats["jours_repos"].value_counts().reset_index()
+    habitudes.columns = ["Jours", "Nb"]
+    habitudes["Jours"] = habitudes["Jours"].astype(int).astype(str) + " j"
+    current_theme = st.session_state.get("app_theme", "Épuré")
+    fig_pie = px.pie(habitudes, values="Nb", names="Jours", title="Répartition des formats de repos")
+    fig_pie = _apply_plotly_theme(fig_pie, current_theme)
+    st.plotly_chart(fig_pie, width='stretch')
+
+    fig_bar = px.bar(df_repos_stats, x="date_dt", y="jours_repos", title="Chronologie des jours de repos accordés")
+    fig_bar.update_traces(marker_color=THEMES.get(current_theme, THEMES["Abysse"])["colors"][0])
+    fig_bar = _apply_plotly_theme(fig_bar, current_theme)
+    st.plotly_chart(fig_bar, width='stretch')
 
 # =========================================================================
 # THEMES (Apparence)
