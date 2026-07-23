@@ -19,7 +19,7 @@ from ui_stats import render_stats_tabs, THEMES, inject_theme_css
 
 APP_URL = "https://sysiphe-workout.streamlit.app"
 
-st.set_page_config(page_title="Sysiphe v15 Cloud", layout="wide")
+st.set_page_config(page_title="Sysiphe", page_icon="assets/icon.png", layout="wide")
 
 _DEFAULTS = {
     "user": None,
