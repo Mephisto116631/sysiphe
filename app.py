@@ -301,6 +301,25 @@ with col_saisie:
     for nom_exo in list(st.session_state.exos_du_jour):
         render_exercise_block(nom_exo, df_global, st.session_state.date_seance, USER_ID)
 
+    # Suggestions d'anciens exercices (déjà faits par le passé, mais pas
+    # dans la fenêtre des dernières séances donc pas affichés ci-dessus).
+    exos_suggeres = sorted(
+        e for e in tous_les_exos
+        if not any(e.lower() == deja.lower() for deja in st.session_state.exos_du_jour)
+    )
+    if exos_suggeres:
+        c_sugg, c_add_sugg = st.columns([4, 1])
+        with c_sugg:
+            choix_ancien = st.selectbox(
+                "Reprendre un ancien exercice", exos_suggeres,
+                index=None, placeholder="Exercices déjà pratiqués mais pas affichés...",
+                label_visibility="collapsed", key=f"sugg_exo_{st.session_state.date_seance}",
+            )
+        with c_add_sugg:
+            if st.button("↩️ Reprendre", width='stretch', disabled=choix_ancien is None):
+                st.session_state.exos_du_jour.append(choix_ancien)
+                st.rerun()
+
     with st.form(f"add_exo_form_{st.session_state.date_seance}", clear_on_submit=True):
         c_new, c_add = st.columns([4, 1])
         with c_new:
