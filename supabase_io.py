@@ -127,6 +127,18 @@ def create_profile(name: str) -> dict | None:
     return None
 
 
+def rename_profile(profile_id: str, new_name: str) -> bool:
+    """Renomme un profil. Retourne True si OK."""
+    try:
+        get_supabase_client().table("profiles").update({"name": new_name.strip()}).eq("id", profile_id).execute()
+        load_profiles.clear()
+        return True
+    except Exception as e:
+        import streamlit as st
+        st.error(f"❌ Erreur renommage : {e}")
+        return False
+
+
 def delete_profile(profile_id: str) -> bool:
     """Supprime un profil (et laisse ses perfs orphelines). Retourne True si OK."""
     try:

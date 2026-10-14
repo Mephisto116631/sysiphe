@@ -9,7 +9,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 from data import lisser_donnees, detect_plateau, suggest_next_session, compute_daily_activity
-from supabase_io import update_exercise_name, save_user_settings
+from supabase_io import update_exercise_name, save_user_settings, load_profiles, rename_profile, delete_profile
 
 
 def _plateau_badge(dates, values, label: str) -> None:
@@ -386,6 +386,62 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
                 "(table `user_settings` absente ? voir SETUP.md)."
             )
         st.rerun()
+
+    st.write("---")
+    st.subheader("👥 Gestion des profils")
+    profiles = load_profiles()
+    current_uid = st.session_state.get("user") and st.session_state.user.id
+
+    if profiles:
+        # ── Renommer ──
+        noms = [p["name"] for p in profiles]
+        idx_profil = st.selectbox("Profil à modifier", range(len(profiles)),
+                                   format_func=lambda i: noms[i], key="profil_sel")
+        profil_cible = profiles[idx_profil]
+
+        c_nom, c_btn = st.columns([4, 1])
+        with c_nom:
+            nouveau_nom = st.text_input("Nouveau nom", key="profil_nouveau_nom",
+                                         placeholder=profil_cible["name"])
+        with c_btn:
+            st.write("")
+            if st.button("✏️", key="btn_rename_profil", use_container_width=True):
+                n = nouveau_nom.strip()
+                if not n:
+                    st.warning("Saisis un nouveau nom.")
+                elif n == profil_cible["name"]:
+                    st.warning("Même nom, rien à changer.")
+                elif rename_profile(profil_cible["id"], n):
+                    # Mettre à jour l'affichage si c'est le profil actif
+                    if profil_cible["id"] == current_uid:
+                        st.session_state.user.email = f"{n} (profil partagé)"
+                    st.toast(f"✅ '{profil_cible['name']}' → '{n}'")
+                    st.rerun()
+
+        # ── Supprimer ──
+        st.write("")
+        confirm_key = f"confirm_del_profil_{profil_cible['id']}"
+        if profil_cible["id"] == current_uid:
+            st.caption("⚠️ Tu ne peux pas supprimer ton propre profil actif.")
+        elif not st.session_state.get(confirm_key):
+            if st.button(f"🗑️ Supprimer « {profil_cible['name']} »",
+                         key="btn_del_profil", type="secondary", use_container_width=True):
+                st.session_state[confirm_key] = True
+                st.rerun()
+        else:
+            st.warning(f"Supprimer définitivement « {profil_cible['name']} » ? "
+                       f"Ses données d'entraînement resteront en base.")
+            c_yes, c_no = st.columns(2)
+            with c_yes:
+                if st.button("Oui, supprimer", type="primary", use_container_width=True):
+                    delete_profile(profil_cible["id"])
+                    st.session_state.pop(confirm_key, None)
+                    st.toast(f"🗑️ Profil « {profil_cible['name']} » supprimé.")
+                    st.rerun()
+            with c_no:
+                if st.button("Annuler", use_container_width=True):
+                    st.session_state.pop(confirm_key, None)
+                    st.rerun()
 
     st.write("---")
     st.subheader("✏️ Renommer un exercice")
