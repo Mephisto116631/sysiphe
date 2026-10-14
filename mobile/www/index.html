@@ -1,7 +1,78 @@
 <!doctype html>
 <html lang="fr">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sysiphe</title></head>
-<body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
-  <p>Chargement de Sysiphe… Vérifie ta connexion.</p>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Sysiphe</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
+         gap:14px; background:#161616; color:#e8e8e8; font-family:system-ui,-apple-system,sans-serif; text-align:center; padding:0 24px; }
+  .spin { width:34px; height:34px; border:3px solid #333; border-top-color:#e8e8e8; border-radius:50%; animation:r .8s linear infinite; }
+  @keyframes r { to { transform:rotate(360deg); } }
+  #msg { font-size:15px; color:#aaa; }
+  button { display:none; padding:12px 22px; border:0; border-radius:10px; background:#e8e8e8; color:#161616; font-size:15px; }
+</style>
+</head>
+<body>
+  <div class="spin" id="spin"></div>
+  <div id="msg">Connexion à Sysiphe…</div>
+  <button id="retry" onclick="start()">Réessayer</button>
+<script>
+// Ordre d'essai : NAS (rapide, auto-hébergé) puis Streamlit Cloud (secours).
+// Les URLs viennent de mobile/targets.json sur GitHub : changer d'URL = un commit, pas de rebuild.
+const CONFIG_URL = "https://raw.githubusercontent.com/Mephisto116631/sysiphe/main/mobile/targets.json";
+const DEFAULTS = { nas: "", cloud: "https://sysiphe-voseesdgwwcstfepbdepkh.streamlit.app" };
+const $ = (id) => document.getElementById(id);
+
+function withTimeout(promise, ms) {
+  return Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms))]);
+}
+
+function cached() {
+  try { return JSON.parse(localStorage.getItem("sysiphe_targets")) || null; } catch (e) { return null; }
+}
+
+async function loadTargets() {
+  const local = cached();
+  try {
+    const res = await withTimeout(fetch(CONFIG_URL, { cache: "no-store" }), local ? 1500 : 3000);
+    const remote = await res.json();
+    try { localStorage.setItem("sysiphe_targets", JSON.stringify(remote)); } catch (e) {}
+    return remote;
+  } catch (e) {
+    return local || DEFAULTS;
+  }
+}
+
+async function reachable(url, ms) {
+  try {
+    // no-cors : réponse opaque, mais la promesse ne résout que si le serveur répond.
+    await withTimeout(fetch(url.replace(/\/$/, "") + "/_stcore/health", { mode: "no-cors", cache: "no-store" }), ms);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function start() {
+  $("retry").style.display = "none";
+  $("spin").style.display = "block";
+  $("msg").textContent = "Connexion à Sysiphe…";
+
+  const t = await loadTargets();
+  if (t.nas && await reachable(t.nas, 2500)) return location.replace(t.nas);
+
+  if (t.nas) $("msg").textContent = "NAS indisponible, bascule sur le cloud…";
+  const cloud = t.cloud || DEFAULTS.cloud;
+  if (await reachable(cloud, 8000)) return location.replace(cloud);
+
+  $("spin").style.display = "none";
+  $("msg").textContent = "Impossible de joindre Sysiphe. Vérifie ta connexion internet.";
+  $("retry").style.display = "block";
+}
+
+start();
+</script>
 </body>
 </html>

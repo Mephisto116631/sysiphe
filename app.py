@@ -12,7 +12,9 @@ from supabase_io import get_supabase_client, load_data, delete_perfs, load_user_
 from ui_saisie import render_planche_block, render_exercise_block, render_kpi_panel, render_save_all_button
 from ui_stats import render_stats_tabs
 
-APP_URL = "https://sysiphe-voseesdgwwcstfepbdepkh.streamlit.app"
+CLOUD_URL = "https://sysiphe-voseesdgwwcstfepbdepkh.streamlit.app"
+# URL publique de l'instance (redirection OAuth). Sur le NAS : APP_URL dans secrets.toml.
+APP_URL = st.secrets.get("APP_URL", CLOUD_URL)
 
 st.set_page_config(page_title="Sysiphe v18", layout="centered")
 

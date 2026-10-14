@@ -91,3 +91,9 @@ L'APK est un wrapper Capacitor (dossier `mobile/`) qui ouvre l'app Streamlit Clo
 - **Build de test** : onglet Actions → « Build APK Sysiphe » → Run workflow (APK en artefact).
 - **Secrets requis** : `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`. Le keystore ne doit jamais être commité.
 - L'icône est générée depuis `assets/icon.png`.
+
+## Auto-hébergement sur le NAS
+
+Voir [`deploy/nas/README.md`](deploy/nas/README.md). Chaque commit sur `main` publie l'image `ghcr.io/mephisto116631/sysiphe:latest`, que le NAS récupère automatiquement.
+
+L'app Android lit ses URLs dans [`mobile/targets.json`](mobile/targets.json) : elle essaie le NAS (`nas`) puis bascule sur Streamlit Cloud (`cloud`). Changer d'URL = un commit, sans recompiler l'APK.

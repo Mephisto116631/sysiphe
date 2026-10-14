@@ -3,9 +3,9 @@
   "appName": "Sysiphe",
   "webDir": "www",
   "server": {
-    "url": "https://sysiphe-voseesdgwwcstfepbdepkh.streamlit.app",
+    "androidScheme": "https",
     "cleartext": false,
-    "allowNavigation": ["*.streamlit.app", "*.streamlit.io", "*.supabase.co"]
+    "allowNavigation": ["*.ts.net", "*.streamlit.app", "*.streamlit.io", "*.supabase.co"]
   },
   "android": {
     "allowMixedContent": false

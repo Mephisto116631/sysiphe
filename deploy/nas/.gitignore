@@ -1,0 +1,4 @@
+secrets.toml
+.env
+tailscale-state/
+update.log

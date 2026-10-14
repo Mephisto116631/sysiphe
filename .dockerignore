@@ -1,0 +1,15 @@
+.git
+.github
+.devcontainer
+mobile
+deploy
+run
+**/__pycache__
+*.pyc
+.env
+.streamlit/secrets.toml
+*.csv
+*.db
+*.jks
+*.keystore
+test_data.py
