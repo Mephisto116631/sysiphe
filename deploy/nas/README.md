@@ -12,7 +12,11 @@ Chaque commit sur `main` publie une nouvelle image (`ghcr.io/mephisto116631/sysi
    ```
 4. **Settings → Keys → Generate auth key** : coche *Reusable*, garde la clé `tskey-auth-…`.
 
-## 2. Sur le NAS (SSH)
+## 2. Rendre l'image publique (une fois)
+
+https://github.com/users/Mephisto116631/packages/container/sysiphe/settings → **Change visibility → Public**. L'image ne contient aucun secret (ils sont montés au lancement), comme le repo déjà public.
+
+## 3. Sur le NAS (SSH)
 
 ```bash
 mkdir -p /srv/compose_data/sysiphe && cd /srv/compose_data/sysiphe
@@ -26,7 +30,7 @@ docker exec sysiphe-tailscale tailscale status   # affiche sysiphe.<tailnet>.ts.
 
 Mets l'URL `https://sysiphe.<tailnet>.ts.net` dans `APP_URL` de `secrets.toml`, puis `docker compose restart sysiphe`.
 
-## 3. Mise à jour automatique
+## 4. Mise à jour automatique
 
 OMV → **Système → Tâches planifiées** → Ajouter : toutes les 15 min, utilisateur `root`, commande :
 
