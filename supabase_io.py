@@ -101,6 +101,42 @@ def delete_perfs(uid: str, date_str: str, exercice: str = None) -> bool:
         return False
 
 
+# =========================================================================
+# GESTION DES PROFILS (table profiles)
+# =========================================================================
+@st.cache_data(ttl=30)
+def load_profiles() -> list[dict]:
+    """Retourne la liste des profils [{id, name}] triée par created_at."""
+    try:
+        res = get_supabase_client().table("profiles").select("id, name").order("created_at").execute()
+        return res.data or []
+    except Exception:
+        return []
+
+
+def create_profile(name: str) -> dict | None:
+    """Crée un nouveau profil. Retourne {id, name} ou None si erreur."""
+    try:
+        res = get_supabase_client().table("profiles").insert({"name": name.strip()}).execute()
+        if res.data:
+            load_profiles.clear()
+            return res.data[0]
+    except Exception as e:
+        import streamlit as st
+        st.error(f"❌ Erreur création profil : {e}")
+    return None
+
+
+def delete_profile(profile_id: str) -> bool:
+    """Supprime un profil (et laisse ses perfs orphelines). Retourne True si OK."""
+    try:
+        get_supabase_client().table("profiles").delete().eq("id", profile_id).execute()
+        load_profiles.clear()
+        return True
+    except Exception:
+        return False
+
+
 def update_exercise_name(uid: str, old_name: str, new_name: str) -> None:
     get_supabase_client().table("perfs").update({"exercice": new_name}) \
         .eq("user_id", uid).eq("exercice", old_name).execute()

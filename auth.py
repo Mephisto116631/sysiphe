@@ -9,19 +9,7 @@ from types import SimpleNamespace
 import streamlit as st
 from streamlit_cookies_controller import CookieController
 
-# --- MODE PROFILS ---------------------------------------------------------
-# Pas d'authentification réelle : n'importe qui avec le lien peut voir ET
-# modifier les données de n'importe quel profil listé ici. Chaque profil a
-# un UUID FIXE (pas lié à un vrai compte Supabase Auth) utilisé comme user_id
-# dans les tables perfs/user_settings. Renomme les clés ci-dessous avec les
-# vrais prénoms ; garde les UUID tels quels (ou génère les tiens avec
-# `python3 -c "import uuid; print(uuid.uuid4())"`).
-PROFILES = {
-    "Medhi": "9250e548-1d5a-48d1-98c0-5c97089a77d8",   # ton compte historique
-    "Dilbert 🐶": "7c1a2ca2-9b9d-43d9-af21-3f84578fe53e",  # <- renomme-moi
-    "Profil 3": "a03fb31f-f0d0-4871-a903-a4a1f3924531",  # <- renomme-moi
-}
-# ---------------------------------------------------------------------------
+from supabase_io import load_profiles, create_profile
 
 def get_cookie_controller():
     """Isole le gestionnaire de cookies par session utilisateur."""
@@ -78,9 +66,10 @@ def check_oauth_callback(supabase, pkce_store: dict) -> None:
     except KeyError:
         saved_profile_uid = None
     if saved_profile_uid:
-        nom_profil = next((n for n, u in PROFILES.items() if u == saved_profile_uid), None)
-        if nom_profil:
-            st.session_state.user = SimpleNamespace(id=saved_profile_uid, email=f"{nom_profil} (profil partagé)")
+        profiles = load_profiles()
+        profil = next((p for p in profiles if p["id"] == saved_profile_uid), None)
+        if profil:
+            st.session_state.user = SimpleNamespace(id=profil["id"], email=f"{profil['name']} (profil partagé)")
             st.session_state.auth_mode = "profile"
             return
 
@@ -154,12 +143,27 @@ def render_login_page(supabase, pkce_store: dict, app_url: str) -> None:
 
     _, col_auth, _ = st.columns([1, 2, 1])
     with col_auth:
-        for nom, uid_profil in PROFILES.items():
-            if st.button(f"👤 {nom}", key=f"profile_btn_{uid_profil}", width='stretch'):
-                st.session_state.user = SimpleNamespace(id=uid_profil, email=f"{nom} (profil partagé)")
+        profiles = load_profiles()
+        for p in profiles:
+            if st.button(f"👤 {p['name']}", key=f"profile_btn_{p['id']}", width='stretch'):
+                st.session_state.user = SimpleNamespace(id=p["id"], email=f"{p['name']} (profil partagé)")
                 st.session_state.auth_mode = "profile"
-                controller.set("sys_profile", uid_profil, max_age=2592000)
+                controller.set("sys_profile", p["id"], max_age=2592000)
                 st.rerun()
+
+        with st.expander("➕ Nouveau profil"):
+            new_name = st.text_input("Prénom / pseudo", key="new_profile_name", placeholder="ex: Sarah")
+            if st.button("Créer le profil", key="btn_create_profile", width='stretch'):
+                name = new_name.strip()
+                if not name:
+                    st.warning("Saisis un prénom ou pseudo.")
+                else:
+                    profil = create_profile(name)
+                    if profil:
+                        st.session_state.user = SimpleNamespace(id=profil["id"], email=f"{name} (profil partagé)")
+                        st.session_state.auth_mode = "profile"
+                        controller.set("sys_profile", profil["id"], max_age=2592000)
+                        st.rerun()
 
         st.markdown("<div style='text-align:center;margin:20px 0;opacity:0.6;'>— ou —</div>",
                     unsafe_allow_html=True)
