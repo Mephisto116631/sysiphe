@@ -212,35 +212,45 @@ def render_exercise_block(nom_exo: str, df_global: pd.DataFrame, date_active, us
 
         val_init = " ".join([str(int(p) if float(p).is_integer() else p) for p in p_today if pd.notna(p)])
 
-        c_input, c_m1, c_m2, c_btn = st.columns([2.5, 1, 1, 0.5])
-        with c_input:
-            # Initialisations sécurisées
-            raw_key = f"perf_{nom_exo}_{date_active}"
-            if raw_key not in st.session_state:
-                st.session_state[raw_key] = val_init
-            raw_input = st.text_input("Séries", key=raw_key, placeholder="ex: 12 10 8", label_visibility="collapsed")
-            
+        # ── Ligne 1 : saisie des séries (pleine largeur) ──
+        raw_key = f"perf_{nom_exo}_{date_active}"
+        if raw_key not in st.session_state:
+            st.session_state[raw_key] = val_init
+        raw_input = st.text_input(
+            "Séries (ex: 12 10 8)", key=raw_key,
+            placeholder="ex: 12 10 8", label_visibility="collapsed",
+        )
+
+        # ── Ligne 2 : catégorie + bouton supprimer ──
+        c_cat, c_del = st.columns([5, 1])
+        with c_cat:
             cat_key = f"cat_{nom_exo}_{date_active}"
             if cat_key not in st.session_state:
                 st.session_state[cat_key] = cat_init
             cat_exo = st.text_input("Catégorie", key=cat_key, label_visibility="collapsed")
-                                    
+        with c_del:
+            st.write("")  # alignement vertical
+            if st.button("🗑️", key=f"rem_{nom_exo}_{date_active}", use_container_width=True):
+                st.session_state.exos_du_jour.remove(nom_exo)
+                delete_perfs(user_id, str(date_active), nom_exo)
+                st.cache_data.clear()
+                st.rerun()
+
+        # ── Ligne 3 (optionnelle) : charge externe ──
         if st.session_state.get("enable_charges", True):
             charge_key = f"charge_{nom_exo}_{date_active}"
             if charge_key not in st.session_state:
                 st.session_state[charge_key] = float(charge_init)
-                
             charge_kg = st.number_input(
-                "Charge externe (kg) — laisser à 0 pour un exercice au poids du corps",
+                "Charge (kg)",
                 min_value=0.0, max_value=300.0, step=0.5,
                 key=charge_key,
             )
         else:
-            # Le champ est juste MASQUÉ (préférence d'affichage) : on ne doit
-            # surtout pas écraser une charge déjà enregistrée par 0 lors de la
-            # prochaine sauvegarde — on réutilise la valeur existante en base.
+            # Champ masqué — on garde la charge déjà enregistrée en base
             charge_kg = float(charge_init)
 
+        # Parse des reps
         total_reps, nb_series, max_serie, liste_reps = 0, 0, 0, []
         if raw_input:
             try:
@@ -251,6 +261,8 @@ def render_exercise_block(nom_exo: str, df_global: pd.DataFrame, date_active, us
             except ValueError as e:
                 st.warning(f"Valeur invalide : {e}")
 
+        # ── Ligne 4 : métriques (2 colonnes, confortables sur mobile) ──
+        c_m1, c_m2 = st.columns(2)
         with c_m1:
             label_total = "Tonnage (kg)" if charge_kg > 0 else "Total Reps"
             valeur_total = f"{total_reps * charge_kg:.0f}" if charge_kg > 0 else total_reps
@@ -261,13 +273,6 @@ def render_exercise_block(nom_exo: str, df_global: pd.DataFrame, date_active, us
             st.metric(label_total, valeur_total, delta=delta_pct)
         with c_m2:
             st.metric("Séries", nb_series)
-        with c_btn:
-            st.write("")
-            if st.button("🗑️", key=f"rem_{nom_exo}_{date_active}", width='stretch'):
-                st.session_state.exos_du_jour.remove(nom_exo)
-                delete_perfs(user_id, str(date_active), nom_exo)
-                st.cache_data.clear()
-                st.rerun()
 
         if max_serie > 0 and pr_absolu > 0 and max_serie > pr_absolu:
             st.success(f"🏆 Nouveau PR en série ! **{max_serie} reps** (ancien : {pr_absolu})")

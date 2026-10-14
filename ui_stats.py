@@ -361,10 +361,10 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
         "Ces scores pondèrent la difficulté de chaque variante. "
         "Sauvegardés sur ton compte, ils persistent entre tes sessions."
     )
-    cols_cal = st.columns(4)
+    cols_cal = st.columns(2)
     updated_scores = {}
     for i, (var, score) in enumerate(st.session_state.config_variantes.items()):
-        with cols_cal[i % 4]:
+        with cols_cal[i % 2]:
             updated_scores[var] = st.number_input(
                 var, min_value=1, max_value=20, value=int(score), step=1, key=f"cal_{var}"
             )
@@ -391,12 +391,9 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
     st.subheader("✏️ Renommer un exercice")
     st.markdown("Corrige les fautes de frappe ou uniformise les noms dans tout ton historique.")
     if tous_les_exos:
-        col_old, col_new, col_btn = st.columns([2, 2, 1])
-        with col_old: exo_a_renommer = st.selectbox("Exercice à modifier", tous_les_exos)
-        with col_new: nouveau_nom    = st.text_input("Nouveau nom")
-        with col_btn:
-            st.write("")
-            if st.button("Renommer", use_container_width=True):
+        exo_a_renommer = st.selectbox("Exercice à modifier", tous_les_exos)
+        nouveau_nom    = st.text_input("Nouveau nom")
+        if st.button("✏️ Renommer", use_container_width=True):
                 nv = nouveau_nom.strip()
                 if not nv:
                     st.error("Le nouveau nom ne peut pas être vide.")
@@ -421,7 +418,7 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
 # =========================================================================
 def render_stats_tabs(df_global: pd.DataFrame, tous_les_exos: list, user_id: str) -> None:
     tab_graph, tab_calendar, tab_records, tab_repos, tab_param = st.tabs([
-        "📈 Graphiques", "📅 Calendrier", "🏆 Records (PRs)", "💤 Analyse du Repos", "⚙️ Paramètres",
+        "📈 Stats", "📅 Calendrier", "🏆 Records", "💤 Repos", "⚙️ Paramètres",
     ])
     with tab_graph:
         render_graph_tab(df_global, tous_les_exos, st.session_state.include_planche)

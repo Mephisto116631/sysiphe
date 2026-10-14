@@ -1,6 +1,7 @@
 """
-Sysiphe v16 — Point d'entrée principal.
+Sysiphe v17 — Point d'entrée principal.
 Architecture modulaire : auth.py / data.py / supabase_io.py / ui_saisie.py / ui_stats.py / ui_helpers.py
+v17 : Responsive mobile (layout centré, CSS media queries, KPI en expander)
 """
 from datetime import datetime
 import streamlit as st
@@ -13,7 +14,43 @@ from ui_stats import render_stats_tabs
 
 APP_URL = "https://sysiphe-voseesdgwwcstfepbdepkh.streamlit.app"
 
-st.set_page_config(page_title="Sysiphe v16 Cloud", layout="wide")
+st.set_page_config(page_title="Sysiphe v17", layout="centered")
+
+# ─── CSS responsive mobile ──────────────────────────────────────────────────
+st.markdown("""
+<style>
+/* ═══ Responsive mobile — Sysiphe v17 ═══ */
+@media (max-width: 640px) {
+    /* Padding compact */
+    .main .block-container {
+        padding-left: 0.6rem !important;
+        padding-right: 0.6rem !important;
+        padding-top: 0.5rem !important;
+    }
+    /* Titres */
+    h1 { font-size: 1.45rem !important; margin-top: 0 !important; }
+    h2 { font-size: 1.15rem !important; }
+    h3 { font-size: 1.05rem !important; }
+    /* Cibles tactiles plus grandes */
+    .stButton > button { min-height: 2.75rem !important; font-size: 0.95rem !important; }
+    /* Empiler toutes les colonnes horizontales */
+    [data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; }
+    [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+        flex: 1 1 100% !important;
+        min-width: 100% !important;
+        width: 100% !important;
+    }
+}
+/* Segmented controls : labels plus courts sur petits écrans */
+@media (max-width: 480px) {
+    [data-testid="stSegmentedControl"] button {
+        padding: 0.25rem 0.35rem !important;
+        font-size: 0.8rem !important;
+    }
+}
+/* ════════════════════════════════════════ */
+</style>
+""", unsafe_allow_html=True)
 
 # --- Initialisation session state (valeurs par défaut avant chargement DB) ---
 _DEFAULTS = {
@@ -64,7 +101,7 @@ tous_les_exos = []
 if not df_global.empty:
     tous_les_exos = sorted(df_global[df_global["exercice"].str.lower() != "planche"]["exercice"].unique().tolist())
 
-st.title("🪨 Sysiphe v16 (Cloud)")
+st.title("🪨 Sysiphe v17")
 
 with st.sidebar:
     st.header("📅 Navigation")
@@ -135,31 +172,34 @@ if "last_seen_date" not in st.session_state or st.session_state.last_seen_date !
         st.session_state.exos_du_jour = []
 
 # =========================================================================
-# INTERFACE PRINCIPALE
+# INTERFACE PRINCIPALE — layout colonne unique (mobile-first)
 # =========================================================================
-col_saisie, col_kpi = st.columns([2, 1])
 
-with col_saisie:
-    if st.session_state.include_planche:
-        render_planche_block(df_global, date_active, USER_ID,
-                             float(st.session_state.weight), st.session_state.config_variantes)
-
-    for nom_exo in list(st.session_state.exos_du_jour):
-        render_exercise_block(nom_exo, df_global, date_active, USER_ID)
-
-    col_sel, col_add = st.columns([3, 1])
-    with col_sel:
-        new_sel = st.selectbox("Exercices Habituels", ["--- Sélectionner ---"] + tous_les_exos)
-        new_txt = st.text_input("...ou taper un nouvel exercice")
-    with col_add:
-        if st.button("➕ Ajouter", use_container_width=True):
-            exo_ok = new_txt.strip() or (new_sel if new_sel != "--- Sélectionner ---" else None)
-            if exo_ok and exo_ok not in st.session_state.exos_du_jour:
-                st.session_state.exos_du_jour.append(exo_ok)
-                st.rerun()
-
-with col_kpi:
+# --- Panneau KPI du jour (rétractable) ---
+with st.expander("📊 Stats du jour & prochaine séance", expanded=True):
     render_kpi_panel(df_global, date_active)
+
+st.write("")
+
+# --- Saisie pleine largeur ---
+if st.session_state.include_planche:
+    render_planche_block(df_global, date_active, USER_ID,
+                         float(st.session_state.weight), st.session_state.config_variantes)
+
+for nom_exo in list(st.session_state.exos_du_jour):
+    render_exercise_block(nom_exo, df_global, date_active, USER_ID)
+
+# --- Ajout d'exercice ---
+col_sel, col_add = st.columns([3, 1])
+with col_sel:
+    new_sel = st.selectbox("Exercices Habituels", ["--- Sélectionner ---"] + tous_les_exos)
+    new_txt = st.text_input("...ou taper un nouvel exercice")
+with col_add:
+    if st.button("➕ Ajouter", use_container_width=True):
+        exo_ok = new_txt.strip() or (new_sel if new_sel != "--- Sélectionner ---" else None)
+        if exo_ok and exo_ok not in st.session_state.exos_du_jour:
+            st.session_state.exos_du_jour.append(exo_ok)
+            st.rerun()
 
 st.write("---")
 render_stats_tabs(df_global, tous_les_exos, USER_ID)
