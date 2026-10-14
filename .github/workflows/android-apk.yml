@@ -2,8 +2,10 @@ name: Build APK Sysiphe
 
 on:
   push:
-    tags: ["v*"]          # git tag v1.0.0 && git push origin v1.0.0
-  workflow_dispatch:      # bouton "Run workflow" pour un build manuel
+    tags: ["v*"]                      # git tag v1.0.0 && git push origin v1.0.0
+    branches: [main]
+    paths: ["mobile/package.json"]    # ou : changer "version" dans mobile/package.json
+  workflow_dispatch:                  # bouton "Run workflow" pour un build de test
 
 permissions:
   contents: write         # nécessaire pour créer la Release
@@ -17,6 +19,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0              # pour connaître les tags existants
 
       - uses: actions/setup-node@v4
         with:
@@ -51,11 +55,24 @@ jobs:
 
       - name: Versionner l'APK
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          [[ "$GITHUB_REF_TYPE" == "tag" ]] || VERSION="0.0.${{ github.run_number }}-dev"
+          RELEASE=false
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"; RELEASE=true
+          elif [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            VERSION=$(node -p "require('./package.json').version")
+            if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+              echo "::notice::Tag v$VERSION déjà existant : build sans Release (pense à incrémenter la version)"
+              VERSION="$VERSION-build${{ github.run_number }}"
+            else
+              RELEASE=true
+            fi
+          else
+            VERSION="0.0.${{ github.run_number }}-dev"
+          fi
           sed -i "s/versionCode 1$/versionCode ${{ github.run_number }}/" android/app/build.gradle
           sed -i "s/versionName \"1.0\"/versionName \"$VERSION\"/" android/app/build.gradle
           echo "APK_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "RELEASE=$RELEASE" >> "$GITHUB_ENV"
 
       - name: Compiler l'APK release
         working-directory: mobile/android
@@ -77,14 +94,17 @@ jobs:
           rm release.jks
 
       - name: Publier en Release
-        if: github.ref_type == 'tag'
+        if: env.RELEASE == 'true'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ env.APK_VERSION }}
+          target_commitish: ${{ github.sha }}
+          name: Sysiphe ${{ env.APK_VERSION }}
           files: mobile/Sysiphe-*.apk
           generate_release_notes: true
 
-      - name: Artefact (build manuel)
-        if: github.ref_type != 'tag'
+      - name: Artefact (build sans Release)
+        if: env.RELEASE != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: Sysiphe-apk
