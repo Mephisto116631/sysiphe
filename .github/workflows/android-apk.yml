@@ -52,6 +52,7 @@ jobs:
           mkdir -p assets && cp ../assets/icon.png assets/icon-only.png
           npx capacitor-assets generate --android --iconBackgroundColor '#161616' --splashBackgroundColor '#161616'
           npx cap sync android
+          cp native/MainActivity.java android/app/src/main/java/com/medhi/sysiphe/MainActivity.java
 
       - name: Versionner l'APK
         run: |
