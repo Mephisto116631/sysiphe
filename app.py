@@ -3,18 +3,18 @@ Sysiphe v17 — Point d'entrée principal.
 Architecture modulaire : auth.py / data.py / supabase_io.py / ui_saisie.py / ui_stats.py / ui_helpers.py
 v17 : Responsive mobile (layout centré, CSS media queries, KPI en expander)
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 import streamlit as st
 
 from auth import get_pkce_store, check_oauth_callback, render_login_page
 from data import DEFAULT_VARIANTES
 from supabase_io import get_supabase_client, load_data, delete_perfs, load_user_settings
-from ui_saisie import render_planche_block, render_exercise_block, render_kpi_panel
+from ui_saisie import render_planche_block, render_exercise_block, render_kpi_panel, render_save_all_button
 from ui_stats import render_stats_tabs
 
 APP_URL = "https://sysiphe-voseesdgwwcstfepbdepkh.streamlit.app"
 
-st.set_page_config(page_title="Sysiphe v17", layout="centered")
+st.set_page_config(page_title="Sysiphe v18", layout="centered")
 
 # ─── CSS responsive mobile ──────────────────────────────────────────────────
 st.markdown("""
@@ -101,7 +101,7 @@ tous_les_exos = []
 if not df_global.empty:
     tous_les_exos = sorted(df_global[df_global["exercice"].str.lower() != "planche"]["exercice"].unique().tolist())
 
-st.title("🪨 Sysiphe v17")
+st.title("🪨 Sysiphe v18")
 
 with st.sidebar:
     st.header("📅 Navigation")
@@ -150,6 +150,26 @@ with st.sidebar:
                 st.session_state.confirm_delete_session = False
                 st.rerun()
 
+# --- Navigation date rapide (mobile-first) ---
+_c_prev, _c_mid, _c_next = st.columns([1, 2, 1])
+with _c_prev:
+    if st.button("◀ Hier", use_container_width=True):
+        st.session_state.date_seance = date_active - timedelta(days=1)
+        st.session_state.confirm_delete_session = False
+        st.rerun()
+with _c_mid:
+    _today = datetime.now().date()
+    _lbl = f"📅 {date_active.strftime('%d/%m')}" + (" ↩ Auj." if date_active != _today else "")
+    if st.button(_lbl, use_container_width=True, disabled=(date_active == _today)):
+        st.session_state.date_seance = _today
+        st.session_state.confirm_delete_session = False
+        st.rerun()
+with _c_next:
+    if st.button("Demain ▶", use_container_width=True):
+        st.session_state.date_seance = date_active + timedelta(days=1)
+        st.session_state.confirm_delete_session = False
+        st.rerun()
+
 # --- Préfill des exercices du jour selon historique ---
 if "last_seen_date" not in st.session_state or st.session_state.last_seen_date != date_active:
     st.session_state.last_seen_date = date_active
@@ -188,6 +208,8 @@ if st.session_state.include_planche:
 
 for nom_exo in list(st.session_state.exos_du_jour):
     render_exercise_block(nom_exo, df_global, date_active, USER_ID)
+
+render_save_all_button(USER_ID, date_active, st.session_state.exos_du_jour)
 
 # --- Ajout d'exercice ---
 col_sel, col_add = st.columns([3, 1])
