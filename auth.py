@@ -115,8 +115,8 @@ def check_oauth_callback(supabase, pkce_store: dict) -> None:
             st.session_state.user = res.user
             st.session_state.auth_mode = "oauth"
             # SAUVEGARDE EN COOKIE (valable 30 jours)
-            controller.set("sys_acc_token", res.session.access_token, max_age=2592000)
-            controller.set("sys_ref_token", res.session.refresh_token, max_age=2592000)
+            controller.set("sys_acc_token", res.session.access_token, max_age=31536000)  # 1 an
+            controller.set("sys_ref_token", res.session.refresh_token, max_age=31536000)  # 1 an
             
             # Nettoyage manuel du store PKCE maintenant que le code est validé
             if intent_id in pkce_store:
@@ -148,7 +148,7 @@ def render_login_page(supabase, pkce_store: dict, app_url: str) -> None:
             if st.button(f"👤 {p['name']}", key=f"profile_btn_{p['id']}", width='stretch'):
                 st.session_state.user = SimpleNamespace(id=p["id"], email=f"{p['name']} (profil partagé)")
                 st.session_state.auth_mode = "profile"
-                controller.set("sys_profile", p["id"], max_age=2592000)
+                controller.set("sys_profile", p["id"], max_age=31536000)  # 1 an
                 st.rerun()
 
         with st.expander("➕ Nouveau profil"):
@@ -162,7 +162,7 @@ def render_login_page(supabase, pkce_store: dict, app_url: str) -> None:
                     if profil:
                         st.session_state.user = SimpleNamespace(id=profil["id"], email=f"{name} (profil partagé)")
                         st.session_state.auth_mode = "profile"
-                        controller.set("sys_profile", profil["id"], max_age=2592000)
+                        controller.set("sys_profile", profil["id"], max_age=31536000)  # 1 an
                         st.rerun()
 
         st.markdown("<div style='text-align:center;margin:20px 0;opacity:0.6;'>— ou —</div>",
@@ -201,8 +201,8 @@ def render_login_page(supabase, pkce_store: dict, app_url: str) -> None:
                         st.session_state.user = resp.user
                         st.session_state.auth_mode = "oauth"
                         # SAUVEGARDE EN COOKIE (valable 30 jours)
-                        controller.set("sys_acc_token", resp.session.access_token, max_age=2592000)
-                        controller.set("sys_ref_token", resp.session.refresh_token, max_age=2592000)
+                        controller.set("sys_acc_token", resp.session.access_token, max_age=31536000)  # 1 an
+                        controller.set("sys_ref_token", resp.session.refresh_token, max_age=31536000)  # 1 an
                         st.rerun()
                 except Exception as e:
                     st.error(f"❌ Erreur : {e}")
