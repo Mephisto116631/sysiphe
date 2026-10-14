@@ -104,14 +104,26 @@ def delete_perfs(uid: str, date_str: str, exercice: str = None) -> bool:
 # =========================================================================
 # GESTION DES PROFILS (table profiles)
 # =========================================================================
-@st.cache_data(ttl=30)
 def load_profiles() -> list[dict]:
-    """Retourne la liste des profils [{id, name}] triée par created_at."""
+    """Retourne la liste des profils [{id, name}] triée par created_at.
+    Cache court dans st.session_state pour éviter les requêtes répétées
+    sans dépendre du cache global (@st.cache_data incompatible avec session_state).
+    """
+    import time
+    cache = st.session_state.get("_profiles_cache")
+    if cache and time.time() - cache["ts"] < 30:
+        return cache["data"]
     try:
         res = get_supabase_client().table("profiles").select("id, name").order("created_at").execute()
-        return res.data or []
+        data = res.data or []
     except Exception:
-        return []
+        data = []
+    st.session_state["_profiles_cache"] = {"data": data, "ts": time.time()}
+    return data
+
+
+def _clear_profiles_cache() -> None:
+    st.session_state.pop("_profiles_cache", None)
 
 
 def create_profile(name: str) -> dict | None:
@@ -119,10 +131,9 @@ def create_profile(name: str) -> dict | None:
     try:
         res = get_supabase_client().table("profiles").insert({"name": name.strip()}).execute()
         if res.data:
-            load_profiles.clear()
+            _clear_profiles_cache()
             return res.data[0]
     except Exception as e:
-        import streamlit as st
         st.error(f"❌ Erreur création profil : {e}")
     return None
 
@@ -131,10 +142,9 @@ def rename_profile(profile_id: str, new_name: str) -> bool:
     """Renomme un profil. Retourne True si OK."""
     try:
         get_supabase_client().table("profiles").update({"name": new_name.strip()}).eq("id", profile_id).execute()
-        load_profiles.clear()
+        _clear_profiles_cache()
         return True
     except Exception as e:
-        import streamlit as st
         st.error(f"❌ Erreur renommage : {e}")
         return False
 
@@ -143,7 +153,7 @@ def delete_profile(profile_id: str) -> bool:
     """Supprime un profil (et laisse ses perfs orphelines). Retourne True si OK."""
     try:
         get_supabase_client().table("profiles").delete().eq("id", profile_id).execute()
-        load_profiles.clear()
+        _clear_profiles_cache()
         return True
     except Exception:
         return False
