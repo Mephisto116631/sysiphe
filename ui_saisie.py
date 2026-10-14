@@ -183,10 +183,10 @@ def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, wei
                         except ValueError:
                             st.warning(f"Série {s} ignorée : valeur non numérique.")
                 if lignes:
-                    insert_perfs(lignes)
-                    st.cache_data.clear()
-                    st.success("Planche enregistrée !")
-                    st.rerun()
+                    if insert_perfs(lignes):
+                        st.cache_data.clear()
+                        st.toast("🤸 Planche enregistrée !", icon="✅")
+                        st.rerun()
 
 
 def render_exercise_block(nom_exo: str, df_global: pd.DataFrame, date_active, user_id: str) -> None:
@@ -293,10 +293,12 @@ def render_exercise_block(nom_exo: str, df_global: pd.DataFrame, date_active, us
                     }
                     for i, v in enumerate(liste_reps)
                 ]
-                insert_perfs(lignes)
-                st.cache_data.clear()
-                st.success(f"{nom_exo} sauvegardé !")
-                st.rerun()
+                if insert_perfs(lignes):
+                    st.cache_data.clear()
+                    st.toast(f"💪 {nom_exo} sauvegardé !", icon="✅")
+                    st.rerun()
+            else:
+                st.warning("Saisis au moins une série avant d'enregistrer.")
 
 
 def render_save_all_button(user_id: str, date_active, exos_du_jour: list) -> None:
@@ -333,10 +335,10 @@ def render_save_all_button(user_id: str, date_active, exos_du_jour: list) -> Non
         if lignes:
             for nom_exo in exos_to_delete:
                 delete_perfs(user_id, str(date_active), nom_exo)
-            insert_perfs(lignes)
-            st.cache_data.clear()
-            st.success("✅ Toutes les séries ont été sauvegardées avec succès !")
-            st.rerun()
+            if insert_perfs(lignes):
+                st.cache_data.clear()
+                st.toast(f"✅ {len(exos_to_delete)} exercice(s) sauvegardés !", icon="💾")
+                st.rerun()
         else:
             st.warning("⚠️ Aucune série valide à sauvegarder.")
 

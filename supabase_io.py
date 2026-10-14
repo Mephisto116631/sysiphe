@@ -74,16 +74,31 @@ def load_data(uid: str, current_weight: float, variantes_config: dict) -> pd.Dat
     return df
 
 
-def insert_perfs(rows: list) -> None:
-    if rows:
+def insert_perfs(rows: list) -> bool:
+    """Insère les lignes en base. Retourne True si OK, False si erreur."""
+    if not rows:
+        return False
+    try:
         get_supabase_client().table("perfs").insert(rows).execute()
+        return True
+    except Exception as e:
+        import streamlit as st
+        st.error(f"❌ Erreur lors de la sauvegarde : {e}")
+        return False
 
 
-def delete_perfs(uid: str, date_str: str, exercice: str = None) -> None:
-    q = get_supabase_client().table("perfs").delete().eq("user_id", uid).eq("date", date_str)
-    if exercice is not None:
-        q = q.eq("exercice", exercice)
-    q.execute()
+def delete_perfs(uid: str, date_str: str, exercice: str = None) -> bool:
+    """Supprime des perfs. Retourne True si OK, False si erreur."""
+    try:
+        q = get_supabase_client().table("perfs").delete().eq("user_id", uid).eq("date", date_str)
+        if exercice is not None:
+            q = q.eq("exercice", exercice)
+        q.execute()
+        return True
+    except Exception as e:
+        import streamlit as st
+        st.error(f"❌ Erreur lors de la suppression : {e}")
+        return False
 
 
 def update_exercise_name(uid: str, old_name: str, new_name: str) -> None:
