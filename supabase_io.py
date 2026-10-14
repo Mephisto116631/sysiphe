@@ -6,51 +6,36 @@ import streamlit as st
 import pandas as pd
 from supabase import create_client
 
-from data import calculer_effort, DEFAULT_VARIANTES, DEFAULT_FORMES
+from data import calculer_effort, DEFAULT_VARIANTES
+
+_SETTINGS_DEFAULTS = {
+    "variantes_config": None,   # None → sera remplacé par DEFAULT_VARIANTES
+    "weight": 97,
+    "nb_days_avg": 5,
+    "include_planche": True,
+}
 
 
 def get_supabase_client():
-    # Mis en cache PAR MODE (profile vs oauth), pas globalement : sinon un
-    # premier appel fait avant de savoir quel mode est actif (ex: au tout
-    # début du script, avant le login) fige le mauvais type de clé pour
-    # le reste de la session.
-    mode = st.session_state.get("auth_mode", "oauth")
-    cache_key = f"supabase_client_{mode}"
-    if cache_key not in st.session_state:
-        if mode == "profile":
-            # Mode profil : pas de vraie session Supabase Auth (auth.uid()
-            # serait NULL), donc RLS bloquerait tout avec la clé anon. On
-            # utilise la clé service_role — reste côté serveur Streamlit,
-            # jamais exposée au navigateur — qui contourne RLS. Le filtrage
-            # par utilisateur repose alors entièrement sur le user_id passé
-            # explicitement dans chaque requête (voir PROFILES dans auth.py).
-            st.session_state[cache_key] = create_client(
-                st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_SERVICE_KEY"]
-            )
-        else:
-            st.session_state[cache_key] = create_client(
-                st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"]
-            )
-    return st.session_state[cache_key]
+    if "supabase" not in st.session_state:
+        st.session_state.supabase = create_client(
+            st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"]
+        )
+    return st.session_state.supabase
 
 
 @st.cache_data(ttl=60)
-def load_data(_supabase, uid: str, current_weight: float, variantes_config: dict, formes_config: dict = None) -> pd.DataFrame:
+def load_data(uid: str, current_weight: float, variantes_config: dict) -> pd.DataFrame:
     """
-    Charge toutes les perfs de l'utilisateur. current_weight, variantes_config
-    et formes_config font partie de la clé de cache pour forcer un recalcul
-    rétroactif de effort_pondere si l'un des trois change.
-    Le client _supabase est injecté pour éviter les appels au session_state dans le cache.
+    Charge toutes les perfs de l'utilisateur. current_weight et variantes_config
+    font partie de la clé de cache pour forcer un recalcul si l'un des deux change.
     """
-    
-    # Correction : utilisation de uid et limite à 10 000 lignes
-    response = _supabase.table("perfs").select("*").eq("user_id", uid).limit(10000).execute()
-    
-    # Sécurité si aucune donnée n'est renvoyée
-    if not response.data:
+    supabase = get_supabase_client()
+    reponse = supabase.table("perfs").select("*").eq("user_id", uid).execute()
+    if not reponse.data:
         return pd.DataFrame()
 
-    df = pd.DataFrame(response.data)
+    df = pd.DataFrame(reponse.data)
     df["date"] = pd.to_datetime(df["date"]).dt.date
 
     for col in ["serie", "forme", "effort_pondere", "unite", "charge"]:
@@ -73,16 +58,16 @@ def load_data(_supabase, uid: str, current_weight: float, variantes_config: dict
                       .replace({"Advanced Tuck": "Adv_Tuck", "Half Lay": "Half_Lay",
                                 "": "Tuck", "nan": "Tuck", "None": "Tuck"}))
 
-    df.loc[df["categorie"].str.lower().str.strip()
-             .isin(["force iso", "force isometrique", "statique"]), "categorie"] = "Force Iso"
-    df.loc[df["categorie"].str.lower().str.strip()
-             .isin(["force", "musculation", ""]), "categorie"] = "Musculation"
+    mask_iso = df["categorie"].str.lower().str.strip().isin(["force iso", "force isometrique", "statique"])
+    df.loc[mask_iso, "categorie"] = "Force Iso"
+    mask_muscu = df["categorie"].str.lower().str.strip().isin(["force", "musculation", ""])
+    df.loc[mask_muscu, "categorie"] = "Musculation"
     df["categorie"] = df["categorie"].fillna("Musculation")
 
     df["effort_pondere"] = df.apply(
         lambda r: calculer_effort(
             r["variante"], r["elastique"], r["tension"], r["forme"],
-            r["performance"], current_weight, variantes_config, formes_config
+            r["performance"], current_weight, variantes_config
         ) if r["exercice"].lower() == "planche" else 0,
         axis=1
     )
@@ -107,220 +92,60 @@ def update_exercise_name(uid: str, old_name: str, new_name: str) -> None:
 
 
 # =========================================================================
-# PERSISTANCE DE LA CALIBRATION (table user_settings — voir SETUP.md)
+# PERSISTANCE DES PARAMÈTRES UTILISATEUR (table user_settings)
 # =========================================================================
 def load_user_settings(uid: str) -> dict:
     """
-    Charge la calibration des variantes depuis Supabase.
-    Retourne DEFAULT_VARIANTES si la table n'existe pas encore ou si
-    l'utilisateur n'a jamais sauvegardé de calibration (dégradation gracieuse).
+    Charge tous les paramètres depuis Supabase.
+    Retourne les valeurs par défaut si l'utilisateur n'a encore rien sauvegardé.
+    Dégradation gracieuse si la table est absente.
     """
     try:
         res = get_supabase_client().table("user_settings") \
-            .select("variantes_config").eq("user_id", uid).execute()
-        if res.data and res.data[0].get("variantes_config"):
-            return {**DEFAULT_VARIANTES, **res.data[0]["variantes_config"]}
+            .select("variantes_config, weight, nb_days_avg, include_planche") \
+            .eq("user_id", uid).execute()
+        if res.data:
+            row = res.data[0]
+            return {
+                "variantes_config": {
+                    **DEFAULT_VARIANTES,
+                    **(row.get("variantes_config") or {}),
+                },
+                "weight":          int(row["weight"])          if row.get("weight")          is not None else 97,
+                "nb_days_avg":     int(row["nb_days_avg"])     if row.get("nb_days_avg")     is not None else 5,
+                "include_planche": bool(row["include_planche"]) if row.get("include_planche") is not None else True,
+            }
     except Exception:
         pass
-    return dict(DEFAULT_VARIANTES)
+    return {
+        "variantes_config": dict(DEFAULT_VARIANTES),
+        "weight":           97,
+        "nb_days_avg":      5,
+        "include_planche":  True,
+    }
 
 
-def save_user_settings(uid: str, variantes_config: dict) -> bool:
-    """Sauvegarde (upsert) la calibration. Retourne False si échec (table absente, etc.)."""
+def save_user_settings(
+    uid: str,
+    variantes_config: dict,
+    weight: float | None = None,
+    nb_days_avg: int | None = None,
+    include_planche: bool | None = None,
+) -> bool:
+    """
+    Upsert de tous les paramètres utilisateur.
+    Les arguments optionnels ne sont inclus que s'ils sont fournis (non None).
+    Retourne False si la sauvegarde échoue (mode dégradé gracieux).
+    """
     try:
-        get_supabase_client().table("user_settings").upsert({
-            "user_id": uid,
-            "variantes_config": variantes_config,
-        }).execute()
-        return True
-    except Exception:
-        return False
-
-
-def load_app_theme(uid: str, default: str = "Épuré") -> str:
-    """Charge le thème visuel sauvegardé par l'utilisateur. Retourne `default`
-    si jamais sauvegardé ou si la colonne/table n'existe pas encore."""
-    try:
-        res = get_supabase_client().table("user_settings") \
-            .select("app_theme").eq("user_id", uid).execute()
-        if res.data and res.data[0].get("app_theme"):
-            return res.data[0]["app_theme"]
-    except Exception:
-        pass
-    return default
-
-
-def save_app_theme(uid: str, theme_name: str) -> bool:
-    """Sauvegarde (upsert) le thème visuel choisi. Retourne False si échec."""
-    try:
-        get_supabase_client().table("user_settings").upsert({
-            "user_id": uid,
-            "app_theme": theme_name,
-        }).execute()
-        return True
-    except Exception:
-        return False
-
-
-def load_formes_config(uid: str) -> dict:
-    """Charge la calibration des formes (indices de difficulté) depuis Supabase.
-    Retourne DEFAULT_FORMES si jamais sauvegardée (dégradation gracieuse)."""
-    try:
-        res = get_supabase_client().table("user_settings") \
-            .select("formes_config").eq("user_id", uid).execute()
-        if res.data and res.data[0].get("formes_config"):
-            return {**DEFAULT_FORMES, **res.data[0]["formes_config"]}
-    except Exception:
-        pass
-    return dict(DEFAULT_FORMES)
-
-
-def save_formes_config(uid: str, formes_config: dict) -> bool:
-    """Sauvegarde (upsert) la calibration des formes. Retourne False si échec."""
-    try:
-        get_supabase_client().table("user_settings").upsert({
-            "user_id": uid,
-            "formes_config": formes_config,
-        }).execute()
-        return True
-    except Exception:
-        return False
-
-
-def load_inactivity_days(uid: str, default: int = 2) -> int:
-    """Nombre de jours d'inactivité avant qu'un exercice disparaisse de la
-    page d'accueil. Retourne `default` si jamais sauvegardé."""
-    try:
-        res = get_supabase_client().table("user_settings") \
-            .select("inactivity_days").eq("user_id", uid).execute()
-        if res.data and res.data[0].get("inactivity_days") is not None:
-            return int(res.data[0]["inactivity_days"])
-    except Exception:
-        pass
-    return default
-
-
-def save_inactivity_days(uid: str, days: int) -> bool:
-    try:
-        get_supabase_client().table("user_settings").upsert({
-            "user_id": uid,
-            "inactivity_days": int(days),
-        }).execute()
-        return True
-    except Exception:
-        return False
-
-
-def load_enable_charges(uid: str, default: bool = True) -> bool:
-    """Charge la préférence d'affichage des charges externes."""
-    try:
-        res = get_supabase_client().table("user_settings") \
-            .select("enable_charges").eq("user_id", uid).execute()
-        if res.data and res.data[0].get("enable_charges") is not None:
-            return bool(res.data[0]["enable_charges"])
-    except Exception:
-        pass
-    return default
-
-
-def save_enable_charges(uid: str, enable: bool) -> bool:
-    """Sauvegarde la préférence d'affichage des charges externes."""
-    try:
-        get_supabase_client().table("user_settings").upsert({
-            "user_id": uid,
-            "enable_charges": bool(enable),
-        }).execute()
-        return True
-    except Exception:
-        return False
-
-
-def load_weight(uid: str, default: float = 97.0) -> float:
-    """Poids de référence pour le calcul d'effort isométrique."""
-    try:
-        res = get_supabase_client().table("user_settings") \
-            .select("weight").eq("user_id", uid).execute()
-        if res.data and res.data[0].get("weight") is not None:
-            return float(res.data[0]["weight"])
-    except Exception:
-        pass
-    return default
-
-
-def save_weight(uid: str, weight: float) -> bool:
-    try:
-        get_supabase_client().table("user_settings").upsert({
-            "user_id": uid,
-            "weight": float(weight),
-        }).execute()
-        return True
-    except Exception:
-        return False
-
-
-def load_nb_days_avg(uid: str, default: int = 5) -> int:
-    """Taille de la moyenne glissante (nombre de séances)."""
-    try:
-        res = get_supabase_client().table("user_settings") \
-            .select("nb_days_avg").eq("user_id", uid).execute()
-        if res.data and res.data[0].get("nb_days_avg") is not None:
-            return int(res.data[0]["nb_days_avg"])
-    except Exception:
-        pass
-    return default
-
-
-def save_nb_days_avg(uid: str, nb_days: int) -> bool:
-    try:
-        get_supabase_client().table("user_settings").upsert({
-            "user_id": uid,
-            "nb_days_avg": int(nb_days),
-        }).execute()
-        return True
-    except Exception:
-        return False
-
-
-def load_include_planche(uid: str, default: bool = True) -> bool:
-    try:
-        res = get_supabase_client().table("user_settings") \
-            .select("include_planche").eq("user_id", uid).execute()
-        if res.data and res.data[0].get("include_planche") is not None:
-            return bool(res.data[0]["include_planche"])
-    except Exception:
-        pass
-    return default
-
-
-def save_include_planche(uid: str, include: bool) -> bool:
-    try:
-        get_supabase_client().table("user_settings").upsert({
-            "user_id": uid,
-            "include_planche": bool(include),
-        }).execute()
-        return True
-    except Exception:
-        return False
-
-
-def load_graph_period(uid: str, default: str = "Tout l'historique") -> str:
-    """Préréglage de période mémorisé pour l'onglet Graphiques."""
-    try:
-        res = get_supabase_client().table("user_settings") \
-            .select("graph_period").eq("user_id", uid).execute()
-        if res.data and res.data[0].get("graph_period"):
-            return res.data[0]["graph_period"]
-    except Exception:
-        pass
-    return default
-
-
-def save_graph_period(uid: str, period: str) -> bool:
-    try:
-        get_supabase_client().table("user_settings").upsert({
-            "user_id": uid,
-            "graph_period": period,
-        }).execute()
+        payload: dict = {"user_id": uid, "variantes_config": variantes_config}
+        if weight is not None:
+            payload["weight"] = float(weight)
+        if nb_days_avg is not None:
+            payload["nb_days_avg"] = int(nb_days_avg)
+        if include_planche is not None:
+            payload["include_planche"] = bool(include_planche)
+        get_supabase_client().table("user_settings").upsert(payload).execute()
         return True
     except Exception:
         return False

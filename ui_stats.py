@@ -1,413 +1,19 @@
 """
-Sysiphe — Onglets de statistiques (Graphiques, Records, Repos, Paramètres, Apparence).
+Sysiphe — Onglets de statistiques (Graphiques, Records, Repos, Paramètres, Calendrier).
+Sans dépendance numpy — listes Python pures pour la heatmap.
 """
 from datetime import datetime, timedelta
 import pandas as pd
 import streamlit as st
 import plotly.express as px
+import plotly.graph_objects as go
 
-from data import lisser_donnees, detect_plateau, suggest_next_session
-from supabase_io import (
-    update_exercise_name, save_user_settings, save_formes_config, save_inactivity_days,
-    save_weight, save_nb_days_avg, save_include_planche, save_graph_period
-)
+from data import lisser_donnees, detect_plateau, suggest_next_session, compute_daily_activity
+from supabase_io import update_exercise_name, save_user_settings
 
-# =========================================================================
-# CONFIGURATION DES THÈMES
-# =========================================================================
-# Clés "historiques" (utilisées par Plotly) : bg, text, grid, colors, cal_event
-# Nouvelles clés (immersion CSS globale) : app_gradient, sidebar_bg, accent,
-#   accent_soft, text_main, font, card_bg, card_border
-THEMES = {
-    "Abysse": {
-        "bg": "rgba(0,0,0,0)", "text": "#E2E8F0", "grid": "#334155",
-        "colors": ["#00E5FF", "#39FF14", "#B026FF", "#FFD700"],
-        "cal_event": "#00E5FF",
-        "app_gradient": "linear-gradient(160deg, #050810 0%, #0A1128 45%, #0D1B3E 100%)",
-        "sidebar_bg": "linear-gradient(180deg, #030509 0%, #0A1128 100%)",
-        "accent": "#00E5FF",
-        "accent_soft": "rgba(0, 229, 255, 0.15)",
-        "text_main": "#E2E8F0",
-        "font": "'JetBrains Mono', 'Courier New', monospace",
-        "card_bg": "rgba(13, 27, 62, 0.55)",
-        "card_border": "rgba(0, 229, 255, 0.35)",
-    },
-    "Magma": {
-        "bg": "#1E1E1E", "text": "#F5F5F5", "grid": "#424242",
-        "colors": ["#F44336", "#FF9800", "#FFEB3B", "#FFFFFF"],
-        "cal_event": "#FF9800",
-        "app_gradient": "linear-gradient(160deg, #140505 0%, #2B0E0E 45%, #3D1204 100%)",
-        "sidebar_bg": "linear-gradient(180deg, #0D0303 0%, #2B0E0E 100%)",
-        "accent": "#FF9800",
-        "accent_soft": "rgba(255, 152, 0, 0.18)",
-        "text_main": "#F5F5F5",
-        "font": "'Barlow Condensed', 'Arial Narrow', sans-serif",
-        "card_bg": "rgba(61, 18, 4, 0.55)",
-        "card_border": "rgba(255, 152, 0, 0.35)",
-    },
-    "Analytique": {
-        "bg": "#0F172A", "text": "#CBD5E1", "grid": "#1E293B",
-        "colors": ["#38BDF8", "#818CF8", "#34D399", "#F472B6"],
-        "cal_event": "#38BDF8",
-        "app_gradient": "linear-gradient(160deg, #05070D 0%, #0F172A 50%, #131C33 100%)",
-        "sidebar_bg": "linear-gradient(180deg, #05070D 0%, #0F172A 100%)",
-        "accent": "#818CF8",
-        "accent_soft": "rgba(129, 140, 248, 0.15)",
-        "text_main": "#CBD5E1",
-        "font": "'Inter', 'Segoe UI', sans-serif",
-        "card_bg": "rgba(19, 28, 51, 0.55)",
-        "card_border": "rgba(129, 140, 248, 0.35)",
-    },
-    "Épuré": {
-        "bg": "#FFFFFF", "text": "#333333", "grid": "#E5E7EB",
-        "colors": ["#1E3A8A", "#059669", "#D97706", "#DC2626"],
-        "cal_event": "#1E3A8A",
-        "app_gradient": "linear-gradient(160deg, #FFFFFF 0%, #F8FAFC 50%, #F1F5F9 100%)",
-        "sidebar_bg": "linear-gradient(180deg, #FFFFFF 0%, #F1F5F9 100%)",
-        "accent": "#1E3A8A",
-        "accent_soft": "rgba(30, 58, 138, 0.08)",
-        "text_main": "#1E293B",
-        "font": "'Source Serif Pro', Georgia, serif",
-        "card_bg": "rgba(255, 255, 255, 0.7)",
-        "card_border": "rgba(30, 58, 138, 0.2)",
-    }
-}
-
-# =========================================================================
-# INJECTION CSS — IMMERSION DU THÈME DANS TOUTE L'APP
-# =========================================================================
-def inject_theme_css(theme_name: str) -> None:
-    """Applique le thème choisi à l'ensemble de l'interface Streamlit
-    (fond de page, sidebar, cartes/metrics, boutons, onglets, labels,
-    champs de saisie, headers d'expander), pas seulement aux graphiques
-    Plotly."""
-    t = THEMES.get(theme_name, THEMES["Abysse"])
-
-    css = f"""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Barlow+Condensed:wght@400;600&family=Inter:wght@400;600&family=Source+Serif+Pro:wght@400;600&display=swap');
-
-    /* Fond principal de l'app */
-    .stApp {{
-        background: {t['app_gradient']};
-        transition: background 0.4s ease;
-    }}
-
-    /* Typo globale */
-    html, body, [class*="css"] {{
-        font-family: {t['font']};
-        color: {t['text_main']};
-    }}
-
-    /* Sidebar */
-    section[data-testid="stSidebar"] {{
-        background: {t['sidebar_bg']};
-        border-right: 1px solid {t['card_border']};
-    }}
-    section[data-testid="stSidebar"] * {{
-        color: {t['text_main']} !important;
-    }}
-
-    /* Titres */
-    h1, h2, h3, h4, h5, h6 {{
-        color: {t['text_main']} !important;
-        text-shadow: 0 0 18px {t['accent_soft']};
-    }}
-
-    /* Texte courant, markdown, listes */
-    p, li, span, .stMarkdown, div[data-testid="stMarkdownContainer"] {{
-        color: {t['text_main']} !important;
-    }}
-
-    /* Labels de widgets (number_input, text_input, selectbox, checkbox...) */
-    div[data-testid="stWidgetLabel"] p,
-    div[data-testid="stWidgetLabel"] label,
-    label {{
-        color: {t['text_main']} !important;
-        opacity: 1 !important;
-        font-weight: 500;
-    }}
-
-    /* Captions / textes d'aide (petit gris) */
-    [data-testid="stCaptionContainer"], .stCaption, small {{
-        color: {t['text_main']} !important;
-        opacity: 0.75 !important;
-    }}
-
-    /* Cartes metric (KPI) */
-    div[data-testid="stMetric"] {{
-        background: {t['card_bg']};
-        border: 1px solid {t['card_border']};
-        border-radius: 12px;
-        padding: 12px 16px;
-        box-shadow: 0 0 20px {t['accent_soft']};
-    }}
-    div[data-testid="stMetricLabel"], div[data-testid="stMetricValue"], div[data-testid="stMetricDelta"] {{
-        color: {t['text_main']} !important;
-    }}
-
-    /* Onglets (st.tabs) */
-    button[data-baseweb="tab"] {{
-        color: {t['text_main']} !important;
-        font-family: {t['font']};
-    }}
-    button[data-baseweb="tab"] p {{
-        color: {t['text_main']} !important;
-    }}
-    button[data-baseweb="tab"][aria-selected="true"] {{
-        color: {t['accent']} !important;
-    }}
-    button[data-baseweb="tab"][aria-selected="true"] p {{
-        color: {t['accent']} !important;
-    }}
-    button[data-baseweb="tab"][aria-selected="true"] {{
-        border-bottom: 2px solid {t['accent']} !important;
-    }}
-
-    /* Boutons principaux */
-    .stButton > button, .stDownloadButton > button {{
-        background: {t['accent_soft']};
-        border: 1px solid {t['accent']};
-        color: {t['text_main']} !important;
-        border-radius: 8px;
-        transition: all 0.2s ease;
-    }}
-    .stButton > button p, .stDownloadButton > button p {{
-        color: {t['text_main']} !important;
-    }}
-    .stButton > button:hover, .stDownloadButton > button:hover {{
-        background: {t['accent']};
-        box-shadow: 0 0 16px {t['accent_soft']};
-    }}
-    .stButton > button:hover p, .stDownloadButton > button:hover p {{
-        color: #05070D !important;
-    }}
-
-    /* Champs de saisie — sélecteurs vérifiés dans le bundle JS réel de
-       Streamlit 1.58 (TextInput.js / NumberInput.js) :
-       - text_input : boîte visible = div[data-testid="stTextInputRootElement"]
-       - number_input : boîte visible = div[data-testid="stNumberInputContainer"],
-         champ réel = input[data-testid="stNumberInputField"]
-       (.stNumberInput / .stTextInput en tant que CLASSES CSS n'existent pas :
-       ce sont des attributs data-testid, pas des classes — d'où l'échec précédent) */
-    div[data-testid="stTextInputRootElement"],
-    div[data-testid="stNumberInputContainer"],
-    div[data-baseweb="input"],
-    div[data-baseweb="textarea"],
-    div[data-baseweb="select"] > div {{
-        background-color: {t['card_bg']} !important;
-        border: 1px solid {t['card_border']} !important;
-        border-radius: 8px !important;
-    }}
-    div[data-testid="stTextInputRootElement"] input,
-    input[data-testid="stNumberInputField"],
-    div[data-baseweb="input"] input,
-    div[data-baseweb="textarea"] textarea,
-    div[data-baseweb="select"] span,
-    textarea {{
-        background-color: transparent !important;
-        color: {t['text_main']} !important;
-        -webkit-text-fill-color: {t['text_main']} !important;
-    }}
-    input::placeholder, textarea::placeholder {{
-        color: {t['text_main']} !important;
-        opacity: 0.45 !important;
-    }}
-    /* Boutons +/- des number_input */
-    button[data-testid="stNumberInputStepDown"],
-    button[data-testid="stNumberInputStepUp"] {{
-        background: {t['accent_soft']} !important;
-        color: {t['text_main']} !important;
-        border: 1px solid {t['card_border']} !important;
-    }}
-
-    /* Expanders — header (résumé cliquable) + contenu */
-    div[data-testid="stExpander"] {{
-        background: {t['card_bg']};
-        border: 1px solid {t['card_border']};
-        border-radius: 10px;
-        overflow: hidden;
-    }}
-    div[data-testid="stExpander"] summary {{
-        background: {t['card_bg']} !important;
-        color: {t['text_main']} !important;
-    }}
-    div[data-testid="stExpander"] summary:hover {{
-        background: {t['accent_soft']} !important;
-    }}
-    div[data-testid="stExpander"] summary p,
-    div[data-testid="stExpander"] summary span {{
-        color: {t['text_main']} !important;
-    }}
-    div[data-testid="stExpander"] summary svg {{
-        fill: {t['text_main']} !important;
-    }}
-
-    /* segmented_control / pills — remplace les selectbox à popover pour
-       les widgets Variante/Élastique/Tension (entièrement dans le DOM,
-       donc stylable, contrairement au popover du selectbox).
-       Sélecteurs vérifiés dans le bundle JS réel de Streamlit 1.58 :
-       chaque segment est un <button data-testid="stBaseButton-segmented_control">
-       (inactif) ou "stBaseButton-segmented_controlActive" (actif). */
-    button[data-testid="stBaseButton-segmented_control"] {{
-        background: {t['card_bg']} !important;
-        border: 1px solid {t['card_border']} !important;
-        color: {t['text_main']} !important;
-    }}
-    button[data-testid="stBaseButton-segmented_control"] p,
-    button[data-testid="stBaseButton-segmented_control"] div {{
-        color: {t['text_main']} !important;
-    }}
-    button[data-testid="stBaseButton-segmented_control"]:hover {{
-        background: {t['accent_soft']} !important;
-        border-color: {t['accent']} !important;
-    }}
-    button[data-testid="stBaseButton-segmented_controlActive"] {{
-        background: {t['accent']} !important;
-        border: 1px solid {t['accent']} !important;
-    }}
-    button[data-testid="stBaseButton-segmented_controlActive"] p,
-    button[data-testid="stBaseButton-segmented_controlActive"] div {{
-        color: #05070D !important;
-        font-weight: 600;
-    }}
-
-    /* Bouton "Tout sauvegarder" — collant en haut de page au scroll */
-    .st-key-save_all_sticky {{
-        position: sticky;
-        top: 0;
-        z-index: 999;
-        padding: 8px 0;
-        background: {t['sidebar_bg']};
-        backdrop-filter: blur(8px);
-        border-bottom: 1px solid {t['card_border']};
-    }}
-
-    /* Conteneurs à bordure (st.container(border=True)) */
-    div[data-testid="stVerticalBlockBorderWrapper"] {{
-        border-color: {t['card_border']} !important;
-    }}
-
-    /* =====================================================================
-       MENUS SYSTÈME & DROPDOWNS
-       Ces éléments (selectbox, multiselect, menu ⋮ "Clear cache"/Settings,
-       tooltips, st.dialog) sont rendus par Streamlit dans des portails
-       BaseWeb attachés directement au <body>, HORS de .stApp. Il faut donc
-       les cibler explicitement et forcer fond + texte ensemble (sinon on
-       hérite d'un texte clair sur un fond resté blanc = illisible).
-       ===================================================================== */
-
-    /* Liste déroulante ouverte (selectbox, multiselect) — Streamlit rend
-       ceci en liste virtualisée avec ce testid précis */
-    div[data-testid="stSelectboxVirtualDropdown"],
-    div[data-testid="stSelectboxVirtualDropdown"] > div,
-    div[data-baseweb="popover"] div[data-baseweb="menu"],
-    ul[data-baseweb="menu"],
-    div[role="listbox"] {{
-        background: {t['sidebar_bg']} !important;
-        border: 1px solid {t['card_border']} !important;
-        border-radius: 8px !important;
-    }}
-    div[data-testid="stSelectboxVirtualDropdown"] * {{
-        background: transparent !important;
-        color: {t['text_main']} !important;
-    }}
-    div[data-testid="stSelectboxVirtualDropdown"] li[aria-selected="true"],
-    div[data-testid="stSelectboxVirtualDropdown"] div[aria-selected="true"],
-    div[data-testid="stSelectboxVirtualDropdown"] li:hover,
-    div[data-testid="stSelectboxVirtualDropdown"] div[role="option"]:hover,
-    ul[data-baseweb="menu"] li:hover,
-    div[role="listbox"] li:hover,
-    li[role="option"]:hover,
-    li[aria-selected="true"] {{
-        background: {t['accent_soft']} !important;
-        color: {t['accent']} !important;
-    }}
-    ul[data-baseweb="menu"] li,
-    div[role="listbox"] li,
-    li[role="option"] {{
-        background: transparent !important;
-        color: {t['text_main']} !important;
-    }}
-
-    /* Menu hamburger Streamlit (⋮ en haut à droite : Clear cache, Settings, Rerun...) */
-    div[data-testid="stMainMenuPopover"],
-    div[data-baseweb="popover"] ul[role="menu"] {{
-        background: {t['sidebar_bg']} !important;
-        border: 1px solid {t['card_border']} !important;
-    }}
-    div[data-testid="stMainMenuPopover"] li,
-    div[data-baseweb="popover"] ul[role="menu"] li,
-    div[data-baseweb="popover"] [role="menuitem"] {{
-        background: transparent !important;
-        color: {t['text_main']} !important;
-    }}
-    div[data-testid="stMainMenuPopover"] li:hover,
-    div[data-baseweb="popover"] [role="menuitem"]:hover {{
-        background: {t['accent_soft']} !important;
-        color: {t['accent']} !important;
-    }}
-    div[data-testid="stMainMenuPopover"] li span,
-    div[data-baseweb="popover"] [role="menuitem"] span,
-    div[data-baseweb="popover"] [role="menuitem"] p {{
-        color: inherit !important;
-    }}
-
-    /* Icône hamburger elle-même + barre d'outils en haut à droite */
-    header[data-testid="stHeader"] {{
-        background: transparent !important;
-    }}
-    div[data-testid="stToolbarActions"], #MainMenu {{
-        color: {t['text_main']} !important;
-    }}
-    div[data-testid="stToolbarActions"] svg, #MainMenu svg {{
-        fill: {t['text_main']} !important;
-    }}
-
-    /* Tooltips (icône "?" d'aide) */
-    div[data-baseweb="tooltip"] {{
-        background: {t['sidebar_bg']} !important;
-        color: {t['text_main']} !important;
-        border: 1px solid {t['card_border']} !important;
-    }}
-
-    /* Boîtes de dialogue (st.dialog) et toasts */
-    div[role="dialog"], div[data-testid="stToast"] {{
-        background: {t['app_gradient']} !important;
-        color: {t['text_main']} !important;
-        border: 1px solid {t['card_border']} !important;
-    }}
-    div[role="dialog"] * {{
-        color: {t['text_main']} !important;
-    }}
-    </style>
-    """
-    st.markdown(css, unsafe_allow_html=True)
-
-def _apply_plotly_theme(fig, theme_name: str):
-    t = THEMES.get(theme_name, THEMES["Abysse"])
-    fig.update_layout(
-        plot_bgcolor=t["bg"],
-        paper_bgcolor=t["bg"],
-        font=dict(color=t["text"], size=11),
-        # Hauteur réduite + angle des dates : la sidebar est une colonne
-        # étroite (surtout sur mobile), la hauteur par défaut de Plotly
-        # (~450px) donnait un ratio écrasé/illisible.
-        height=280,
-        xaxis=dict(showgrid=True, gridcolor=t["grid"], tickformat="%d/%m", tickangle=-45, tickfont=dict(size=9)),
-        yaxis=dict(showgrid=True, gridcolor=t["grid"], tickfont=dict(size=9)),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(color=t["text"], size=9)),
-        margin=dict(l=5, r=5, t=35, b=5),
-        title=dict(font=dict(size=12))
-    )
-    # selector= limite l'effet aux traces scatter/line : un pie chart ou un
-    # bar chart n'a pas de propriété "line" au niveau trace, et plante sinon
-    # ("Bad property path: line") — désormais ces traces sont simplement
-    # ignorées par le sélecteur au lieu de faire planter la page.
-    fig.update_traces(selector=dict(type="scatter"), line=dict(width=2))
-    return fig
 
 def _plateau_badge(dates, values, label: str) -> None:
+    """Affiche un badge de tendance (progression / plateau / régression)."""
     result = detect_plateau(list(dates), list(values), window_days=21)
     if result["status"] == "progress":
         st.success(f"📈 {label} : en progression sur les 21 derniers jours.")
@@ -416,82 +22,192 @@ def _plateau_badge(dates, values, label: str) -> None:
     elif result["status"] == "plateau":
         st.info(f"➖ {label} : stable sur les 21 derniers jours (plateau).")
 
+
+# =========================================================================
+# CALENDRIER D'ACTIVITÉ (style GitHub contributions) — sans numpy
+# =========================================================================
+def render_calendar_tab(df_global: pd.DataFrame) -> None:
+    st.subheader("📅 Calendrier d'activité")
+    if df_global.empty:
+        st.info("Pas encore de données pour générer le calendrier.")
+        return
+
+    try:
+        annees_dispo = sorted({d.year for d in df_global["date"].unique()}, reverse=True)
+        annee_sel = st.selectbox("Année", annees_dispo, key="calendar_year")
+
+        activity = df_global.groupby("date").size().to_dict()
+        df_cal = compute_daily_activity(activity, annee_sel)
+
+        total_series = int(df_cal["count"].sum())
+        nb_jours_actifs = int((df_cal["count"] > 0).sum())
+        st.caption(
+            f"**{annee_sel} : {total_series} séries enregistrées "
+            f"sur {nb_jours_actifs} jour(s) d'entraînement**"
+        )
+
+        ncols = int(df_cal["week_index"].max()) + 1
+
+        # Matrices en listes Python pures — aucune dépendance numpy
+        z          = [[None] * ncols for _ in range(7)]
+        text_hover = [[""]   * ncols for _ in range(7)]
+
+        for _, row in df_cal.iterrows():
+            w   = int(row["weekday"])
+            wk  = int(row["week_index"])
+            cnt = int(row["count"])
+            z[w][wk]          = cnt
+            text_hover[w][wk] = f"{row['date'].strftime('%d %b %Y')}<br>{cnt} série(s)"
+
+        month_positions = df_cal.groupby("month")["week_index"].min().to_dict()
+        month_names = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"]
+
+        zmax_val = max(1, total_series)   # évite zmin == zmax quand tout est à 0
+
+        fig = go.Figure(data=go.Heatmap(
+            z=z,
+            text=text_hover,
+            hoverinfo="text",
+            colorscale=[
+                [0,    "#161b22"],
+                [0.01, "#0e4429"],
+                [0.35, "#006d32"],
+                [0.65, "#26a641"],
+                [1,    "#39d353"],
+            ],
+            showscale=False,
+            xgap=3,
+            ygap=3,
+            zmin=0,
+            zmax=zmax_val,
+        ))
+        fig.update_layout(
+            yaxis=dict(
+                tickmode="array",
+                tickvals=list(range(7)),
+                ticktext=["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"],
+                autorange="reversed",
+            ),
+            xaxis=dict(
+                tickmode="array",
+                tickvals=[month_positions[m] for m in sorted(month_positions)],
+                ticktext=[month_names[m - 1] for m in sorted(month_positions)],
+                side="top",
+            ),
+            height=220,
+            margin=dict(l=40, r=20, t=40, b=10),
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption("Intensité = nombre de séries loggées ce jour-là (planche + musculation).")
+
+    except Exception as e:
+        st.error(f"Erreur lors du rendu du calendrier : {e}")
+
+
 # =========================================================================
 # GRAPHIQUES
 # =========================================================================
-def render_graph_tab(df_global: pd.DataFrame, tous_les_exos: list, include_planche: bool, current_theme: str, user_id: str = None) -> None:
+def render_graph_tab(df_global: pd.DataFrame, tous_les_exos: list, include_planche: bool) -> None:
     if df_global.empty:
         st.write("Pas de données pour les graphiques.")
         return
 
-    periodes = ["Tout l'historique", "7 derniers jours", "30 derniers jours",
-                "Ce mois", "3 derniers mois", "Personnalisée"]
-    if "graph_period_widget" not in st.session_state:
-        pref = st.session_state.get("graph_period", "Tout l'historique")
-        st.session_state["graph_period_widget"] = pref if pref in periodes else "Tout l'historique"
-
     col_preset, col_custom = st.columns([1, 2])
     with col_preset:
-        preset = st.selectbox("Période", periodes, key="graph_period_widget")
-        if preset != st.session_state.get("graph_period"):
-            st.session_state.graph_period = preset
-            if user_id:
-                save_graph_period(user_id, preset)
+        preset = st.selectbox("Période", [
+            "Tout l'historique", "7 derniers jours", "30 derniers jours",
+            "Ce mois", "3 derniers mois", "Personnalisée",
+        ])
 
-    today = datetime.now().date()
+    today       = datetime.now().date()
     min_db_date = df_global["date"].min()
     max_db_date = df_global["date"].max()
 
-    if preset == "7 derniers jours": start_date, end_date = today - timedelta(days=7), today
-    elif preset == "30 derniers jours": start_date, end_date = today - timedelta(days=30), today
-    elif preset == "Ce mois": start_date, end_date = today.replace(day=1), today
-    elif preset == "3 derniers mois": start_date, end_date = today - timedelta(days=90), today
-    elif preset == "Tout l'historique": start_date, end_date = min_db_date, max_db_date
+    if   preset == "7 derniers jours":   start_date, end_date = today - timedelta(days=7),  today
+    elif preset == "30 derniers jours":  start_date, end_date = today - timedelta(days=30), today
+    elif preset == "Ce mois":            start_date, end_date = today.replace(day=1), today
+    elif preset == "3 derniers mois":    start_date, end_date = today - timedelta(days=90), today
+    elif preset == "Tout l'historique":  start_date, end_date = min_db_date, max_db_date
     else:
         with col_custom:
             sel = st.date_input("Période personnalisée", [min_db_date, max_db_date])
             start_date, end_date = (sel[0], sel[1]) if len(sel) == 2 else (min_db_date, max_db_date)
 
-    df_period = df_global[(df_global["date"] >= start_date) & (df_global["date"] <= end_date)]
+    df_period = df_global[
+        (df_global["date"] >= start_date) & (df_global["date"] <= end_date)
+    ]
 
     if df_period.empty:
         st.warning("Aucune donnée disponible pour cette période.")
         return
 
-    t_colors = THEMES.get(current_theme, THEMES["Abysse"])["colors"]
-
-    # Planche
+    # Planche — ffill
     if include_planche:
         df_planche = df_period[df_period["exercice"].str.lower() == "planche"]
         if not df_planche.empty:
-            df_g_p = df_planche.groupby(["date", "variante"])["effort_pondere"].max().reset_index()
+            df_g_p  = df_planche.groupby(["date", "variante"])["effort_pondere"].max().reset_index()
             pivot_p = lisser_donnees(df_g_p, "date", "variante", "effort_pondere", fill_method="ffill")
             if not pivot_p.empty:
                 df_melt_p = pivot_p.reset_index().melt(id_vars="date", var_name="Variante", value_name="Effort")
-                fig_p = px.line(df_melt_p, x="date", y="Effort", color="Variante", title="Évolution Planche — effort pondéré", color_discrete_sequence=t_colors)
+                fig_p = px.line(df_melt_p, x="date", y="Effort", color="Variante",
+                                title="Évolution Planche — effort pondéré")
                 fig_p.update_traces(connectgaps=True, hovertemplate="%{y:.0f} pts")
-                fig_p = _apply_plotly_theme(fig_p, current_theme)
-                st.plotly_chart(fig_p, width='stretch')
+                fig_p.update_layout(hovermode="x unified", xaxis_title="", yaxis_title="Effort Pondéré")
+                st.plotly_chart(fig_p, use_container_width=True)
                 df_best = df_planche.groupby("date")["effort_pondere"].max().reset_index()
                 _plateau_badge(df_best["date"], df_best["effort_pondere"], "Planche")
 
-    # Musculation
+    # Musculation — volume (tonnage si charge renseignée)
     if tous_les_exos:
-        select_exos = st.multiselect("Sélectionner les exercices", tous_les_exos, default=tous_les_exos[:3] if len(tous_les_exos) >= 3 else tous_les_exos)
+        select_exos = st.multiselect(
+            "Sélectionner les exercices", tous_les_exos,
+            default=tous_les_exos[:3] if len(tous_les_exos) >= 3 else tous_les_exos,
+        )
         if select_exos:
-            df_muscu = df_period[df_period["exercice"].str.lower().isin([e.lower().strip() for e in select_exos])].copy()
+            df_muscu = df_period[
+                df_period["exercice"].str.lower().isin([e.lower().strip() for e in select_exos])
+            ].copy()
             if not df_muscu.empty:
-                if "charge" not in df_muscu.columns: df_muscu["charge"] = 0.0
+                # Charge défensive : colonne peut ne pas exister (migration SQL non faite)
+                if "charge" not in df_muscu.columns:
+                    df_muscu["charge"] = 0.0
                 df_muscu["charge"] = pd.to_numeric(df_muscu["charge"], errors="coerce").fillna(0.0)
-                df_muscu["performance"] = pd.to_numeric(df_muscu["performance"], errors="coerce").fillna(0.0)
-                df_muscu["volume"] = df_muscu.apply(lambda r: r["performance"] * r["charge"] if r["charge"] > 0 else r["performance"], axis=1)
-                label_y = "Tonnage (kg)" if (df_muscu["charge"] > 0).any() else "Reps"
-                df_g_vol = df_muscu.groupby(["date", "exercice"])["volume"].sum().reset_index()
+                df_muscu["volume"] = df_muscu.apply(
+                    lambda r: r["performance"] * r["charge"]
+                              if r["charge"] > 0 else r["performance"],
+                    axis=1,
+                )
+                a_du_charge = (df_muscu["charge"] > 0).any()
+                label_y     = "Tonnage (kg)" if a_du_charge else "Reps"
 
-                fig_v = px.line(df_g_vol, x="date", y="volume", color="exercice", markers=True, title=f"Volume brut total ({label_y.lower()})", color_discrete_sequence=t_colors)
-                fig_v.update_traces(hovertemplate="%{y:.0f}")
-                fig_v = _apply_plotly_theme(fig_v, current_theme)
-                st.plotly_chart(fig_v, width='stretch')
+                df_g_vol  = df_muscu.groupby(["date", "exercice"])["volume"].sum().reset_index()
+                pivot_vol = lisser_donnees(df_g_vol, "date", "exercice", "volume", fill_method="ffill")
+                if not pivot_vol.empty:
+                    df_melt_v = pivot_vol.reset_index().melt(id_vars="date", var_name="Exercice", value_name=label_y)
+                    fig_v = px.line(df_melt_v, x="date", y=label_y, color="Exercice",
+                                    title=f"Volume total par séance ({label_y.lower()})")
+                    fig_v.update_traces(connectgaps=True, hovertemplate="%{y:.0f}")
+                    fig_v.update_layout(hovermode="x unified", xaxis_title="", yaxis_title=label_y)
+                    st.plotly_chart(fig_v, use_container_width=True)
+
+                    for exo in select_exos:
+                        sous_df = df_g_vol[df_g_vol["exercice"].str.lower() == exo.lower().strip()]
+                        if not sous_df.empty:
+                            _plateau_badge(sous_df["date"], sous_df["volume"], exo)
+
+    # Volume par catégorie — zero fill
+    df_g_cat  = df_period.groupby(["date", "categorie"]).size().reset_index(name="nb_series")
+    pivot_cat = lisser_donnees(df_g_cat, "date", "categorie", "nb_series", fill_method="zero")
+    if not pivot_cat.empty:
+        df_melt_c = pivot_cat.reset_index().melt(id_vars="date", var_name="Catégorie", value_name="Séries")
+        fig_c = px.line(df_melt_c, x="date", y="Séries", color="Catégorie",
+                        title="Nombre de séries par catégorie")
+        fig_c.update_traces(connectgaps=True, hovertemplate="%{y:.0f} Séries")
+        fig_c.update_layout(hovermode="x unified", xaxis_title="", yaxis_title="Volume (Séries)")
+        st.plotly_chart(fig_c, use_container_width=True)
+
 
 # =========================================================================
 # RECORDS
@@ -504,15 +220,25 @@ def render_records_tab(df_global: pd.DataFrame) -> None:
     c1, c2 = st.columns(2)
     with c1:
         st.write("#### 🤸 Record Planche")
-        df_p = df_global[(df_global["exercice"].str.lower() == "planche") & (df_global["effort_pondere"] > 0)].copy()
+        df_p = df_global[
+            (df_global["exercice"].str.lower() == "planche") &
+            (df_global["effort_pondere"] > 0)
+        ].copy()
         if not df_p.empty:
             for col, default in [("variante", "Full"), ("elastique", "Aucun"), ("tension", "N/A")]:
                 df_p[col] = df_p[col].fillna(default).replace("", default)
-            df_p = df_p.sort_values(["effort_pondere", "performance"], ascending=[False, False])
-            df_pr = df_p.drop_duplicates(subset=["variante", "elastique", "tension"])[["date", "variante", "elastique", "tension", "performance", "effort_pondere"]].copy()
+            df_p  = df_p.sort_values(["effort_pondere", "performance"], ascending=[False, False])
+            df_pr = (
+                df_p.drop_duplicates(subset=["variante", "elastique", "tension"])
+                [["date", "variante", "elastique", "tension", "performance", "effort_pondere"]]
+                .copy()
+            )
             df_pr.columns = ["Date", "Variante", "Élastique", "Tension", "Temps (s)", "Effort"]
             df_pr[["Temps (s)", "Effort"]] = df_pr[["Temps (s)", "Effort"]].astype(int)
-            st.dataframe(df_pr.style.background_gradient(subset=["Effort", "Temps (s)"], cmap="YlOrRd"), width='stretch', hide_index=True)
+            st.dataframe(
+                df_pr.style.background_gradient(subset=["Effort", "Temps (s)"], cmap="YlOrRd"),
+                use_container_width=True, hide_index=True,
+            )
         else:
             st.info("Aucun record de Planche enregistré.")
 
@@ -520,119 +246,100 @@ def render_records_tab(df_global: pd.DataFrame) -> None:
         st.write("#### 💪 Top Musculation (Volume max / séance)")
         df_m = df_global[df_global["exercice"].str.lower() != "planche"].copy()
         if not df_m.empty:
-            if "charge" not in df_m.columns: df_m["charge"] = 0.0
+            # Charge défensive
+            if "charge" not in df_m.columns:
+                df_m["charge"] = 0.0
             df_m["charge"] = pd.to_numeric(df_m["charge"], errors="coerce").fillna(0.0)
-            df_m["volume"] = df_m.apply(lambda r: r["performance"] * r["charge"] if r["charge"] > 0 else r["performance"], axis=1)
-            df_vol = df_m.groupby(["exercice", "date"])["volume"].sum().reset_index()
+            df_m["volume"] = df_m.apply(
+                lambda r: r["performance"] * r["charge"]
+                          if r["charge"] > 0 else r["performance"],
+                axis=1,
+            )
+            df_vol  = df_m.groupby(["exercice", "date"])["volume"].sum().reset_index()
             idx_max = df_vol.groupby("exercice")["volume"].idxmax()
             a_du_charge_global = (df_m["charge"] > 0).any()
-            label = "Tonnage Max (kg)" if a_du_charge_global else "Volume Max (reps)"
-            df_pr_muscu = df_vol.loc[idx_max].rename(columns={"volume": label, "date": "Date du PR", "exercice": "Exercice"})[["Exercice", label, "Date du PR"]].sort_values(label, ascending=False)
+            label   = "Tonnage Max (kg)" if a_du_charge_global else "Volume Max (reps)"
+            df_pr_muscu = (
+                df_vol.loc[idx_max]
+                .rename(columns={"volume": label, "date": "Date du PR", "exercice": "Exercice"})
+                [["Exercice", label, "Date du PR"]]
+                .sort_values(label, ascending=False)
+            )
             df_pr_muscu[label] = df_pr_muscu[label].astype(int)
-            st.dataframe(df_pr_muscu.style.background_gradient(subset=[label], cmap="Blues"), width='stretch', hide_index=True)
+            st.dataframe(
+                df_pr_muscu.style.background_gradient(subset=[label], cmap="Blues"),
+                use_container_width=True, hide_index=True,
+            )
         else:
             st.info("Aucun exercice de musculation enregistré.")
+
 
 # =========================================================================
 # REPOS
 # =========================================================================
 def render_repos_tab(df_global: pd.DataFrame) -> None:
     st.subheader("💤 Analyse Mathématique de la Récupération")
-    if df_global.empty: return
+    if df_global.empty:
+        return
 
     df_all_dates = pd.DataFrame({"date": df_global["date"].unique()}).sort_values("date")
     if len(df_all_dates) <= 1:
         st.info("Ajoute au moins deux séances à des dates différentes pour générer l'analyse.")
         return
 
-    df_all_dates["date_dt"] = pd.to_datetime(df_all_dates["date"])
+    df_all_dates["date_dt"]     = pd.to_datetime(df_all_dates["date"])
     df_all_dates["jours_repos"] = df_all_dates["date_dt"].diff().dt.days - 1
     df_repos_stats = df_all_dates.dropna()
-    suggestion = suggest_next_session(df_global["date"].unique().tolist())
+    suggestion     = suggest_next_session(df_global["date"].unique().tolist())
 
-    st.metric("Repos moyen", f"{int(round(df_repos_stats['jours_repos'].mean()))} j")
-    st.metric("Repos habituel (mode)", f"{suggestion['mode_repos']} j")
-    st.metric("Plus longue coupure", f"{int(df_repos_stats['jours_repos'].max())} j")
-    if suggestion["next_session"] is not None:
-        st.success(f"🔜 Prochaine séance optimale : **{suggestion['next_session'].strftime('%A %d %B')}**")
+    cr1, cr2 = st.columns([1, 2])
+    with cr1:
+        st.metric("Repos moyen",           f"{int(round(df_repos_stats['jours_repos'].mean()))} j")
+        st.metric("Repos habituel (mode)", f"{suggestion['mode_repos']} j")
+        st.metric("Plus longue coupure",   f"{int(df_repos_stats['jours_repos'].max())} j")
+        if suggestion["next_session"] is not None:
+            st.success(
+                f"🔜 Prochaine séance optimale : "
+                f"**{suggestion['next_session'].strftime('%A %d %B')}**"
+            )
+        habitudes = df_repos_stats["jours_repos"].value_counts().reset_index()
+        habitudes.columns = ["Jours", "Nb"]
+        habitudes["Jours"] = habitudes["Jours"].astype(int).astype(str) + " j"
+        fig_pie = px.pie(habitudes, values="Nb", names="Jours",
+                         title="Répartition de tes formats de repos")
+        st.plotly_chart(fig_pie, use_container_width=True)
 
-    habitudes = df_repos_stats["jours_repos"].value_counts().reset_index()
-    habitudes.columns = ["Jours", "Nb"]
-    habitudes["Jours"] = habitudes["Jours"].astype(int).astype(str) + " j"
-    current_theme = st.session_state.get("app_theme", "Épuré")
-    fig_pie = px.pie(habitudes, values="Nb", names="Jours", title="Répartition des formats de repos")
-    fig_pie = _apply_plotly_theme(fig_pie, current_theme)
-    st.plotly_chart(fig_pie, width='stretch')
+    with cr2:
+        fig_bar = px.bar(df_repos_stats, x="date_dt", y="jours_repos",
+                         title="Chronologie des jours de repos accordés")
+        fig_bar.update_layout(xaxis_title="", yaxis_title="Jours de repos consécutifs")
+        fig_bar.update_traces(
+            marker_color="#1f77b4",
+            hovertemplate="Reprise : %{x}<br>Repos : %{y} jours",
+        )
+        st.plotly_chart(fig_bar, use_container_width=True)
 
-    fig_bar = px.bar(df_repos_stats, x="date_dt", y="jours_repos", title="Chronologie des jours de repos accordés")
-    fig_bar.update_traces(marker_color=THEMES.get(current_theme, THEMES["Abysse"])["colors"][0])
-    fig_bar = _apply_plotly_theme(fig_bar, current_theme)
-    st.plotly_chart(fig_bar, width='stretch')
+        st.write("#### 📜 Dernières tranches de récupération")
+        df_log = df_repos_stats[["date", "jours_repos"]].copy()
+        df_log.columns = ["Date de Reprise", "Jours de Repos"]
+        df_log["Jours de Repos"] = df_log["Jours de Repos"].astype(int)
+        st.dataframe(
+            df_log.sort_values("Date de Reprise", ascending=False),
+            use_container_width=True, hide_index=True,
+        )
 
-# =========================================================================
-# THEMES (Apparence)
-# =========================================================================
-def render_theme_tab(user_id: str = None):
-    st.subheader("🎨 Apparence du Tableau de Bord")
-    current = st.session_state.get("app_theme", "Abysse")
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        choix = st.radio("Thème global", list(THEMES.keys()), index=list(THEMES.keys()).index(current))
-    with col2:
-        st.write("**Aperçu des couleurs principales :**")
-        c_list = THEMES[choix]["colors"]
-        html_colors = "".join([f"<div style='background-color:{c}; width:40px; height:40px; border-radius:50%; display:inline-block; margin-right:10px;'></div>" for c in c_list])
-        st.markdown(html_colors, unsafe_allow_html=True)
-        st.caption(f"Fond des graphiques : {THEMES[choix]['bg']}")
-
-    if st.button("✅ Appliquer le thème", width='stretch'):
-        st.session_state.app_theme = choix
-        if user_id:
-            from supabase_io import save_app_theme
-            save_app_theme(user_id, choix)
-        st.rerun()
 
 # =========================================================================
-# PARAMÈTRES (Le retour !)
+# PARAMÈTRES
 # =========================================================================
 def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str) -> None:
     st.subheader("⚙️ Configuration Générale")
 
-    if "include_planche_widget" not in st.session_state:
-        st.session_state["include_planche_widget"] = st.session_state.get("include_planche", True)
-    st.session_state.include_planche = st.checkbox("Inclure la Planche dans la saisie", key="include_planche_widget")
-    st.number_input("Taille de la moyenne glissante (séances)", min_value=1, max_value=30, step=1, key="nb_days_avg")
-    st.number_input("Poids de référence pour le calcul d'isométrie (kg)", min_value=40, max_value=200, step=1, key="weight")
-
-    if st.button("✅ Sauvegarder ces réglages", width='stretch'):
-        ok1 = save_include_planche(user_id, st.session_state.include_planche)
-        ok2 = save_nb_days_avg(user_id, st.session_state.nb_days_avg)
-        ok3 = save_weight(user_id, st.session_state.weight)
-        st.cache_data.clear()
-        if ok1 and ok2 and ok3:
-            st.success("Réglages sauvegardés.")
-        else:
-            st.warning("Échec de sauvegarde d'au moins un réglage.")
-
-    st.write("---")
-    st.subheader("🗓️ Persistance des exercices sur la page d'accueil")
-    st.caption("Un exercice reste affiché sur la page d'accueil tant qu'il a été pratiqué "
-               "lors d'une des N dernières séances enregistrées (peu importe le nombre de "
-               "jours calendaires écoulés entre elles). Au-delà, il disparaît (mais reste "
-               "bien sûr dans ton historique).")
-    if "inactivity_days_input" not in st.session_state:
-        st.session_state["inactivity_days_input"] = int(st.session_state.inactivity_days)
-    nb_seances = st.number_input("Nombre de dernières séances à considérer", min_value=1, max_value=30,
-                                  step=1, key="inactivity_days_input")
-    if st.button("✅ Sauvegarder ce paramètre", width='stretch'):
-        st.session_state.inactivity_days = int(nb_seances)
-        ok = save_inactivity_days(user_id, int(nb_seances))
-        st.session_state.pop("last_seen_date", None)  # force le recalcul de la liste du jour
-        if ok:
-            st.success(f"Seuil mis à jour : {nb_seances} dernière(s) séance(s).")
-        else:
-            st.warning("Échec de sauvegarde.")
-        st.rerun()
+    st.checkbox("Inclure la Planche dans la saisie", key="include_planche")
+    st.number_input("Taille de la moyenne glissante (séances)",
+                    min_value=1, max_value=30, step=1, key="nb_days_avg")
+    st.number_input("Poids de référence pour le calcul d'isométrie (kg)",
+                    min_value=40, max_value=200, step=1, key="weight")
 
     st.write("---")
     st.subheader("📥 Export de données")
@@ -642,7 +349,7 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
             data=df_global.to_csv(index=False).encode("utf-8"),
             file_name=f"sysiphe_export_{datetime.now().strftime('%Y%m%d')}.csv",
             mime="text/csv",
-            width='stretch',
+            use_container_width=True,
         )
         st.caption(f"{len(df_global)} lignes · {df_global['date'].nunique()} séances")
     else:
@@ -650,114 +357,79 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
 
     st.write("---")
     st.subheader("🎛️ Calibration du modèle isométrique")
-    st.caption("Ces scores pondèrent la difficulté de chaque variante.")
-    
+    st.caption(
+        "Ces scores pondèrent la difficulté de chaque variante. "
+        "Sauvegardés sur ton compte, ils persistent entre tes sessions."
+    )
+    cols_cal = st.columns(4)
     updated_scores = {}
-    for var, score in st.session_state.config_variantes.items():
-        cal_key = f"cal_{var}"
-        if cal_key not in st.session_state:
-            st.session_state[cal_key] = int(score)
-        updated_scores[var] = st.number_input(var, min_value=1, max_value=20, step=1, key=cal_key)
-        
-    if st.button("✅ Appliquer et sauvegarder la calibration", width='stretch'):
+    for i, (var, score) in enumerate(st.session_state.config_variantes.items()):
+        with cols_cal[i % 4]:
+            updated_scores[var] = st.number_input(
+                var, min_value=1, max_value=20, value=int(score), step=1, key=f"cal_{var}"
+            )
+    if st.button("✅ Appliquer et sauvegarder tous les paramètres", use_container_width=True):
         st.session_state.config_variantes = updated_scores
-        ok = save_user_settings(user_id, updated_scores)
+        ok = save_user_settings(
+            user_id,
+            updated_scores,
+            weight=float(st.session_state.weight),
+            nb_days_avg=int(st.session_state.nb_days_avg),
+            include_planche=bool(st.session_state.include_planche),
+        )
         st.cache_data.clear()
         if ok:
-            st.success("Scores mis à jour et sauvegardés.")
+            st.success("✅ Paramètres sauvegardés — seront restaurés à ta prochaine connexion.")
         else:
-            st.warning("Échec de sauvegarde.")
+            st.warning(
+                "Paramètres appliqués pour cette session, mais la sauvegarde a échoué "
+                "(table `user_settings` absente ? voir SETUP.md)."
+            )
         st.rerun()
-
-    st.write("---")
-    st.subheader("🤸 Calibration des formes (Planche)")
-    st.caption("Indice de difficulté de chaque forme — plus le score est haut, plus l'effort pondéré est élevé. "
-               "L'ordre d'affichage (F1-F5) suit automatiquement ces scores, du plus facile au plus dur.")
-
-    updated_formes = {}
-    for forme, score in sorted(st.session_state.config_formes.items(), key=lambda kv: kv[1]):
-        cal_forme_key = f"cal_forme_{forme}"
-        if cal_forme_key not in st.session_state:
-            st.session_state[cal_forme_key] = float(score)
-        updated_formes[forme] = st.number_input(forme, min_value=1.0, max_value=200.0, step=0.1, key=cal_forme_key)
-
-    if st.button("✅ Appliquer et sauvegarder les formes", width='stretch'):
-        st.session_state.config_formes = updated_formes
-        ok = save_formes_config(user_id, updated_formes)
-        st.cache_data.clear()
-        if ok:
-            st.success("Formes mises à jour et sauvegardées.")
-        else:
-            st.warning("Échec de sauvegarde.")
-        st.rerun()
-
-    with st.expander("➕ Ajouter une nouvelle forme"):
-        c_nom, c_score = st.columns([2, 1])
-        with c_nom:
-            nouvelle_forme = st.text_input("Nom de la forme", placeholder="ex: Straddle_High", key="new_forme_nom")
-        with c_score:
-            if "new_forme_score" not in st.session_state:
-                st.session_state["new_forme_score"] = 50.0
-            nouveau_score = st.number_input("Indice de difficulté", min_value=1.0, max_value=200.0, step=0.1, key="new_forme_score")
-        if st.button("➕ Ajouter cette forme", width='stretch'):
-            nom = nouvelle_forme.strip()
-            if not nom:
-                st.error("Le nom ne peut pas être vide.")
-            elif nom in st.session_state.config_formes:
-                st.error(f"⚠️ '{nom}' existe déjà.")
-            else:
-                st.session_state.config_formes[nom] = float(nouveau_score)
-                ok = save_formes_config(user_id, st.session_state.config_formes)
-                if ok:
-                    st.success(f"✅ '{nom}' ajoutée (indice {nouveau_score}).")
-                else:
-                    st.warning("Échec de sauvegarde.")
-                st.rerun()
 
     st.write("---")
     st.subheader("✏️ Renommer un exercice")
+    st.markdown("Corrige les fautes de frappe ou uniformise les noms dans tout ton historique.")
     if tous_les_exos:
-        exo_a_renommer = st.selectbox("Exercice à modifier", tous_les_exos)
-        nouveau_nom = st.text_input("Nouveau nom")
-        
-        if st.button("Renommer", width='stretch'):
-            nv = nouveau_nom.strip()
-            if not nv:
-                st.error("Le nouveau nom ne peut pas être vide.")
-            elif nv == exo_a_renommer:
-                st.warning("Le nouveau nom est identique à l'ancien.")
-            elif nv in tous_les_exos:
-                st.error(f"⚠️ '{nv}' existe déjà.")
-            else:
-                try:
-                    update_exercise_name(user_id, exo_a_renommer, nv)
-                    st.cache_data.clear()
-                    st.success(f"✅ '{exo_a_renommer}' → '{nv}'")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Erreur : {e}")
+        col_old, col_new, col_btn = st.columns([2, 2, 1])
+        with col_old: exo_a_renommer = st.selectbox("Exercice à modifier", tous_les_exos)
+        with col_new: nouveau_nom    = st.text_input("Nouveau nom")
+        with col_btn:
+            st.write("")
+            if st.button("Renommer", use_container_width=True):
+                nv = nouveau_nom.strip()
+                if not nv:
+                    st.error("Le nouveau nom ne peut pas être vide.")
+                elif nv == exo_a_renommer:
+                    st.warning("Le nouveau nom est identique à l'ancien.")
+                elif nv in tous_les_exos:
+                    st.error(f"⚠️ '{nv}' existe déjà.")
+                else:
+                    try:
+                        update_exercise_name(user_id, exo_a_renommer, nv)
+                        st.cache_data.clear()
+                        st.success(f"✅ '{exo_a_renommer}' → '{nv}'")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erreur lors du renommage : {e}")
     else:
-        st.caption("Aucun exercice personnalisé enregistré.")
+        st.caption("Aucun exercice personnalisé enregistré pour le moment.")
+
 
 # =========================================================================
 # POINT D'ENTRÉE UNIQUE
 # =========================================================================
 def render_stats_tabs(df_global: pd.DataFrame, tous_les_exos: list, user_id: str) -> None:
-    current_theme = st.session_state.get("app_theme", "Abysse")
-    
-    # On affiche TOUJOURS les onglets, même sans données
-    tab_graph, tab_records, tab_repos, tab_theme, tab_param = st.tabs([
-        "📈 Graphiques", "🏆 Records", "💤 Repos", "🎨 Apparence", "⚙️ Paramètres"
+    tab_graph, tab_calendar, tab_records, tab_repos, tab_param = st.tabs([
+        "📈 Graphiques", "📅 Calendrier", "🏆 Records (PRs)", "💤 Analyse du Repos", "⚙️ Paramètres",
     ])
-    
     with tab_graph:
-        render_graph_tab(df_global, tous_les_exos, st.session_state.get("include_planche", True), current_theme, user_id)
+        render_graph_tab(df_global, tous_les_exos, st.session_state.include_planche)
+    with tab_calendar:
+        render_calendar_tab(df_global)
     with tab_records:
         render_records_tab(df_global)
     with tab_repos:
         render_repos_tab(df_global)
-    with tab_theme:
-        render_theme_tab(user_id)
     with tab_param:
         render_param_tab(df_global, tous_les_exos, user_id)
-
