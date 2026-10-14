@@ -1,0 +1,13 @@
+{
+  "appId": "com.medhi.sysiphe",
+  "appName": "Sysiphe",
+  "webDir": "www",
+  "server": {
+    "url": "https://sysiphe-voseesdgwwcstfepbdepkh.streamlit.app",
+    "cleartext": false,
+    "allowNavigation": ["*.streamlit.app", "*.streamlit.io", "*.supabase.co"]
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}

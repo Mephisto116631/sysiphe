@@ -1,0 +1,91 @@
+name: Build APK Sysiphe
+
+on:
+  push:
+    tags: ["v*"]          # git tag v1.0.0 && git push origin v1.0.0
+  workflow_dispatch:      # bouton "Run workflow" pour un build manuel
+
+permissions:
+  contents: write         # nécessaire pour créer la Release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21    # requis par Capacitor 7
+
+      - name: Vérifier les secrets de signature
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          for v in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS; do
+            [ -n "${!v}" ] || { echo "::error::Secret $v manquant (Settings > Secrets and variables > Actions)"; exit 1; }
+          done
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Générer le projet Android
+        run: |
+          npx cap add android
+          mkdir -p assets && cp ../assets/icon.png assets/icon-only.png
+          npx capacitor-assets generate --android --iconBackgroundColor '#161616' --splashBackgroundColor '#161616'
+          npx cap sync android
+
+      - name: Versionner l'APK
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          [[ "$GITHUB_REF_TYPE" == "tag" ]] || VERSION="0.0.${{ github.run_number }}-dev"
+          sed -i "s/versionCode 1$/versionCode ${{ github.run_number }}/" android/app/build.gradle
+          sed -i "s/versionName \"1.0\"/versionName \"$VERSION\"/" android/app/build.gradle
+          echo "APK_VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Compiler l'APK release
+        working-directory: mobile/android
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Signer l'APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > release.jks
+          BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          IN=android/app/build/outputs/apk/release/app-release-unsigned.apk
+          "$BT/zipalign" -p -f 4 "$IN" aligned.apk
+          "$BT/apksigner" sign --ks release.jks --ks-pass env:KEYSTORE_PASSWORD \
+            --ks-key-alias "$KEY_ALIAS" --out "Sysiphe-$APK_VERSION.apk" aligned.apk
+          "$BT/apksigner" verify "Sysiphe-$APK_VERSION.apk"
+          rm release.jks
+
+      - name: Publier en Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: mobile/Sysiphe-*.apk
+          generate_release_notes: true
+
+      - name: Artefact (build manuel)
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sysiphe-apk
+          path: mobile/Sysiphe-*.apk

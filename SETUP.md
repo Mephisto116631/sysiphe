@@ -82,3 +82,12 @@ Les fonctions pures de `data.py` sont couvertes par `test_data.py` (24 tests, au
 pip install pytest pandas numpy
 pytest test_data.py -v
 ```
+
+## Application Android (APK)
+
+L'APK est un wrapper Capacitor (dossier `mobile/`) qui ouvre l'app Streamlit Cloud. Il est compilé et signé par GitHub Actions (`.github/workflows/android-apk.yml`).
+
+- **Publier une version** : `git tag v1.0.0 && git push origin v1.0.0` → l'APK apparaît dans les Releases du repo.
+- **Build de test** : onglet Actions → « Build APK Sysiphe » → Run workflow (APK en artefact).
+- **Secrets requis** : `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`. Le keystore ne doit jamais être commité.
+- L'icône est générée depuis `assets/icon.png`.

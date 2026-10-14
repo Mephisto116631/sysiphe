@@ -12,3 +12,7 @@ __pycache__/
 # Fichiers sensibles / exports
 force_migration_v2.py
 *.csv
+
+# Clés de signature Android — ne jamais commiter
+*.jks
+*.keystore
