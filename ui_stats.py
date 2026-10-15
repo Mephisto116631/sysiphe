@@ -114,12 +114,19 @@ def render_graph_tab(df_global: pd.DataFrame, tous_les_exos: list, include_planc
         st.write("Pas de données pour les graphiques.")
         return
 
-    col_preset, col_custom = st.columns([1, 2])
-    with col_preset:
-        preset = st.selectbox("Période", [
-            "Tout l'historique", "7 derniers jours", "30 derniers jours",
-            "Ce mois", "3 derniers mois", "Personnalisée",
-        ])
+    _PERIODES = {
+        "Tout": "Tout l'historique",
+        "7 j":  "7 derniers jours",
+        "30 j": "30 derniers jours",
+        "Mois": "Ce mois",
+        "3 m":  "3 derniers mois",
+        "Perso":"Personnalisée",
+    }
+    _label = st.segmented_control(
+        "Période", list(_PERIODES.keys()),
+        default="Tout", key="graph_periode",
+    )
+    preset = _PERIODES.get(_label, "Tout l'historique")
 
     today       = datetime.now().date()
     min_db_date = df_global["date"].min()
@@ -131,9 +138,8 @@ def render_graph_tab(df_global: pd.DataFrame, tous_les_exos: list, include_planc
     elif preset == "3 derniers mois":    start_date, end_date = today - timedelta(days=90), today
     elif preset == "Tout l'historique":  start_date, end_date = min_db_date, max_db_date
     else:
-        with col_custom:
-            sel = st.date_input("Période personnalisée", [min_db_date, max_db_date])
-            start_date, end_date = (sel[0], sel[1]) if len(sel) == 2 else (min_db_date, max_db_date)
+        sel = st.date_input("Période personnalisée", [min_db_date, max_db_date])
+        start_date, end_date = (sel[0], sel[1]) if len(sel) == 2 else (min_db_date, max_db_date)
 
     df_period = df_global[
         (df_global["date"] >= start_date) & (df_global["date"] <= end_date)
