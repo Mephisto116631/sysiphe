@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import streamlit as st
 from streamlit_cookies_controller import CookieController
 
-from supabase_io import load_profiles, create_profile
+from supabase_io import load_profiles, create_profile, verify_pin
 
 def get_cookie_controller():
     """Isole le gestionnaire de cookies par session utilisateur."""
@@ -144,12 +144,43 @@ def render_login_page(supabase, pkce_store: dict, app_url: str) -> None:
     _, col_auth, _ = st.columns([1, 2, 1])
     with col_auth:
         profiles = load_profiles()
+
+        # ── Étape PIN ────────────────────────────────────────────────────────
+        pending = st.session_state.get("_pending_profile")
+        if pending:
+            st.info(f"🔐 PIN pour **{pending['name']}**")
+            pin_input = st.text_input("Code PIN", type="password", max_chars=6,
+                                      key="pin_input", placeholder="••••")
+            c_ok, c_back = st.columns(2)
+            with c_ok:
+                if st.button("Valider", key="btn_pin_ok", width='stretch', type="primary"):
+                    if verify_pin(pending["id"], pin_input):
+                        st.session_state.pop("_pending_profile", None)
+                        st.session_state.user = SimpleNamespace(
+                            id=pending["id"], email=f"{pending['name']} (profil partagé)")
+                        st.session_state.auth_mode = "profile"
+                        controller.set("sys_profile", pending["id"], max_age=31536000)
+                        st.rerun()
+                    else:
+                        st.error("PIN incorrect.")
+            with c_back:
+                if st.button("Retour", key="btn_pin_back", width='stretch'):
+                    st.session_state.pop("_pending_profile", None)
+                    st.rerun()
+            st.stop()
+        # ─────────────────────────────────────────────────────────────────────
+
         for p in profiles:
             if st.button(f"👤 {p['name']}", key=f"profile_btn_{p['id']}", width='stretch'):
-                st.session_state.user = SimpleNamespace(id=p["id"], email=f"{p['name']} (profil partagé)")
-                st.session_state.auth_mode = "profile"
-                controller.set("sys_profile", p["id"], max_age=31536000)  # 1 an
-                st.rerun()
+                if p.get("pin_hash"):
+                    st.session_state["_pending_profile"] = p
+                    st.rerun()
+                else:
+                    st.session_state.user = SimpleNamespace(
+                        id=p["id"], email=f"{p['name']} (profil partagé)")
+                    st.session_state.auth_mode = "profile"
+                    controller.set("sys_profile", p["id"], max_age=31536000)
+                    st.rerun()
 
         with st.expander("➕ Nouveau profil"):
             new_name = st.text_input("Prénom / pseudo", key="new_profile_name", placeholder="ex: Sarah")

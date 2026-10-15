@@ -105,21 +105,45 @@ def delete_perfs(uid: str, date_str: str, exercice: str = None) -> bool:
 # GESTION DES PROFILS (table profiles)
 # =========================================================================
 def load_profiles() -> list[dict]:
-    """Retourne la liste des profils [{id, name}] triée par created_at.
-    Cache court dans st.session_state pour éviter les requêtes répétées
-    sans dépendre du cache global (@st.cache_data incompatible avec session_state).
+    """Retourne la liste des profils [{id, name, pin_hash}] triée par created_at.
+    Cache court dans st.session_state pour éviter les requêtes répétées.
     """
     import time
     cache = st.session_state.get("_profiles_cache")
     if cache and time.time() - cache["ts"] < 30:
         return cache["data"]
     try:
-        res = get_supabase_client().table("profiles").select("id, name").order("created_at").execute()
+        res = get_supabase_client().table("profiles").select("id, name, pin_hash").order("created_at").execute()
         data = res.data or []
     except Exception:
         data = []
     st.session_state["_profiles_cache"] = {"data": data, "ts": time.time()}
     return data
+
+
+def verify_pin(profile_id: str, pin: str) -> bool:
+    """Vérifie le PIN d'un profil (SHA-256). Retourne True si correct."""
+    import hashlib
+    pin_hash = hashlib.sha256(pin.encode()).hexdigest()
+    try:
+        res = (get_supabase_client().table("profiles")
+               .select("id").eq("id", profile_id).eq("pin_hash", pin_hash).execute())
+        return bool(res.data)
+    except Exception:
+        return False
+
+
+def set_pin(profile_id: str, pin: str) -> bool:
+    """Définit ou change le PIN d'un profil. Retourne True si OK."""
+    import hashlib
+    pin_hash = hashlib.sha256(pin.strip().encode()).hexdigest()
+    try:
+        get_supabase_client().table("profiles").update({"pin_hash": pin_hash}).eq("id", profile_id).execute()
+        _clear_profiles_cache()
+        return True
+    except Exception as e:
+        st.error(f"❌ Erreur définition PIN : {e}")
+        return False
 
 
 def _clear_profiles_cache() -> None:
