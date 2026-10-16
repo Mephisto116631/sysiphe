@@ -61,16 +61,28 @@ async function start() {
   $("msg").textContent = "Connexion à Sysiphe…";
 
   const t = await loadTargets();
+
+  // NAS (réseau local, sans auth Streamlit) : WebView directe OK
   if (t.nas && await reachable(t.nas, 2500)) return location.replace(t.nas);
 
-  // Cloud : on navigue directement sans health-check (le fetch no-cors depuis
-  // capacitor://localhost est bloqué par certaines versions de la WebView Android).
   const cloud = t.cloud || DEFAULTS.cloud;
-  if (cloud) return location.replace(cloud);
+  if (!cloud) {
+    $("spin").style.display = "none";
+    $("msg").textContent = "Aucune URL configurée. Vérifie mobile/targets.json.";
+    $("retry").style.display = "block";
+    return;
+  }
 
-  $("spin").style.display = "none";
-  $("msg").textContent = "Aucune URL configurée. Vérifie mobile/targets.json.";
-  $("retry").style.display = "block";
+  // Cloud Streamlit : ouvre dans Chrome Custom Tabs si on est dans l'APK.
+  // Chrome partage ses cookies avec CCT → la session Streamlit passe le gate.
+  // (La WebView a un cookie jar isolé et ne connaît pas la session Streamlit.)
+  if (window.AndroidBridge) {
+    window.AndroidBridge.openInBrowser(cloud);
+    return;
+  }
+
+  // Navigateur web (dev / desktop) : navigation directe
+  location.replace(cloud);
 }
 
 start();
