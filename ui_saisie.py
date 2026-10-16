@@ -28,7 +28,7 @@ def _build_default_planche(df_global: pd.DataFrame, date_active) -> dict:
     """Calcule les valeurs de préremplissage pour le bloc Planche."""
     defaults = {
         "var": "Full", "elas": "Aucun", "tens": "N/A",
-        "forme": "Normal",  # forme unique (globale) pour toute la séance
+        "forms": {i: "Normal" for i in range(1, 6)},  # forme par série
         "times": {i: "" for i in range(1, 6)},
     }
     if df_global.empty:
@@ -39,13 +39,13 @@ def _build_default_planche(df_global: pd.DataFrame, date_active) -> dict:
     if not df_active.empty:
         last = df_active.iloc[0]
         defaults["var"], defaults["elas"], defaults["tens"] = last["variante"], last["elastique"], last["tension"]
-        mode = df_active["forme"].mode()
-        defaults["forme"] = mode.iloc[0] if not mode.empty else "Normal"
         for _, r in df_active.iterrows():
             s = int(r["serie"])
             if pd.notna(r["performance"]):
                 p = float(r["performance"])
                 defaults["times"][s] = str(int(p) if p.is_integer() else p)
+            if pd.notna(r.get("forme")):
+                defaults["forms"][s] = r["forme"]
         return defaults
 
     df_past = df_global[(df_global["date"] < date_active) &
@@ -56,7 +56,8 @@ def _build_default_planche(df_global: pd.DataFrame, date_active) -> dict:
         last = df_last.iloc[0]
         defaults["var"], defaults["elas"], defaults["tens"] = last["variante"], last["elastique"], last["tension"]
         mode = df_last["forme"].mode()
-        defaults["forme"] = mode.iloc[0] if not mode.empty else "Normal"
+        default_forme = mode.iloc[0] if not mode.empty else "Normal"
+        defaults["forms"] = {i: default_forme for i in range(1, 6)}
     return defaults
 
 
@@ -83,7 +84,6 @@ def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, wei
         idx_v = var_keys.index(defaults["var"])   if defaults["var"]   in var_keys   else 0
         idx_e = elas_keys.index(defaults["elas"]) if defaults["elas"]  in elas_keys  else 0
         idx_t = tens_keys.index(defaults["tens"]) if defaults["tens"]  in tens_keys  else 0
-        idx_f = forme_keys.index(defaults["forme"]) if defaults["forme"] in forme_keys else 0
 
         def _persisted_choice(label, options, state_key, default_val, widget_key):
             """Initialise session_state une seule fois pour éviter le conflit
@@ -96,55 +96,81 @@ def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, wei
                 return choice
             return st.session_state.get(state_key, default_val)
 
-        # ── Paramètres globaux (2 × 2) ───────────────────────────────────────
-        ca, cb = st.columns(2)
+        # ── Paramètres globaux (3 colonnes) ──────────────────────────────────
+        ca, cb, cc = st.columns(3)
         with ca:
             var_g = _persisted_choice("Variante", var_keys, f"var_state_{date_active}",
                                        var_keys[idx_v], f"var_g_{date_active}")
         with cb:
             elas_g = _persisted_choice("Élastique", elas_keys, f"elas_state_{date_active}",
                                         elas_keys[idx_e], f"elas_g_{date_active}")
-        cc, cd = st.columns(2)
         with cc:
             tens_g = _persisted_choice("Tension", tens_keys, f"tens_state_{date_active}",
                                         tens_keys[idx_t], f"tens_g_{date_active}")
-        with cd:
-            forme_g = _persisted_choice("Forme", forme_keys, f"forme_state_{date_active}",
-                                         forme_keys[idx_f], f"forme_g_{date_active}")
-            ratio_f = ((formes_config.get(forme_g, min_score) - min_score) / (max_score - min_score)
-                      if max_score > min_score else 0.5)
-            color_f = _intensity_color(ratio_f)
-            st.markdown(
-                f"<style>.st-key-forme_g_{date_active} "
-                f"button[data-testid='stBaseButton-segmented_controlActive']"
-                f"{{background:{color_f} !important; border-color:{color_f} !important;}}</style>",
-                unsafe_allow_html=True,
-            )
 
-        # ── Séries : temps | effort ───────────────────────────────────────────
-        temps_temp, efforts_jour = {}, []
+        # ── CSS : colore les onglets qui ont des données ──────────────────────
+        series_filled = []
         for s in range(1, 6):
-            c1, c2 = st.columns([2, 1])
-            with c1:
+            val = st.session_state.get(f"p_t_{s}_{date_active}",
+                                       defaults["times"].get(s, ""))
+            series_filled.append(bool(val and str(val).strip()))
+
+        tab_css = "".join(
+            f"[data-testid='stTabs'] [role='tablist'] button:nth-child({i+1})"
+            f"{{color:#22c55e !important;border-bottom-color:#22c55e !important;}}"
+            for i, filled in enumerate(series_filled) if filled
+        )
+        if tab_css:
+            st.markdown(f"<style>{tab_css}</style>", unsafe_allow_html=True)
+
+        # ── Séries : onglets marque-page ──────────────────────────────────────
+        tabs = st.tabs(["S1", "S2", "S3", "S4", "S5"])
+        temps_temp, formes_temp, efforts_jour = {}, {}, []
+
+        for i, tab in enumerate(tabs):
+            s = i + 1
+            with tab:
+                # Forme par série (pleine largeur dans l'onglet)
+                forme_default = defaults["forms"].get(s, "Normal")
+                idx_f_s = forme_keys.index(forme_default) if forme_default in forme_keys else 0
+                forme_s = _persisted_choice(
+                    "Forme", forme_keys,
+                    f"forme_s_state_{s}_{date_active}", forme_keys[idx_f_s],
+                    f"forme_s_{s}_{date_active}",
+                )
+                ratio_f = ((formes_config.get(forme_s, min_score) - min_score) /
+                           (max_score - min_score) if max_score > min_score else 0.5)
+                color_f = _intensity_color(ratio_f)
+                st.markdown(
+                    f"<style>.st-key-forme_s_{s}_{date_active} "
+                    f"button[data-testid='stBaseButton-segmented_controlActive']"
+                    f"{{background:{color_f} !important;border-color:{color_f} !important;}}</style>",
+                    unsafe_allow_html=True,
+                )
+
+                # Temps
                 t_key = f"p_t_{s}_{date_active}"
                 if t_key not in st.session_state:
                     st.session_state[t_key] = defaults["times"].get(s, "")
-                t = st.text_input(f"S{s} (s)", key=t_key)
-            with c2:
-                eff = calculer_effort(var_g, elas_g, tens_g, forme_g, t, weight,
-                                      variantes_config, formes_config) if t else 0
-                ratio_e = (eff / record_planche) if record_planche else 0
-                color_e = _intensity_color(ratio_e) if eff > 0 else "inherit"
-                st.markdown(
-                    f"<div style='text-align:center;padding-top:28px;'>"
-                    f"<span style='font-size:1.4rem;font-weight:700;color:{color_e};'>{eff:.0f}</span>"
-                    f"<span style='font-size:0.75rem;opacity:0.6;'> pts</span>"
-                    f"</div>",
-                    unsafe_allow_html=True,
-                )
-            temps_temp[s] = t
-            if t and eff > 0:
-                efforts_jour.append(eff)
+                t = st.text_input("Temps (s)", key=t_key)
+
+                # Effort
+                eff = (calculer_effort(var_g, elas_g, tens_g, forme_s, t, weight,
+                                       variantes_config, formes_config) if t else 0)
+                if eff > 0:
+                    ratio_e = (eff / record_planche) if record_planche else 0
+                    color_e = _intensity_color(ratio_e)
+                    st.markdown(
+                        f"<div style='text-align:center;padding:12px 0 4px;'>"
+                        f"<span style='font-size:2rem;font-weight:700;color:{color_e};'>{eff:.0f}</span>"
+                        f"<span style='font-size:0.8rem;opacity:0.6;'> pts</span></div>",
+                        unsafe_allow_html=True,
+                    )
+
+                temps_temp[s] = t
+                formes_temp[s] = forme_s
+                if t and eff > 0:
+                    efforts_jour.append(eff)
 
         if efforts_jour:
             best_today = max(efforts_jour)
@@ -164,13 +190,14 @@ def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, wei
                     t = temps_temp[s]
                     if t:
                         try:
-                            eff = calculer_effort(var_g, elas_g, tens_g, forme_g, t, weight,
+                            forme_s = formes_temp.get(s, "Normal")
+                            eff = calculer_effort(var_g, elas_g, tens_g, forme_s, t, weight,
                                                   variantes_config, formes_config)
                             lignes.append({
                                 "user_id": user_id, "date": str(date_active),
                                 "exercice": "Planche", "serie": s, "performance": float(t),
                                 "variante": var_g, "elastique": elas_g, "tension": tens_g,
-                                "forme": forme_g, "effort_pondere": eff, "charge": 0,
+                                "forme": forme_s, "effort_pondere": eff, "charge": 0,
                                 "categorie": "Force Iso", "unite": "Sec",
                             })
                         except ValueError:
