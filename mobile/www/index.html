@@ -63,12 +63,13 @@ async function start() {
   const t = await loadTargets();
   if (t.nas && await reachable(t.nas, 2500)) return location.replace(t.nas);
 
-  if (t.nas) $("msg").textContent = "NAS indisponible, bascule sur le cloud…";
+  // Cloud : on navigue directement sans health-check (le fetch no-cors depuis
+  // capacitor://localhost est bloqué par certaines versions de la WebView Android).
   const cloud = t.cloud || DEFAULTS.cloud;
-  if (await reachable(cloud, 8000)) return location.replace(cloud);
+  if (cloud) return location.replace(cloud);
 
   $("spin").style.display = "none";
-  $("msg").textContent = "Impossible de joindre Sysiphe. Vérifie ta connexion internet.";
+  $("msg").textContent = "Aucune URL configurée. Vérifie mobile/targets.json.";
   $("retry").style.display = "block";
 }
 
