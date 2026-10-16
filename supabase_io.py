@@ -105,7 +105,7 @@ def delete_perfs(uid: str, date_str: str, exercice: str = None) -> bool:
 # GESTION DES PROFILS (table profiles)
 # =========================================================================
 def load_profiles() -> list[dict]:
-    """Retourne la liste des profils [{id, name, pin_hash}] triée par created_at.
+    """Retourne la liste des profils triée par dernière connexion (récent en premier).
     Cache court dans st.session_state pour éviter les requêtes répétées.
     """
     import time
@@ -113,12 +113,27 @@ def load_profiles() -> list[dict]:
     if cache and time.time() - cache["ts"] < 30:
         return cache["data"]
     try:
-        res = get_supabase_client().table("profiles").select("id, name, pin_hash").order("created_at").execute()
+        res = (get_supabase_client().table("profiles")
+               .select("id, name, pin_hash, last_login")
+               .order("last_login", desc=True, nullsfirst=False)
+               .order("created_at")
+               .execute())
         data = res.data or []
     except Exception:
         data = []
     st.session_state["_profiles_cache"] = {"data": data, "ts": time.time()}
     return data
+
+
+def touch_profile_login(profile_id: str) -> None:
+    """Met à jour last_login du profil à maintenant (best-effort, sans bloquer)."""
+    try:
+        get_supabase_client().table("profiles").update(
+            {"last_login": "now()"}
+        ).eq("id", profile_id).execute()
+        _clear_profiles_cache()
+    except Exception:
+        pass
 
 
 def verify_pin(profile_id: str, pin: str) -> bool:

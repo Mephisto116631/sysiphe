@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import streamlit as st
 from streamlit_cookies_controller import CookieController
 
-from supabase_io import load_profiles, create_profile, verify_pin
+from supabase_io import load_profiles, create_profile, verify_pin, touch_profile_login
 
 def get_cookie_controller():
     """Isole le gestionnaire de cookies par session utilisateur."""
@@ -69,6 +69,7 @@ def check_oauth_callback(supabase, pkce_store: dict) -> None:
         profiles = load_profiles()
         profil = next((p for p in profiles if p["id"] == saved_profile_uid), None)
         if profil:
+            touch_profile_login(profil["id"])
             st.session_state.user = SimpleNamespace(id=profil["id"], email=f"{profil['name']} (profil partagé)")
             st.session_state.auth_mode = "profile"
             return
@@ -155,6 +156,7 @@ def render_login_page(supabase, pkce_store: dict, app_url: str) -> None:
             with c_ok:
                 if st.button("Valider", key="btn_pin_ok", width='stretch', type="primary"):
                     if verify_pin(pending["id"], pin_input):
+                        touch_profile_login(pending["id"])
                         st.session_state.pop("_pending_profile", None)
                         st.session_state.user = SimpleNamespace(
                             id=pending["id"], email=f"{pending['name']} (profil partagé)")
@@ -176,6 +178,7 @@ def render_login_page(supabase, pkce_store: dict, app_url: str) -> None:
                     st.session_state["_pending_profile"] = p
                     st.rerun()
                 else:
+                    touch_profile_login(p["id"])
                     st.session_state.user = SimpleNamespace(
                         id=p["id"], email=f"{p['name']} (profil partagé)")
                     st.session_state.auth_mode = "profile"

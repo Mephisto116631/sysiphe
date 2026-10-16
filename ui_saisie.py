@@ -123,6 +123,13 @@ def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, wei
         if tab_css:
             st.markdown(f"<style>{tab_css}</style>", unsafe_allow_html=True)
 
+        # CSS carte : padding dans les border-box des onglets
+        st.markdown("""<style>
+[data-testid="stTabs"] [data-testid="stBorderBox"] {
+    padding: 20px 16px 16px !important;
+}
+</style>""", unsafe_allow_html=True)
+
         # ── Séries : onglets marque-page ──────────────────────────────────────
         tabs = st.tabs(["S1", "S2", "S3", "S4", "S5"])
         temps_temp, formes_temp, efforts_jour = {}, {}, []
@@ -130,47 +137,49 @@ def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, wei
         for i, tab in enumerate(tabs):
             s = i + 1
             with tab:
-                # Forme par série (pleine largeur dans l'onglet)
-                forme_default = defaults["forms"].get(s, "Normal")
-                idx_f_s = forme_keys.index(forme_default) if forme_default in forme_keys else 0
-                forme_s = _persisted_choice(
-                    "Forme", forme_keys,
-                    f"forme_s_state_{s}_{date_active}", forme_keys[idx_f_s],
-                    f"forme_s_{s}_{date_active}",
-                )
-                ratio_f = ((formes_config.get(forme_s, min_score) - min_score) /
-                           (max_score - min_score) if max_score > min_score else 0.5)
-                color_f = _intensity_color(ratio_f)
-                st.markdown(
-                    f"<style>.st-key-forme_s_{s}_{date_active} "
-                    f"button[data-testid='stBaseButton-segmented_controlActive']"
-                    f"{{background:{color_f} !important;border-color:{color_f} !important;}}</style>",
-                    unsafe_allow_html=True,
-                )
-
-                # Temps
-                t_key = f"p_t_{s}_{date_active}"
-                if t_key not in st.session_state:
-                    st.session_state[t_key] = defaults["times"].get(s, "")
-                t = st.text_input("Temps (s)", key=t_key)
-
-                # Effort
-                eff = (calculer_effort(var_g, elas_g, tens_g, forme_s, t, weight,
-                                       variantes_config, formes_config) if t else 0)
-                if eff > 0:
-                    ratio_e = (eff / record_planche) if record_planche else 0
-                    color_e = _intensity_color(ratio_e)
+                with st.container(border=True):
+                    # Forme par série (pleine largeur dans la carte)
+                    forme_default = defaults["forms"].get(s, "Normal")
+                    idx_f_s = forme_keys.index(forme_default) if forme_default in forme_keys else 0
+                    forme_s = _persisted_choice(
+                        "Forme", forme_keys,
+                        f"forme_s_state_{s}_{date_active}", forme_keys[idx_f_s],
+                        f"forme_s_{s}_{date_active}",
+                    )
+                    ratio_f = ((formes_config.get(forme_s, min_score) - min_score) /
+                               (max_score - min_score) if max_score > min_score else 0.5)
+                    color_f = _intensity_color(ratio_f)
                     st.markdown(
-                        f"<div style='text-align:center;padding:12px 0 4px;'>"
-                        f"<span style='font-size:2rem;font-weight:700;color:{color_e};'>{eff:.0f}</span>"
-                        f"<span style='font-size:0.8rem;opacity:0.6;'> pts</span></div>",
+                        f"<style>.st-key-forme_s_{s}_{date_active} "
+                        f"button[data-testid='stBaseButton-segmented_controlActive']"
+                        f"{{background:{color_f} !important;border-color:{color_f} !important;}}</style>",
                         unsafe_allow_html=True,
                     )
 
-                temps_temp[s] = t
-                formes_temp[s] = forme_s
-                if t and eff > 0:
-                    efforts_jour.append(eff)
+                    # Temps + effort côte à côte
+                    c1, c2 = st.columns([3, 2])
+                    with c1:
+                        t_key = f"p_t_{s}_{date_active}"
+                        if t_key not in st.session_state:
+                            st.session_state[t_key] = defaults["times"].get(s, "")
+                        t = st.text_input("Temps (s)", key=t_key, label_visibility="visible")
+                    with c2:
+                        eff = (calculer_effort(var_g, elas_g, tens_g, forme_s, t, weight,
+                                               variantes_config, formes_config) if t else 0)
+                        ratio_e = (eff / record_planche) if (record_planche and eff > 0) else 0
+                        color_e = _intensity_color(ratio_e) if eff > 0 else "rgba(255,255,255,0.2)"
+                        st.markdown(
+                            f"<div style='text-align:center;padding-top:26px;'>"
+                            f"<span style='font-size:1.8rem;font-weight:700;color:{color_e};'>"
+                            f"{eff:.0f}</span>"
+                            f"<span style='font-size:0.75rem;opacity:0.5;'> pts</span></div>",
+                            unsafe_allow_html=True,
+                        )
+
+                    temps_temp[s] = t
+                    formes_temp[s] = forme_s
+                    if t and eff > 0:
+                        efforts_jour.append(eff)
 
         if efforts_jour:
             best_today = max(efforts_jour)
