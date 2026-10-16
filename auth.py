@@ -50,7 +50,7 @@ def check_oauth_callback(supabase, pkce_store: dict) -> None:
     if is_oauth_return:
         st.session_state.cookies_initialized = True
     elif "cookies_initialized" not in st.session_state:
-        time.sleep(0.6)
+        time.sleep(1.5)
         st.session_state.cookies_initialized = True
         st.rerun()
     # -------------------------------------------------------
