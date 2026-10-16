@@ -28,7 +28,7 @@ def _build_default_planche(df_global: pd.DataFrame, date_active) -> dict:
     """Calcule les valeurs de préremplissage pour le bloc Planche."""
     defaults = {
         "var": "Full", "elas": "Aucun", "tens": "N/A",
-        "forms": {i: "Normal" for i in range(1, 6)},
+        "forme": "Normal",  # forme unique (globale) pour toute la séance
         "times": {i: "" for i in range(1, 6)},
     }
     if df_global.empty:
@@ -39,9 +39,10 @@ def _build_default_planche(df_global: pd.DataFrame, date_active) -> dict:
     if not df_active.empty:
         last = df_active.iloc[0]
         defaults["var"], defaults["elas"], defaults["tens"] = last["variante"], last["elastique"], last["tension"]
+        mode = df_active["forme"].mode()
+        defaults["forme"] = mode.iloc[0] if not mode.empty else "Normal"
         for _, r in df_active.iterrows():
             s = int(r["serie"])
-            defaults["forms"][s] = r["forme"] if pd.notna(r["forme"]) else "Normal"
             if pd.notna(r["performance"]):
                 p = float(r["performance"])
                 defaults["times"][s] = str(int(p) if p.is_integer() else p)
@@ -54,9 +55,8 @@ def _build_default_planche(df_global: pd.DataFrame, date_active) -> dict:
         df_last = df_past[df_past["date"] == last_date]
         last = df_last.iloc[0]
         defaults["var"], defaults["elas"], defaults["tens"] = last["variante"], last["elastique"], last["tension"]
-        for _, r in df_last.iterrows():
-            s = int(r["serie"])
-            defaults["forms"][s] = r["forme"] if pd.notna(r["forme"]) else "Normal"
+        mode = df_last["forme"].mode()
+        defaults["forme"] = mode.iloc[0] if not mode.empty else "Normal"
     return defaults
 
 
@@ -74,24 +74,20 @@ def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, wei
     defaults = _build_default_planche(df_global, date_active)
 
     with st.expander(titre, expanded=True):
-        var_keys = list(variantes_config.keys())
-        idx_v = var_keys.index(defaults["var"]) if defaults["var"] in var_keys else 0
-        idx_e = list(CONFIG["elastiques"].keys()).index(defaults["elas"]) if defaults["elas"] in CONFIG["elastiques"] else 0
-        idx_t = list(CONFIG["tensions"].keys()).index(defaults["tens"]) if defaults["tens"] in CONFIG["tensions"] else 0
-
-        c1, c2, c3 = st.columns(3)
+        var_keys  = list(variantes_config.keys())
         elas_keys = list(CONFIG["elastiques"].keys())
         tens_keys = list(CONFIG["tensions"].keys())
         forme_keys = [k for k, _ in sorted(formes_config.items(), key=lambda kv: kv[1])]
+        min_score, max_score = min(formes_config.values()), max(formes_config.values())
+
+        idx_v = var_keys.index(defaults["var"])   if defaults["var"]   in var_keys   else 0
+        idx_e = elas_keys.index(defaults["elas"]) if defaults["elas"]  in elas_keys  else 0
+        idx_t = tens_keys.index(defaults["tens"]) if defaults["tens"]  in tens_keys  else 0
+        idx_f = forme_keys.index(defaults["forme"]) if defaults["forme"] in forme_keys else 0
 
         def _persisted_choice(label, options, state_key, default_val, widget_key):
-            """Ne JAMAIS passer default= en même temps que key= à un widget déjà
-            initialisé : Streamlit lève une StreamlitAPIException dès le 2e run
-            ('widget created with a default value but also had its value set
-            via Session State'), ce qui affichait une zone d'erreur vide à la
-            place des boutons. On initialise donc session_state[widget_key]
-            UNE SEULE FOIS avant la création du widget, sans jamais utiliser
-            default= par la suite."""
+            """Initialise session_state une seule fois pour éviter le conflit
+            default= / key= de Streamlit."""
             if widget_key not in st.session_state:
                 st.session_state[widget_key] = st.session_state.get(state_key, default_val)
             choice = st.segmented_control(label, options, key=widget_key)
@@ -100,57 +96,53 @@ def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, wei
                 return choice
             return st.session_state.get(state_key, default_val)
 
-        with c1:
+        # ── Paramètres globaux (2 × 2) ───────────────────────────────────────
+        ca, cb = st.columns(2)
+        with ca:
             var_g = _persisted_choice("Variante", var_keys, f"var_state_{date_active}",
                                        var_keys[idx_v], f"var_g_{date_active}")
-        with c2:
+        with cb:
             elas_g = _persisted_choice("Élastique", elas_keys, f"elas_state_{date_active}",
                                         elas_keys[idx_e], f"elas_g_{date_active}")
-        with c3:
+        cc, cd = st.columns(2)
+        with cc:
             tens_g = _persisted_choice("Tension", tens_keys, f"tens_state_{date_active}",
                                         tens_keys[idx_t], f"tens_g_{date_active}")
+        with cd:
+            forme_g = _persisted_choice("Forme", forme_keys, f"forme_state_{date_active}",
+                                         forme_keys[idx_f], f"forme_g_{date_active}")
+            ratio_f = ((formes_config.get(forme_g, min_score) - min_score) / (max_score - min_score)
+                      if max_score > min_score else 0.5)
+            color_f = _intensity_color(ratio_f)
+            st.markdown(
+                f"<style>.st-key-forme_g_{date_active} "
+                f"button[data-testid='stBaseButton-segmented_controlActive']"
+                f"{{background:{color_f} !important; border-color:{color_f} !important;}}</style>",
+                unsafe_allow_html=True,
+            )
 
-        st.write("---")
-        formes_temp, temps_temp, efforts_jour = {}, {}, []
-        min_score, max_score = min(formes_config.values()), max(formes_config.values())
-        
+        # ── Séries : temps | effort ───────────────────────────────────────────
+        temps_temp, efforts_jour = {}, []
         for s in range(1, 6):
-            c1, c2, c3 = st.columns([1, 2, 1])
-            with c1: 
-                # Initialisation sécurisée du champ texte
+            c1, c2 = st.columns([2, 1])
+            with c1:
                 t_key = f"p_t_{s}_{date_active}"
                 if t_key not in st.session_state:
                     st.session_state[t_key] = defaults["times"].get(s, "")
-                t = st.text_input(f"S{s}(s)", key=t_key)
-                
+                t = st.text_input(f"S{s} (s)", key=t_key)
             with c2:
-                f_default = defaults["forms"].get(s, "Normal")
-                f = _persisted_choice(f"F{s}", forme_keys, f"forme_state_{s}_{date_active}",
-                                       f_default, f"p_f_{s}_{date_active}")
-                
-                ratio_f = ((formes_config.get(f, min_score) - min_score) / (max_score - min_score)
-                          if max_score > min_score else 0.5)
-                color_f = _intensity_color(ratio_f)
-                st.markdown(
-                    f"<style>.st-key-p_f_{s}_{date_active} "
-                    f"button[data-testid='stBaseButton-segmented_controlActive']"
-                    f"{{background:{color_f} !important; border-color:{color_f} !important;}}</style>",
-                    unsafe_allow_html=True,
-                )
-                
-            with c3:
-                eff = calculer_effort(var_g, elas_g, tens_g, f, t, weight, variantes_config, formes_config) if t else 0
+                eff = calculer_effort(var_g, elas_g, tens_g, forme_g, t, weight,
+                                      variantes_config, formes_config) if t else 0
                 ratio_e = (eff / record_planche) if record_planche else 0
                 color_e = _intensity_color(ratio_e) if eff > 0 else "inherit"
                 st.markdown(
-                    f"<div style='text-align:center;'>"
-                    f"<div style='font-size:0.8rem;opacity:0.7;'>Effort</div>"
-                    f"<div style='font-size:1.6rem;font-weight:700;color:{color_e};'>{eff:.0f}</div>"
+                    f"<div style='text-align:center;padding-top:28px;'>"
+                    f"<span style='font-size:1.4rem;font-weight:700;color:{color_e};'>{eff:.0f}</span>"
+                    f"<span style='font-size:0.75rem;opacity:0.6;'> pts</span>"
                     f"</div>",
                     unsafe_allow_html=True,
                 )
-                
-            temps_temp[s], formes_temp[s] = t, f
+            temps_temp[s] = t
             if t and eff > 0:
                 efforts_jour.append(eff)
 
@@ -160,7 +152,7 @@ def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, wei
                 st.success(f"🏆 Nouveau Record ! **{best_today} pts** (ancien : {record_planche} pts)")
             else:
                 pct = round(best_today / record_planche * 100) if record_planche else 0
-                st.info(f"🎯 Meilleur effort aujourd'hui : **{best_today} pts** ({pct}% du record)")
+                st.info(f"🎯 Meilleur effort : **{best_today} pts** ({pct}% du record)")
 
         if st.button("💾 Enregistrer la Planche", type="primary", width='stretch'):
             if is_debounced(f"save_planche_{date_active}"):
@@ -169,15 +161,16 @@ def render_planche_block(df_global: pd.DataFrame, date_active, user_id: str, wei
                 delete_perfs(user_id, str(date_active), "Planche")
                 lignes = []
                 for s in range(1, 6):
-                    t, f = temps_temp[s], formes_temp[s]
+                    t = temps_temp[s]
                     if t:
                         try:
-                            eff = calculer_effort(var_g, elas_g, tens_g, f, t, weight, variantes_config, formes_config)
+                            eff = calculer_effort(var_g, elas_g, tens_g, forme_g, t, weight,
+                                                  variantes_config, formes_config)
                             lignes.append({
                                 "user_id": user_id, "date": str(date_active),
                                 "exercice": "Planche", "serie": s, "performance": float(t),
                                 "variante": var_g, "elastique": elas_g, "tension": tens_g,
-                                "forme": f, "effort_pondere": eff, "charge": 0,
+                                "forme": forme_g, "effort_pondere": eff, "charge": 0,
                                 "categorie": "Force Iso", "unite": "Sec",
                             })
                         except ValueError:
