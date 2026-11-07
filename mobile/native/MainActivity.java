@@ -17,7 +17,8 @@ import com.getcapacitor.BridgeActivity;
  * pas dans la WebView isolée → "You do not have access".
  *
  * Chrome Custom Tabs partage le cookie jar de Chrome → le gate Streamlit passe.
- * Pour le NAS (réseau local, sans auth), on laisse la WebView directe.
+ * Pour le NAS (sysiphe.<tailnet>.ts.net), on reste dans la WebView : allowNavigation
+ * doit contenir "*.*.ts.net" (Capacitor compare le nombre de segments du domaine).
  */
 public class MainActivity extends BridgeActivity {
 
@@ -47,5 +48,15 @@ public class MainActivity extends BridgeActivity {
                 });
             }
         }, "AndroidBridge");
+    }
+
+    /**
+     * Écrit les cookies sur le disque dès que l'app passe en arrière-plan :
+     * sinon Android peut tuer l'app avant l'écriture et la session PIN du NAS est perdue.
+     */
+    @Override
+    public void onPause() {
+        super.onPause();
+        CookieManager.getInstance().flush();
     }
 }

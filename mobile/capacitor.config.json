@@ -5,7 +5,13 @@
   "server": {
     "androidScheme": "https",
     "cleartext": false,
-    "allowNavigation": ["*.ts.net", "*.streamlit.app", "*.streamlit.io", "*.supabase.co"]
+    "allowNavigation": [
+      "*.ts.net",
+      "*.*.ts.net",
+      "*.streamlit.app",
+      "*.streamlit.io",
+      "*.supabase.co"
+    ]
   },
   "android": {
     "allowMixedContent": false
