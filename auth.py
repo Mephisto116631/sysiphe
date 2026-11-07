@@ -59,8 +59,8 @@ def check_oauth_callback(supabase, pkce_store: dict) -> None:
     if st.session_state.get("user") is not None:
         return
 
-    # 1bis. RECONNEXION SILENCIEUSE — MODE PROFIL (pas de vrai token à
-    # rafraîchir, juste un cookie qui rappelle quel profil était choisi)
+    # 1bis. RECONNEXION SILENCIEUSE — MODE PROFIL
+    # a) Via cookie (fonctionne si Chrome est resté en vie)
     try:
         saved_profile_uid = controller.get("sys_profile")
     except KeyError:
@@ -73,6 +73,27 @@ def check_oauth_callback(supabase, pkce_store: dict) -> None:
             st.session_state.user = SimpleNamespace(id=profil["id"], email=f"{profil['name']} (profil partagé)")
             st.session_state.auth_mode = "profile"
             return
+
+    # b) Fallback Supabase : si le cookie est absent (cookie de session perdu
+    #    quand Android tue Chrome), reconnecte au profil le plus récent.
+    #    — Pas de PIN : connexion immédiate et transparente
+    #    — Avec PIN   : pré-sélectionne le profil pour aller direct au PIN
+    #    Ignoré si l'utilisateur vient de se déconnecter volontairement.
+    if not st.session_state.get("_manual_logout") and not is_oauth_return:
+        fallback = load_profiles()
+        if fallback:
+            top = fallback[0]
+            if not top.get("pin_hash"):
+                touch_profile_login(top["id"])
+                controller.set("sys_profile", top["id"], max_age=31536000)
+                st.session_state.user = SimpleNamespace(
+                    id=top["id"], email=f"{top['name']} (profil partagé)")
+                st.session_state.auth_mode = "profile"
+                return
+            else:
+                # PIN requis : skip la liste, ouvre directement l'écran PIN
+                if "_pending_profile" not in st.session_state:
+                    st.session_state["_pending_profile"] = top
 
     # 2. TENTATIVE DE RECONNEXION SILENCIEUSE (Cookies)
     try:

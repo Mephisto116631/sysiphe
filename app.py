@@ -6,7 +6,7 @@ accessible depuis le menu latéral.
 from datetime import datetime, timedelta
 import streamlit as st
 
-from auth import get_pkce_store, check_oauth_callback, render_login_page
+from auth import get_pkce_store, check_oauth_callback, render_login_page, get_cookie_controller
 from data import DEFAULT_VARIANTES
 from supabase_io import get_supabase_client, load_data, delete_perfs, load_user_settings
 from ui_saisie import render_planche_block, render_exercise_block, render_kpi_panel, render_save_all_button
@@ -87,10 +87,20 @@ if "config_loaded" not in st.session_state:
     st.session_state.include_planche   = settings["include_planche"]
     st.session_state.config_loaded     = True
 
-# ─── Sidebar globale (déconnexion) ───────────────────────────────────────────
+# ─── Sidebar globale (déconnexion / changement de profil) ────────────────────
 with st.sidebar:
     st.caption(f"👤 {st.session_state.user.email}")
-    if st.button("🚪 Déconnexion", use_container_width=True):
+    # Libellé contextuel selon le mode d'auth
+    is_profile_mode = st.session_state.get("auth_mode") == "profile"
+    btn_label = "🔀 Changer de profil" if is_profile_mode else "🚪 Déconnexion"
+    if st.button(btn_label, use_container_width=True):
+        # Efface le cookie de profil pour empêcher la reconnexion automatique
+        try:
+            get_cookie_controller().remove("sys_profile")
+        except Exception:
+            pass
+        # Marque le logout volontaire pour bloquer le fallback Supabase
+        st.session_state["_manual_logout"] = True
         supabase.auth.sign_out()
         for k in ["user", "exos_du_jour", "last_seen_date", "oauth_intent", "config_loaded"]:
             st.session_state.pop(k, None)
