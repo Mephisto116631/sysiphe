@@ -15,7 +15,12 @@ from ui_stats import (
     render_records_tab, render_repos_tab, render_param_tab,
 )
 
-APP_URL = "https://sysiphe-voseesdgwwcstfepbdepkh.streamlit.app"
+CLOUD_URL = "https://sysiphe-voseesdgwwcstfepbdepkh.streamlit.app"
+try:
+    # Instance NAS : APP_URL vient de secrets.toml (URL Funnel).
+    APP_URL = st.secrets.get("APP_URL") or CLOUD_URL
+except Exception:
+    APP_URL = CLOUD_URL
 
 st.set_page_config(page_title="Sysiphe", layout="centered")
 

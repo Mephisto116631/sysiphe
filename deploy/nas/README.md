@@ -1,45 +1,72 @@
 # Sysiphe sur le NAS (OMV + Docker + Tailscale Funnel)
 
-Chaque commit sur `main` publie une nouvelle image (`ghcr.io/mephisto116631/sysiphe:latest`) ; le NAS la récupère tout seul via `update.sh`. Streamlit Cloud reste actif en secours : l'app Android bascule dessus si le NAS ne répond pas.
+Chaque commit sur `main` publie une nouvelle image (`ghcr.io/mephisto116631/sysiphe:latest`) ; le NAS la récupère tout seul via `update.sh`. Rien n'est construit sur le NAS. Streamlit Cloud reste actif en secours : l'app Android bascule dessus si le NAS ne répond pas.
 
 ## 1. Tailscale (une fois, depuis le navigateur)
 
 1. Crée un compte sur https://login.tailscale.com (gratuit).
-2. **DNS** → active **MagicDNS** et **HTTPS Certificates**.
-3. **Access controls** → ajoute l'attribut Funnel dans la policy :
+2. **Settings → General** : renomme le tailnet (nom lisible, il apparaît dans les URL).
+3. **DNS** : active **MagicDNS** et **HTTPS Certificates**.
+4. **Access controls** : remplace la policy par :
    ```json
-   "nodeAttrs": [{ "target": ["autogroup:member"], "attr": ["funnel"] }]
+   {
+     "tagOwners": { "tag:nas": ["autogroup:admin"] },
+     "grants": [
+       { "src": ["autogroup:member"], "dst": ["tag:nas"], "ip": ["*"] }
+     ],
+     "nodeAttrs": [
+       { "target": ["tag:nas"], "attr": ["funnel"] }
+     ]
+   }
    ```
-4. **Settings → Keys → Generate auth key** : coche *Reusable*, garde la clé `tskey-auth-…`.
+   Les nœuds tagués n'expirent pas et ne peuvent joindre aucun de tes appareils.
+5. **Settings → Keys → Generate auth key** : *Reusable* coché, *Ephemeral* décoché, *Tags* → `tag:nas`. Garde la clé `tskey-auth-…` dans ton gestionnaire de mots de passe.
 
-## 2. Rendre l'image publique (une fois)
+## 2. Image publique
 
-https://github.com/users/Mephisto116631/packages/container/sysiphe/settings → **Change visibility → Public**. L'image ne contient aucun secret (ils sont montés au lancement), comme le repo déjà public.
+Déjà fait : le package `ghcr.io/mephisto116631/sysiphe` est Public (aucun secret dedans, ils sont montés au lancement).
 
-## 3. Sur le NAS (SSH)
+## 3. Sur le NAS
 
+**SSH** : prépare les fichiers à côté du compose.
 ```bash
-mkdir -p /srv/compose_data/sysiphe && cd /srv/compose_data/sysiphe
+mkdir -p /compose_data/sysiphe && cd /compose_data/sysiphe
 BASE=https://raw.githubusercontent.com/Mephisto116631/sysiphe/main/deploy/nas
-for f in docker-compose.yml serve.json update.sh secrets.toml.example; do curl -fsSLO "$BASE/$f"; done
+for f in serve.json update.sh secrets.toml.example; do curl -fsSLO "$BASE/$f"; done
 cp secrets.toml.example secrets.toml && nano secrets.toml   # valeurs Supabase de Streamlit Cloud
-echo "TS_AUTHKEY=tskey-auth-XXXX" > .env && chmod 600 .env secrets.toml
-docker compose up -d
-docker exec sysiphe-tailscale tailscale status   # affiche sysiphe.<tailnet>.ts.net
+chmod 600 secrets.toml
 ```
 
-Mets l'URL `https://sysiphe.<tailnet>.ts.net` dans `APP_URL` de `secrets.toml`, puis `docker compose restart sysiphe`.
+**OMV → Services → Compose → Fichiers → Ajouter** :
+- Nom : `sysiphe`
+- Fichier : colle `docker-compose.yml`
+- Environnement : `TS_AUTHKEY=tskey-auth-…`
+- Enregistre, puis **Up**.
+
+Vérifie :
+```bash
+docker exec sysiphe-tailscale tailscale status          # sysiphe … tagged-devices
+docker exec sysiphe-tailscale tailscale funnel status   # https://sysiphe.<tailnet>.ts.net (Funnel on)
+```
+
+Mets cette URL dans `APP_URL` de `secrets.toml`, puis `docker restart sysiphe`.
 
 ## 4. Mise à jour automatique
 
 OMV → **Système → Tâches planifiées** → Ajouter : toutes les 15 min, utilisateur `root`, commande :
 
 ```
-sh /srv/compose_data/sysiphe/update.sh >> /srv/compose_data/sysiphe/update.log 2>&1
+sh /compose_data/sysiphe/update.sh >> /var/log/sysiphe-update.log 2>&1
 ```
+
+## 5. Supabase et Android
+
+- Supabase → Authentication → URL Configuration → **Redirect URLs** : ajoute `https://sysiphe.<tailnet>.ts.net`.
+- `mobile/targets.json` → `"nas": "https://sysiphe.<tailnet>.ts.net"` (un commit, sans recompiler l'APK).
 
 ## Dépannage
 
-- `docker compose logs -f sysiphe` — erreurs de l'app.
-- `docker exec sysiphe-tailscale tailscale funnel status` — Funnel actif ?
-- Connexion Google : ajoute l'URL NAS dans Supabase → Authentication → URL Configuration → Redirect URLs.
+- `docker logs -f sysiphe` : erreurs de l'app.
+- `docker logs sysiphe-tailscale` : authentification Tailscale (clé expirée, tag refusé…).
+- `docker exec sysiphe-tailscale tailscale funnel status` : Funnel actif ?
+- La 1re ouverture de l'URL peut prendre ~1 min (émission du certificat HTTPS).

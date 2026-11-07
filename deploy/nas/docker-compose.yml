@@ -1,20 +1,29 @@
 # Sysiphe sur le NAS, exposé en HTTPS public via Tailscale Funnel.
 # URL finale : https://sysiphe.<ton-tailnet>.ts.net (aucun port ouvert sur la Freebox)
 #
-# Dossier conseillé sur OMV : /srv/compose_data/sysiphe/
-#   ├── docker-compose.yml   (ce fichier)
-#   ├── .env                 (TS_AUTHKEY=tskey-auth-...)
+# Installation via le plugin Compose d'OMV (fichier « sysiphe ») :
+# /compose_data/sysiphe/
+#   ├── sysiphe.yml          (ce fichier, créé par OMV)
+#   ├── .env                 (TS_AUTHKEY=tskey-auth-..., onglet « Environnement » d'OMV)
 #   ├── serve.json
 #   └── secrets.toml         (SUPABASE_URL, SUPABASE_KEY, APP_URL)
+# /compose_data est déjà archivé chaque nuit par backup-nas.sh.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 services:
   tailscale:
-    image: tailscale/tailscale:latest
+    image: tailscale/tailscale:stable
     container_name: sysiphe-tailscale
     hostname: sysiphe
     environment:
       - TS_AUTHKEY=${TS_AUTHKEY}
       - TS_HOSTNAME=sysiphe
+      - TS_EXTRA_ARGS=--advertise-tags=tag:nas
       - TS_STATE_DIR=/var/lib/tailscale
       - TS_SERVE_CONFIG=/config/serve.json
       - TS_USERSPACE=false
@@ -25,6 +34,7 @@ services:
       - /dev/net/tun:/dev/net/tun
     cap_add:
       - net_admin
+    logging: *logging
     restart: unless-stopped
 
   sysiphe:
@@ -35,4 +45,5 @@ services:
       - ./secrets.toml:/app/.streamlit/secrets.toml:ro
     depends_on:
       - tailscale
+    logging: *logging
     restart: unless-stopped
