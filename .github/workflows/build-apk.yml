@@ -1,0 +1,62 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch:   # déclenchement manuel depuis l'onglet Actions
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout ────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. Java 17 ─────────────────────────────────────────────────────────
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # ── 3. Gradle 8.4 (sans wrapper — pas de gradlew dans le repo) ─────────
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.4'
+
+      # ── 4. Pointage du SDK Android (pré-installé sur ubuntu-latest) ────────
+      - name: Set sdk.dir
+        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+
+      # ── 5. Build APK release (non signé) ───────────────────────────────────
+      - name: Build release APK
+        working-directory: android
+        run: gradle assembleRelease
+
+      # ── 6. Signature avec le keystore stocké en secret GitHub ──────────────
+      - name: Sign APK
+        run: |
+          echo "${{ secrets.SIGNING_KEY }}" | base64 -d > /tmp/keystore.jks
+          APKSIGNER=$(find "$ANDROID_SDK_ROOT/build-tools" -name "apksigner" | sort -V | tail -n1)
+          "$APKSIGNER" sign \
+            --ks /tmp/keystore.jks \
+            --ks-key-alias "${{ secrets.KEY_ALIAS }}" \
+            --ks-pass "pass:${{ secrets.KEY_STORE_PASSWORD }}" \
+            --key-pass "pass:${{ secrets.KEY_PASSWORD }}" \
+            --out sysiphe.apk \
+            android/app/build/outputs/apk/release/app-release-unsigned.apk
+          rm /tmp/keystore.jks
+
+      # ── 7. Upload de l'APK signé (disponible 30 jours dans Actions) ────────
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: sysiphe-${{ github.sha }}
+          path: sysiphe.apk
+          retention-days: 30
