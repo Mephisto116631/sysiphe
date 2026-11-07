@@ -32,9 +32,10 @@ Déjà fait : le package `ghcr.io/mephisto116631/sysiphe` est Public (aucun secr
 ```bash
 mkdir -p /compose_data/sysiphe && cd /compose_data/sysiphe
 BASE=https://raw.githubusercontent.com/Mephisto116631/sysiphe/main/deploy/nas
+apt install -y curl   # absent par défaut sur OMV
 for f in serve.json update.sh secrets.toml.example; do curl -fsSLO "$BASE/$f"; done
 cp secrets.toml.example secrets.toml && nano secrets.toml   # valeurs Supabase de Streamlit Cloud
-chmod 600 secrets.toml
+chown 1000:1000 secrets.toml && chmod 600 secrets.toml   # l'app tourne sous l'uid 1000
 ```
 
 **OMV → Services → Compose → Fichiers → Ajouter** :
