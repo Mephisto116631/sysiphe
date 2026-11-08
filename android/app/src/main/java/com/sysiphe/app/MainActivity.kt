@@ -33,13 +33,14 @@ class MainActivity : AppCompatActivity() {
         setContentView(webView)
         setupWebView()
 
-        if (savedInstanceState != null) {
-            webView.restoreState(savedInstanceState)
-        } else {
-            // Résolution asynchrone : NAS si dispo, sinon Streamlit Cloud
-            thread {
-                val url = pickBestUrl()
-                runOnUiThread { webView.loadUrl(url) }
+        // Toujours recalculer la meilleure URL au démarrage/restauration.
+        // Sans ça, restoreState() recharge l'ancienne URL (ex: NAS) sans
+        // vérifier la dispo — ce qui cause ERR_NAME_NOT_RESOLVED en 5G.
+        thread {
+            val url = pickBestUrl()
+            runOnUiThread {
+                if (savedInstanceState != null) webView.restoreState(savedInstanceState)
+                webView.loadUrl(url)
             }
         }
     }

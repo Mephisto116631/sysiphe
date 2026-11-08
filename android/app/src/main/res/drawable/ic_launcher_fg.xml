@@ -1,16 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Colline blanche + rocher blanc (thème Sysiphe) sur fond bleu -->
+<!-- Haltère blanc sur fond bleu -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-  <!-- Rocher -->
+  <!-- Barre centrale -->
   <path
       android:fillColor="#ffffff"
-      android:pathData="M42,30 A12,12 0 1,0 66,30 A12,12 0 1,0 42,30 Z"/>
-  <!-- Colline -->
+      android:pathData="M30,50 L78,50 L78,58 L30,58 Z"/>
+  <!-- Poids gauche -->
   <path
       android:fillColor="#ffffff"
-      android:pathData="M18,78 Q54,38 90,78 L90,94 L18,94 Z"/>
+      android:pathData="M12,32 L30,32 L30,76 L12,76 Z"/>
+  <!-- Poids droit -->
+  <path
+      android:fillColor="#ffffff"
+      android:pathData="M78,32 L96,32 L96,76 L78,76 Z"/>
 </vector>
