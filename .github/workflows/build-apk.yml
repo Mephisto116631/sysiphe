@@ -35,6 +35,7 @@ jobs:
       - name: Build release APK
         working-directory: android
         run: ./gradlew assembleRelease
+        timeout-minutes: 15
 
       # ── 6. Signature avec le keystore stocké en secret GitHub ──────────────
       #    KEYSTORE_PASSWORD est utilisé à la fois pour le store et la clé.
