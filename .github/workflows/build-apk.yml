@@ -27,21 +27,14 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # ── 3. Gradle 8.4 (téléchargement direct depuis services.gradle.org) ────
-      - name: Install Gradle 8.4
-        run: |
-          wget -q https://services.gradle.org/distributions/gradle-8.4-bin.zip -O /tmp/gradle.zip
-          unzip -q /tmp/gradle.zip -d /opt/gradle
-          echo "/opt/gradle/gradle-8.4/bin" >> $GITHUB_PATH
-
-      # ── 4. Pointage du SDK Android (pré-installé sur ubuntu-latest) ────────
+      # ── 3. Pointage du SDK Android (pré-installé sur ubuntu-latest) ─────────
       - name: Set sdk.dir
         run: echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
 
-      # ── 5. Build APK release (non signé) ───────────────────────────────────
+      # ── 4. Build APK release via Gradle wrapper (gradlew dans le repo) ──────
       - name: Build release APK
         working-directory: android
-        run: gradle assembleRelease
+        run: ./gradlew assembleRelease
 
       # ── 6. Signature avec le keystore stocké en secret GitHub ──────────────
       #    KEYSTORE_PASSWORD est utilisé à la fois pour le store et la clé.
