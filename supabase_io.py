@@ -25,10 +25,11 @@ def get_supabase_client():
 
 
 @st.cache_data(ttl=60)
-def load_data(uid: str, current_weight: float, variantes_config: dict) -> pd.DataFrame:
+def load_data(uid: str, current_weight: float, variantes_config: dict,
+              formes_config: dict = None) -> pd.DataFrame:
     """
-    Charge toutes les perfs de l'utilisateur. current_weight et variantes_config
-    font partie de la clé de cache pour forcer un recalcul si l'un des deux change.
+    Charge toutes les perfs de l'utilisateur. current_weight, variantes_config et
+    formes_config font partie de la clé de cache pour forcer un recalcul si l'un change.
     """
     supabase = get_supabase_client()
     reponse = supabase.table("perfs").select("*").eq("user_id", uid).execute()
@@ -67,7 +68,7 @@ def load_data(uid: str, current_weight: float, variantes_config: dict) -> pd.Dat
     df["effort_pondere"] = df.apply(
         lambda r: calculer_effort(
             r["variante"], r["elastique"], r["tension"], r["forme"],
-            r["performance"], current_weight, variantes_config
+            r["performance"], current_weight, variantes_config, formes_config
         ) if r["exercice"].lower() == "planche" else 0,
         axis=1
     )
@@ -214,7 +215,7 @@ def load_user_settings(uid: str) -> dict:
     """
     try:
         res = get_supabase_client().table("user_settings") \
-            .select("variantes_config, weight, nb_days_avg, include_planche") \
+            .select("variantes_config, formes_config, weight, nb_days_avg, include_planche") \
             .eq("user_id", uid).execute()
         if res.data:
             row = res.data[0]
@@ -222,6 +223,10 @@ def load_user_settings(uid: str) -> dict:
                 "variantes_config": {
                     **DEFAULT_VARIANTES,
                     **(row.get("variantes_config") or {}),
+                },
+                "formes_config": {
+                    **DEFAULT_FORMES,
+                    **(row.get("formes_config") or {}),
                 },
                 "weight":          int(row["weight"])          if row.get("weight")          is not None else 97,
                 "nb_days_avg":     int(row["nb_days_avg"])     if row.get("nb_days_avg")     is not None else 5,
@@ -231,15 +236,44 @@ def load_user_settings(uid: str) -> dict:
         pass
     return {
         "variantes_config": dict(DEFAULT_VARIANTES),
+        "formes_config":    dict(DEFAULT_FORMES),
         "weight":           97,
         "nb_days_avg":      5,
         "include_planche":  True,
     }
 
 
+def recalculate_all_efforts(uid: str, current_weight: float,
+                             variantes_config: dict, formes_config: dict) -> int:
+    """
+    Recalcule effort_pondere pour toutes les perfs de planche de l'utilisateur
+    et les met à jour en base. Retourne le nombre de lignes mises à jour.
+    """
+    from data import calculer_effort as _calc
+    supabase = get_supabase_client()
+    res = supabase.table("perfs").select("id, variante, elastique, tension, forme, performance") \
+        .eq("user_id", uid).eq("exercice", "planche").execute()
+    if not res.data:
+        return 0
+    updates = []
+    for row in res.data:
+        effort = _calc(
+            row.get("variante", "Tuck"), row.get("elastique", "Aucun"),
+            row.get("tension", "Normal"), row.get("forme", "Normal"),
+            row.get("performance"), current_weight,
+            variantes_config, formes_config,
+        )
+        updates.append({"id": row["id"], "effort_pondere": effort})
+    # Upsert par batch de 500
+    for i in range(0, len(updates), 500):
+        supabase.table("perfs").upsert(updates[i:i + 500]).execute()
+    return len(updates)
+
+
 def save_user_settings(
     uid: str,
     variantes_config: dict,
+    formes_config: dict | None = None,
     weight: float | None = None,
     nb_days_avg: int | None = None,
     include_planche: bool | None = None,
@@ -251,6 +285,8 @@ def save_user_settings(
     """
     try:
         payload: dict = {"user_id": uid, "variantes_config": variantes_config}
+        if formes_config is not None:
+            payload["formes_config"] = formes_config
         if weight is not None:
             payload["weight"] = float(weight)
         if nb_days_avg is not None:

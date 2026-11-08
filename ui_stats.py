@@ -8,8 +8,8 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 
-from data import lisser_donnees, detect_plateau, suggest_next_session, compute_daily_activity
-from supabase_io import update_exercise_name, save_user_settings, load_profiles, rename_profile, delete_profile
+from data import lisser_donnees, detect_plateau, suggest_next_session, compute_daily_activity, DEFAULT_FORMES
+from supabase_io import update_exercise_name, save_user_settings, load_profiles, rename_profile, delete_profile, recalculate_all_efforts
 
 
 def _plateau_badge(dates, values, label: str) -> None:
@@ -356,7 +356,7 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
         st.caption("Aucune donnée à exporter.")
 
     st.write("---")
-    st.subheader("🎛️ Calibration du modèle isométrique")
+    st.subheader("🎛️ Calibration — Variantes de planche")
     st.caption(
         "Ces scores pondèrent la difficulté de chaque variante. "
         "Sauvegardés sur ton compte, ils persistent entre tes sessions."
@@ -368,11 +368,30 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
             updated_scores[var] = st.number_input(
                 var, min_value=1, max_value=20, value=int(score), step=1, key=f"cal_{var}"
             )
+
+    st.write("---")
+    st.subheader("📐 Calibration — Formes de planche")
+    st.caption(
+        "Score de forme = hauteur de hanche normalisée (plus élevé = plus difficile). "
+        "Modifie pour calibrer selon ta morphologie."
+    )
+    formes_config = st.session_state.get("config_formes", dict(DEFAULT_FORMES))
+    cols_forme = st.columns(2)
+    updated_formes = {}
+    for i, (forme, score) in enumerate(formes_config.items()):
+        with cols_forme[i % 2]:
+            updated_formes[forme] = st.number_input(
+                forme, min_value=1.0, max_value=200.0, value=float(score), step=0.1,
+                format="%.2f", key=f"forme_{forme}"
+            )
+
     if st.button("✅ Appliquer et sauvegarder tous les paramètres", use_container_width=True):
         st.session_state.config_variantes = updated_scores
+        st.session_state.config_formes    = updated_formes
         ok = save_user_settings(
             user_id,
             updated_scores,
+            formes_config=updated_formes,
             weight=float(st.session_state.weight),
             nb_days_avg=int(st.session_state.nb_days_avg),
             include_planche=bool(st.session_state.include_planche),
@@ -385,6 +404,27 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
                 "Paramètres appliqués pour cette session, mais la sauvegarde a échoué "
                 "(table `user_settings` absente ? voir SETUP.md)."
             )
+        st.rerun()
+
+    st.write("---")
+    st.subheader("🔄 Recalculer tous les efforts")
+    st.caption(
+        "Recalcule l'effort pondéré de toutes tes perfs de planche avec les coefficients actuels. "
+        "Utile après avoir modifié variantes, formes, ou changé de poids."
+    )
+    if st.button("🔄 Recalculer tous les efforts en base", use_container_width=True, type="secondary"):
+        with st.spinner("Recalcul en cours…"):
+            n = recalculate_all_efforts(
+                user_id,
+                float(st.session_state.weight),
+                st.session_state.config_variantes,
+                st.session_state.get("config_formes", dict(DEFAULT_FORMES)),
+            )
+        st.cache_data.clear()
+        if n:
+            st.success(f"✅ {n} perfs de planche recalculées.")
+        else:
+            st.info("Aucune perf de planche trouvée.")
         st.rerun()
 
     st.write("---")

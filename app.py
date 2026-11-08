@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import streamlit as st
 
 from auth import get_pkce_store, check_oauth_callback, render_login_page, get_cookie_controller
-from data import DEFAULT_VARIANTES
+from data import DEFAULT_VARIANTES, DEFAULT_FORMES
 from supabase_io import get_supabase_client, load_data, delete_perfs, load_user_settings
 from ui_saisie import render_planche_block, render_exercise_block, render_kpi_panel, render_save_all_button
 from ui_stats import (
@@ -61,6 +61,7 @@ _DEFAULTS = {
     "nb_days_avg": 5,
     "include_planche": True,
     "config_variantes": dict(DEFAULT_VARIANTES),
+    "config_formes": dict(DEFAULT_FORMES),
     "confirm_delete_session": False,
 }
 for _k, _v in _DEFAULTS.items():
@@ -82,6 +83,7 @@ USER_ID = st.session_state.user.id
 if "config_loaded" not in st.session_state:
     settings = load_user_settings(USER_ID)
     st.session_state.config_variantes  = settings["variantes_config"]
+    st.session_state.config_formes     = settings["formes_config"]
     st.session_state.weight            = settings["weight"]
     st.session_state.nb_days_avg       = settings["nb_days_avg"]
     st.session_state.include_planche   = settings["include_planche"]
@@ -108,7 +110,8 @@ with st.sidebar:
         st.rerun()
 
 # ─── Données globales (partagées par toutes les pages) ───────────────────────
-df_global = load_data(USER_ID, float(st.session_state.weight), st.session_state.config_variantes)
+df_global = load_data(USER_ID, float(st.session_state.weight),
+                      st.session_state.config_variantes, st.session_state.config_formes)
 
 tous_les_exos = []
 if not df_global.empty:
