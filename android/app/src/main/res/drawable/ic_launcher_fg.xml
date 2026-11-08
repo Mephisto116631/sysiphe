@@ -1,20 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Haltère blanc sur fond bleu -->
+<!-- Croix bleue (×) sur fond blanc -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-  <!-- Barre centrale -->
+  <!-- Diagonale NW→SE -->
   <path
-      android:fillColor="#ffffff"
-      android:pathData="M30,50 L78,50 L78,58 L30,58 Z"/>
-  <!-- Poids gauche -->
+      android:fillColor="#1976D2"
+      android:pathData="M76,19 L89,32 L32,89 L19,76 Z"/>
+  <!-- Diagonale NE→SW -->
   <path
-      android:fillColor="#ffffff"
-      android:pathData="M12,32 L30,32 L30,76 L12,76 Z"/>
-  <!-- Poids droit -->
-  <path
-      android:fillColor="#ffffff"
-      android:pathData="M78,32 L96,32 L96,76 L78,76 Z"/>
+      android:fillColor="#1976D2"
+      android:pathData="M19,32 L32,19 L89,76 L76,89 Z"/>
 </vector>
