@@ -8,8 +8,10 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 
-from data import lisser_donnees, detect_plateau, suggest_next_session, compute_daily_activity, DEFAULT_FORMES
-from supabase_io import update_exercise_name, save_user_settings, load_profiles, rename_profile, delete_profile, recalculate_all_efforts
+from data import (lisser_donnees, detect_plateau, suggest_next_session, compute_daily_activity,
+                  DEFAULT_FORMES, DEFAULT_ELASTIQUES, DEFAULT_TENSIONS)
+from supabase_io import (update_exercise_name, save_user_settings, load_profiles,
+                         rename_profile, delete_profile, recalculate_all_efforts)
 
 
 def _plateau_badge(dates, values, label: str) -> None:
@@ -338,8 +340,6 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
     st.checkbox("Inclure la Planche dans la saisie", key="include_planche")
     st.number_input("Taille de la moyenne glissante (séances)",
                     min_value=1, max_value=30, step=1, key="nb_days_avg")
-    st.number_input("Poids de référence pour le calcul d'isométrie (kg)",
-                    min_value=40, max_value=200, step=1, key="weight")
 
     st.write("---")
     st.subheader("📥 Export de données")
@@ -356,42 +356,77 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
         st.caption("Aucune donnée à exporter.")
 
     st.write("---")
-    st.subheader("🎛️ Calibration — Variantes de planche")
+    st.subheader("🔧 Coefficients de calcul planche")
     st.caption(
-        "Ces scores pondèrent la difficulté de chaque variante. "
-        "Sauvegardés sur ton compte, ils persistent entre tes sessions."
+        "Tous les paramètres du modèle isométrique. "
+        "Les modifications sont sauvegardées sur ton compte et persistent entre sessions."
     )
-    cols_cal = st.columns(2)
-    updated_scores = {}
+
+    # ── Poids ────────────────────────────────────────────────────────────────
+    st.markdown("**⚖️ Poids corporel de référence (kg)**")
+    st.number_input(
+        "Poids (kg)", min_value=40, max_value=200, step=1, key="weight",
+        label_visibility="collapsed",
+    )
+
+    # ── Variantes ─────────────────────────────────────────────────────────
+    st.markdown("**🤸 Scores de variante** *(difficulté relative, sans unité)*")
+    cols_v = st.columns(2)
+    updated_variantes = {}
     for i, (var, score) in enumerate(st.session_state.config_variantes.items()):
-        with cols_cal[i % 2]:
-            updated_scores[var] = st.number_input(
+        with cols_v[i % 2]:
+            updated_variantes[var] = st.number_input(
                 var, min_value=1, max_value=20, value=int(score), step=1, key=f"cal_{var}"
             )
 
-    st.write("---")
-    st.subheader("📐 Calibration — Formes de planche")
-    st.caption(
-        "Score de forme = hauteur de hanche normalisée (plus élevé = plus difficile). "
-        "Modifie pour calibrer selon ta morphologie."
-    )
+    # ── Formes ────────────────────────────────────────────────────────────
+    st.markdown("**📐 Scores de forme** *(hauteur de hanche normalisée)*")
     formes_config = st.session_state.get("config_formes", dict(DEFAULT_FORMES))
-    cols_forme = st.columns(2)
+    cols_f = st.columns(2)
     updated_formes = {}
     for i, (forme, score) in enumerate(formes_config.items()):
-        with cols_forme[i % 2]:
+        with cols_f[i % 2]:
             updated_formes[forme] = st.number_input(
-                forme, min_value=1.0, max_value=200.0, value=float(score), step=0.1,
-                format="%.2f", key=f"forme_{forme}"
+                forme, min_value=1.0, max_value=200.0, value=float(score),
+                step=0.1, format="%.2f", key=f"forme_{forme}"
             )
 
-    if st.button("✅ Appliquer et sauvegarder tous les paramètres", use_container_width=True):
-        st.session_state.config_variantes = updated_scores
-        st.session_state.config_formes    = updated_formes
+    # ── Élastiques ────────────────────────────────────────────────────────
+    st.markdown("**🔴 Force des élastiques (kg de décharge)**")
+    elastiques_config = st.session_state.get("config_elastiques", dict(DEFAULT_ELASTIQUES))
+    cols_e = st.columns(2)
+    updated_elastiques = {}
+    for i, (nom, force) in enumerate(elastiques_config.items()):
+        with cols_e[i % 2]:
+            updated_elastiques[nom] = st.number_input(
+                nom, min_value=0, max_value=100, value=int(force), step=1, key=f"elast_{nom}"
+            )
+
+    # ── Tensions ──────────────────────────────────────────────────────────
+    st.markdown("**↔️ Ratios de tension** *(fraction de la force élastique appliquée)*")
+    tensions_config = st.session_state.get("config_tensions", dict(DEFAULT_TENSIONS))
+    cols_t = st.columns(2)
+    updated_tensions = {}
+    for i, (nom, ratio) in enumerate(tensions_config.items()):
+        with cols_t[i % 2]:
+            updated_tensions[nom] = st.number_input(
+                nom, min_value=0.0, max_value=2.0, value=float(ratio),
+                step=0.01, format="%.2f", key=f"tension_{nom}"
+            )
+
+    # ── Boutons ───────────────────────────────────────────────────────────
+    st.write("")
+    if st.button("✅ Sauvegarder tous les paramètres", use_container_width=True):
+        st.session_state.config_variantes  = updated_variantes
+        st.session_state.config_formes     = updated_formes
+        st.session_state.config_elastiques = updated_elastiques
+        st.session_state.config_tensions   = updated_tensions
         ok = save_user_settings(
             user_id,
-            updated_scores,
+            updated_variantes,
             formes_config=updated_formes,
+            elastiques_config=updated_elastiques,
+            tensions_config=updated_tensions,
             weight=float(st.session_state.weight),
             nb_days_avg=int(st.session_state.nb_days_avg),
             include_planche=bool(st.session_state.include_planche),
@@ -400,25 +435,18 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
         if ok:
             st.success("✅ Paramètres sauvegardés — seront restaurés à ta prochaine connexion.")
         else:
-            st.warning(
-                "Paramètres appliqués pour cette session, mais la sauvegarde a échoué "
-                "(table `user_settings` absente ? voir SETUP.md)."
-            )
+            st.warning("Paramètres appliqués pour cette session, mais la sauvegarde a échoué.")
         st.rerun()
 
-    st.write("---")
-    st.subheader("🔄 Recalculer tous les efforts")
-    st.caption(
-        "Recalcule l'effort pondéré de toutes tes perfs de planche avec les coefficients actuels. "
-        "Utile après avoir modifié variantes, formes, ou changé de poids."
-    )
     if st.button("🔄 Recalculer tous les efforts en base", use_container_width=True, type="secondary"):
         with st.spinner("Recalcul en cours…"):
             n = recalculate_all_efforts(
                 user_id,
                 float(st.session_state.weight),
                 st.session_state.config_variantes,
-                st.session_state.get("config_formes", dict(DEFAULT_FORMES)),
+                st.session_state.get("config_formes",     dict(DEFAULT_FORMES)),
+                st.session_state.get("config_elastiques", dict(DEFAULT_ELASTIQUES)),
+                st.session_state.get("config_tensions",   dict(DEFAULT_TENSIONS)),
             )
         st.cache_data.clear()
         if n:

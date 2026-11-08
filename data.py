@@ -19,7 +19,9 @@ DEFAULT_VARIANTES = {
     "Diamond": 5, "Maltese": 11, "Tuck": 2, "Adv_Tuck": 3,
 }
 
-DEFAULT_FORMES = dict(CONFIG["formes"])  # {"Normal": 47.6, "High": 34, "Bas": 66.64, "Dead": 93.296}
+DEFAULT_FORMES      = dict(CONFIG["formes"])
+DEFAULT_ELASTIQUES  = dict(CONFIG["elastiques"])
+DEFAULT_TENSIONS    = dict(CONFIG["tensions"])
 
 
 # =========================================================================
@@ -27,18 +29,21 @@ DEFAULT_FORMES = dict(CONFIG["formes"])  # {"Normal": 47.6, "High": 34, "Bas": 6
 # =========================================================================
 def calculer_effort(variante: str, elastique: str, tension: str, forme: str,
                      temps, weight: float, variantes_config: dict = None,
-                     formes_config: dict = None) -> int:
+                     formes_config: dict = None, elastiques_config: dict = None,
+                     tensions_config: dict = None) -> int:
     """
     Calcule l'effort pondéré d'un hold de planche isométrique.
 
-    Fonction pure : variantes_config, formes_config et weight sont passés
-    explicitement, jamais lus depuis st.session_state.
+    Fonction pure : toutes les configs et weight sont passés explicitement,
+    jamais lus depuis st.session_state.
     """
-    variantes_config = variantes_config or DEFAULT_VARIANTES
-    formes_config    = formes_config    or DEFAULT_FORMES
+    variantes_config  = variantes_config  or DEFAULT_VARIANTES
+    formes_config     = formes_config     or DEFAULT_FORMES
+    elastiques_config = elastiques_config or DEFAULT_ELASTIQUES
+    tensions_config   = tensions_config   or DEFAULT_TENSIONS
     try:
-        force_e = CONFIG["elastiques"].get(elastique, 0)
-        ratio_t = CONFIG["tensions"].get(tension, 0.70)
+        force_e = elastiques_config.get(elastique, 0)
+        ratio_t = tensions_config.get(tension, 0.70)
         score_v = variantes_config.get(variante, 0)
         score_f = formes_config.get(forme, 0)
         if score_v == 0 or score_f == 0 or not temps:
