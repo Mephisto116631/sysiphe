@@ -1,14 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Rocher stylisé (thème Sysiphe) : cercle vert + flèche blanche -->
+<!-- Colline blanche + rocher blanc (thème Sysiphe) sur fond bleu -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-  <path
-      android:fillColor="#22c55e"
-      android:pathData="M54,18 C32,18 18,33 18,54 C18,72 31,84 54,88 C77,84 90,72 90,54 C90,33 76,18 54,18 Z"/>
+  <!-- Rocher -->
   <path
       android:fillColor="#ffffff"
-      android:pathData="M44,56 L54,34 L64,56 L60,56 L60,74 L48,74 L48,56 Z"/>
+      android:pathData="M42,30 A12,12 0 1,0 66,30 A12,12 0 1,0 42,30 Z"/>
+  <!-- Colline -->
+  <path
+      android:fillColor="#ffffff"
+      android:pathData="M18,78 Q54,38 90,78 L90,94 L18,94 Z"/>
 </vector>
