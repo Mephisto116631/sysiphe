@@ -31,11 +31,28 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      # ── 4. Pointage du SDK Android (pré-installé sur ubuntu-latest) ─────────
+      # ── 4. Pre-download Gradle 8.4 avec retry (services.gradle.org instable) -
+      - name: Pre-download Gradle distribution
+        run: |
+          URL="https://services.gradle.org/distributions/gradle-8.4-bin.zip"
+          HASH=$(echo -n "$URL" | md5sum | cut -d' ' -f1)
+          DIST_DIR="$HOME/.gradle/wrapper/dists/gradle-8.4-bin/$HASH"
+          mkdir -p "$DIST_DIR"
+          if [ ! -f "$DIST_DIR/gradle-8.4-bin.zip" ]; then
+            for i in 1 2 3 4 5; do
+              echo "Attempt $i/5..."
+              curl -fL --retry 3 --retry-delay 15 --connect-timeout 60 --max-time 600 \
+                "$URL" -o "$DIST_DIR/gradle-8.4-bin.zip" && break
+              [ $i -lt 5 ] && sleep $((i * 30))
+            done
+          fi
+          ls -lh "$DIST_DIR/gradle-8.4-bin.zip"
+
+      # ── 5. Pointage du SDK Android (pré-installé sur ubuntu-latest) ─────────
       - name: Set sdk.dir
         run: echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
 
-      # ── 5. Build APK release via Gradle wrapper ───────────────────────────
+      # ── 6. Build APK release via Gradle wrapper ───────────────────────────
       - name: Build release APK
         working-directory: android
         run: ./gradlew assembleRelease
