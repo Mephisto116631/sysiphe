@@ -27,11 +27,15 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # ── 3. Pointage du SDK Android (pré-installé sur ubuntu-latest) ─────────
+      # ── 3. Gradle via le wrapper (gradle/actions gère cache + retry) ─────────
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      # ── 4. Pointage du SDK Android (pré-installé sur ubuntu-latest) ─────────
       - name: Set sdk.dir
         run: echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
 
-      # ── 4. Build APK release via Gradle wrapper (gradlew dans le repo) ──────
+      # ── 5. Build APK release via Gradle wrapper ───────────────────────────
       - name: Build release APK
         working-directory: android
         run: ./gradlew assembleRelease
