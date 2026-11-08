@@ -8,6 +8,9 @@ on:
       - '.github/workflows/build-apk.yml'
   workflow_dispatch:   # déclenchement manuel depuis l'onglet Actions
 
+permissions:
+  contents: write   # nécessaire pour créer une GitHub Release
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -54,10 +57,19 @@ jobs:
             android/app/build/outputs/apk/release/app-release-unsigned.apk
           rm /tmp/keystore.jks
 
-      # ── 7. Upload de l'APK signé (disponible 30 jours dans Actions) ────────
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      # ── 7. Lecture de la versionName depuis build.gradle.kts ───────────────
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(grep 'versionName' android/app/build.gradle.kts | grep -oP '"\K[^"]+')
+          echo "name=v$VERSION" >> $GITHUB_OUTPUT
+
+      # ── 8. GitHub Release permanente avec l'APK signé ──────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: sysiphe-${{ github.sha }}
-          path: sysiphe.apk
-          retention-days: 30
+          tag_name: ${{ steps.version.outputs.name }}
+          name: "Sysiphe ${{ steps.version.outputs.name }}"
+          body: "Build automatique — commit ${{ github.sha }}"
+          files: sysiphe.apk
+          make_latest: true
