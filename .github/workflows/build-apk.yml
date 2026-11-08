@@ -27,11 +27,12 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # ── 3. Gradle 8.4 (sans wrapper — pas de gradlew dans le repo) ─────────
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: '8.4'
+      # ── 3. Gradle 8.4 (téléchargement direct depuis services.gradle.org) ────
+      - name: Install Gradle 8.4
+        run: |
+          wget -q https://services.gradle.org/distributions/gradle-8.4-bin.zip -O /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /opt/gradle
+          echo "/opt/gradle/gradle-8.4/bin" >> $GITHUB_PATH
 
       # ── 4. Pointage du SDK Android (pré-installé sur ubuntu-latest) ────────
       - name: Set sdk.dir
