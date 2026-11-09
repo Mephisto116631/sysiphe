@@ -190,4 +190,14 @@ void main() {
       expect(r.bestSerie, 10);
     });
   });
+
+  test('sessionDatesSince : filtre de période pour la récupération', () {
+    final d = [DateTime(2026, 6, 1), DateTime(2026, 8, 1), DateTime(2026, 8, 20)];
+    final now = DateTime(2026, 8, 31);
+    expect(sessionDatesSince(d, 30, now: now), [DateTime(2026, 8, 1), DateTime(2026, 8, 20)]);
+    expect(sessionDatesSince(d, 7, now: now), isEmpty);
+    expect(sessionDatesSince(d, null, now: now).length, 3);
+    // Récupération sur la période : un seul écart (1er → 20 août)
+    expect(computeRest(sessionDatesSince(d, 30, now: now))!.gaps.single.restDays, 18);
+  });
 }
