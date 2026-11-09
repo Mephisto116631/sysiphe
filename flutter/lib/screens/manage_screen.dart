@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/profile.dart';
+import '../services/session_store.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
 import '../widgets/load_error.dart';
@@ -129,7 +130,14 @@ class _ManageScreenState extends State<ManageScreen> {
   Future<void> _renameProfile(Profile p) async {
     final name = await _askName('Renommer « ${p.name} »', initial: p.name);
     if (name == null) return;
-    await _run(() => _svc.renameProfile(p.id, name), '« ${p.name} » → « $name »');
+    await _run(() async {
+      await _svc.renameProfile(p.id, name);
+      if (p.id == widget.current.id) {
+        // Garder le profil mémorisé à jour pour les prochaines ouvertures.
+        await SessionStore.save(
+            Profile(id: p.id, name: name, hasPin: p.hasPin));
+      }
+    }, '« ${p.name} » → « $name »');
   }
 
   Future<void> _deleteProfile(Profile p) async {

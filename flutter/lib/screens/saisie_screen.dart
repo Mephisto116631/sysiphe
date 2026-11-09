@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../models/perf.dart';
+import '../models/session.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
 
@@ -17,8 +18,9 @@ class SaisieScreen extends StatefulWidget {
 class _SaisieScreenState extends State<SaisieScreen> {
   // ── État du formulaire ────────────────────────────────────────────────────
   final _exerciceCtrl = TextEditingController();
-  final _chargeCtrl = TextEditingController(); // valeur de la série (performance)
-  final _lestCtrl = TextEditingController();   // lest externe en kg (charge)
+  final _chargeCtrl =
+      TextEditingController(); // valeur de la série (performance)
+  final _lestCtrl = TextEditingController(); // lest externe en kg (charge)
   TextEditingController? _acCtrl; // contrôleur interne de l'Autocomplete
   DateTime _date = DateTime.now();
   int _serie = 1;
@@ -32,6 +34,9 @@ class _SaisieScreenState extends State<SaisieScreen> {
   // ── État UI ───────────────────────────────────────────────────────────────
   List<Perf> _todayPerfs = [];
   List<String> _exerciceNames = [];
+  // Séance précédente, pour la reprendre exercice par exercice.
+  List<ExerciseTemplate> _previous = [];
+  DateTime? _previousDate;
   bool _saving = false;
   bool _loadingPerfs = true;
   double _weight = 97.0; // poids par défaut, chargé depuis user_settings
@@ -49,6 +54,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
   Future<void> _init() async {
     await Future.wait([
       _loadTodayPerfs(),
+      _loadPrevious(),
       _loadExerciceNames(),
       _loadWeight(),
     ]);
@@ -60,12 +66,69 @@ class _SaisieScreenState extends State<SaisieScreen> {
       final perfs =
           await SupabaseService.instance.getPerfsForDate(widget.userId, _date);
       if (!mounted) return;
-      setState(() { _todayPerfs = perfs; _loadingPerfs = false; });
+      setState(() {
+        _todayPerfs = perfs;
+        _loadingPerfs = false;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() => _loadingPerfs = false);
       _snack('Chargement des séries impossible : $e', error: true);
     }
+  }
+
+  Future<void> _loadPrevious() async {
+    try {
+      final perfs = await SupabaseService.instance
+          .getPreviousSession(widget.userId, _date);
+      if (!mounted) return;
+      setState(() {
+        _previous = templatesFrom(perfs);
+        _previousDate = perfs.isEmpty ? null : perfs.first.date;
+      });
+    } catch (_) {
+      // Non bloquant : la carte « Séance précédente » n'apparaît pas.
+    }
+  }
+
+  int _doneToday(String exercice) =>
+      _todayPerfs.where((p) => p.exercice == exercice).length;
+
+  ExerciseTemplate? _templateFor(String exercice) {
+    for (final t in _previous) {
+      if (t.exercice == exercice) return t;
+    }
+    return null;
+  }
+
+  static String _num(double v) =>
+      v % 1 == 0 ? v.toInt().toString() : v.toString();
+
+  /// Pré-remplit le formulaire avec la série suivante de cet exercice, telle
+  /// qu'elle a été faite à la séance précédente.
+  void _applyTemplate(ExerciseTemplate t) {
+    final serie = _doneToday(t.exercice) + 1;
+    final model = t.seriesFor(serie);
+    _acCtrl?.text = t.exercice; // déclenche _onExerciceChanged
+    _exerciceCtrl.text = t.exercice;
+    _chargeCtrl.text = _num(model.performance);
+    _lestCtrl.text = model.charge > 0 ? _num(model.charge) : '';
+    setState(() {
+      _serie = serie;
+      _unite = const ['Sec', 'Reps', 'Kg'].contains(t.unite) ? t.unite : 'Reps';
+      if (model.isPlanche) {
+        _showOptions = true;
+        // Une valeur absente des listes ferait planter le menu déroulant.
+        if (kVariantes.containsKey(model.variante)) _variante = model.variante;
+        if (kFormes.containsKey(model.forme)) _forme = model.forme;
+        if (kElastiques.containsKey(model.elastique)) {
+          _elastique = model.elastique;
+        }
+        _tension = kTensions.containsKey(model.tension) && _elastique != 'Aucun'
+            ? model.tension
+            : 'N/A';
+      }
+    });
   }
 
   Future<void> _loadExerciceNames() async {
@@ -79,14 +142,14 @@ class _SaisieScreenState extends State<SaisieScreen> {
   }
 
   Future<void> _loadWeight() async {
-    final settings =
-        await SupabaseService.instance.getSettings(widget.userId);
+    final settings = await SupabaseService.instance.getSettings(widget.userId);
     if (mounted) {
       setState(() {
         _weight = (settings['weight'] as num?)?.toDouble() ?? 97.0;
         _variantesCfg = mergeConfig(settings['variantes_config'], kVariantes);
         _formesCfg = mergeConfig(settings['formes_config'], kFormes);
-        _elastiquesCfg = mergeConfig(settings['elastiques_config'], kElastiques);
+        _elastiquesCfg =
+            mergeConfig(settings['elastiques_config'], kElastiques);
         _tensionsCfg = mergeConfig(settings['tensions_config'], kTensions);
       });
     }
@@ -115,6 +178,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
     if (picked != null && picked != _date) {
       setState(() => _date = picked);
       _loadTodayPerfs();
+      _loadPrevious();
     }
   }
 
@@ -169,8 +233,16 @@ class _SaisieScreenState extends State<SaisieScreen> {
     try {
       await SupabaseService.instance.savePerf(perf);
       _chargeCtrl.clear();
-      setState(() { _serie = 1; _saving = false; });
+      setState(() => _saving = false);
       await _loadTodayPerfs();
+      // Enchaîner : série suivante du même exercice, pré-remplie si
+      // l'exercice figurait à la séance précédente.
+      final t = _templateFor(exercice);
+      if (t != null) {
+        _applyTemplate(t);
+      } else if (mounted) {
+        setState(() => _serie = _doneToday(exercice) + 1);
+      }
       _snack('Enregistré ✓');
     } catch (e) {
       setState(() => _saving = false);
@@ -185,7 +257,9 @@ class _SaisieScreenState extends State<SaisieScreen> {
         title: const Text('Supprimer ?'),
         content: const Text('Cette performance sera supprimée.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annuler')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
@@ -251,6 +325,17 @@ class _SaisieScreenState extends State<SaisieScreen> {
               const SizedBox(height: 16),
             ],
 
+            // ── Séance précédente ─────────────────────────────────────────
+            if (_previous.isNotEmpty && _previousDate != null) ...[
+              _PreviousSessionCard(
+                date: _previousDate!,
+                templates: _previous,
+                doneToday: _doneToday,
+                onPick: _applyTemplate,
+              ),
+              const SizedBox(height: 16),
+            ],
+
             // ── Formulaire ────────────────────────────────────────────────
             Card(
               child: Padding(
@@ -277,7 +362,8 @@ class _SaisieScreenState extends State<SaisieScreen> {
                                   size: 18, color: AppTheme.textSecondary),
                               const SizedBox(width: 10),
                               Text(
-                                DateFormat('EEEE d MMMM', 'fr_FR').format(_date),
+                                DateFormat('EEEE d MMMM', 'fr_FR')
+                                    .format(_date),
                                 style: const TextStyle(fontSize: 15),
                               ),
                             ],
@@ -294,8 +380,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
                                 .contains(val.text.toLowerCase()))
                             .take(6),
                         onSelected: _onExerciceChanged,
-                        fieldViewBuilder:
-                            (ctx, ctrl, focusNode, onSubmit) {
+                        fieldViewBuilder: (ctx, ctrl, focusNode, onSubmit) {
                           // Branché une seule fois : avant, chaque rebuild
                           // ajoutait un listener et réécrivait le texte
                           // (curseur qui saute pendant la frappe).
@@ -313,8 +398,9 @@ class _SaisieScreenState extends State<SaisieScreen> {
                               labelText: 'Exercice',
                               hintText: 'ex. Planche, Dips…',
                             ),
-                            validator: (v) =>
-                                (v == null || v.trim().isEmpty) ? 'Requis' : null,
+                            validator: (v) => (v == null || v.trim().isEmpty)
+                                ? 'Requis'
+                                : null,
                           );
                         },
                       ),
@@ -373,8 +459,9 @@ class _SaisieScreenState extends State<SaisieScreen> {
                             flex: 3,
                             child: TextFormField(
                               controller: _chargeCtrl,
-                              keyboardType: const TextInputType.numberWithOptions(
-                                  decimal: true),
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                      decimal: true),
                               inputFormatters: [
                                 FilteringTextInputFormatter.allow(
                                     RegExp(r'[\d.,]')),
@@ -386,10 +473,9 @@ class _SaisieScreenState extends State<SaisieScreen> {
                                         ? 'Répétitions'
                                         : 'Poids (kg)',
                               ),
-                              validator: (v) =>
-                                  (v == null || v.trim().isEmpty)
-                                      ? 'Requis'
-                                      : null,
+                              validator: (v) => (v == null || v.trim().isEmpty)
+                                  ? 'Requis'
+                                  : null,
                             ),
                           ),
                         ],
@@ -404,7 +490,8 @@ class _SaisieScreenState extends State<SaisieScreen> {
                           keyboardType: const TextInputType.numberWithOptions(
                               decimal: true),
                           inputFormatters: [
-                            FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
+                            FilteringTextInputFormatter.allow(
+                                RegExp(r'[\d.,]')),
                           ],
                           decoration: const InputDecoration(
                             labelText: 'Lest (kg) — optionnel',
@@ -513,7 +600,8 @@ class _SaisieScreenState extends State<SaisieScreen> {
                                 child: CircularProgressIndicator(
                                     strokeWidth: 2, color: Colors.white))
                             : const Icon(Icons.save),
-                        label: Text(_saving ? 'Enregistrement…' : 'Enregistrer'),
+                        label:
+                            Text(_saving ? 'Enregistrement…' : 'Enregistrer'),
                       ),
                     ],
                   ),
@@ -691,10 +779,82 @@ class _DropdownField<T> extends StatelessWidget {
       items: items
           .map((item) => DropdownMenuItem<T>(
                 value: item,
-                child: Text(item.toString(),
-                    style: const TextStyle(fontSize: 14)),
+                child:
+                    Text(item.toString(), style: const TextStyle(fontSize: 14)),
               ))
           .toList(),
+    );
+  }
+}
+
+/// Exercices de la séance précédente : un appui pré-remplit le formulaire
+/// avec la série suivante, telle qu'elle a été faite la dernière fois.
+class _PreviousSessionCard extends StatelessWidget {
+  final DateTime date;
+  final List<ExerciseTemplate> templates;
+  final int Function(String exercice) doneToday;
+  final void Function(ExerciseTemplate) onPick;
+
+  const _PreviousSessionCard({
+    required this.date,
+    required this.templates,
+    required this.doneToday,
+    required this.onPick,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 8, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.history,
+                    size: 20, color: AppTheme.primaryBlue),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Séance précédente · '
+                    '${DateFormat('EEEE d MMMM', 'fr_FR').format(date)}',
+                    style: theme.textTheme.titleMedium,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text('Touchez un exercice pour le refaire.',
+                style: theme.textTheme.bodySmall),
+            for (final t in templates)
+              _templateTile(context, t, doneToday(t.exercice)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _templateTile(BuildContext context, ExerciseTemplate t, int done) {
+    final total = t.series.length;
+    final finished = done >= total;
+    return ListTile(
+      contentPadding: const EdgeInsets.only(right: 8),
+      dense: true,
+      title: Text(t.exercice,
+          style: TextStyle(
+              decoration: finished ? TextDecoration.lineThrough : null)),
+      subtitle: Text(t.summary),
+      trailing: finished
+          ? const Icon(Icons.check_circle, color: Colors.green)
+          : done > 0
+              ? Text('$done/$total',
+                  style: const TextStyle(
+                      color: AppTheme.primaryBlue, fontWeight: FontWeight.w600))
+              : const Icon(Icons.play_circle_outline,
+                  color: AppTheme.primaryBlue),
+      onTap: () => onPick(t),
     );
   }
 }

@@ -12,8 +12,7 @@ class SupabaseService {
 
   final _db = Supabase.instance.client;
 
-  String _sha256(String input) =>
-      sha256.convert(utf8.encode(input)).toString();
+  String _sha256(String input) => sha256.convert(utf8.encode(input)).toString();
 
   // ─── Profils ──────────────────────────────────────────────────────────────
 
@@ -41,7 +40,9 @@ class SupabaseService {
   }
 
   Future<void> renameProfile(String profileId, String name) async {
-    await _db.from('profiles').update({'name': name.trim()}).eq('id', profileId);
+    await _db
+        .from('profiles')
+        .update({'name': name.trim()}).eq('id', profileId);
   }
 
   /// Supprime le profil ; ses séries restent en base (comme le web).
@@ -51,10 +52,8 @@ class SupabaseService {
 
   Future<void> touchLogin(String profileId) async {
     try {
-      await _db
-          .from('profiles')
-          .update({'last_login': DateTime.now().toIso8601String()})
-          .eq('id', profileId);
+      await _db.from('profiles').update(
+          {'last_login': DateTime.now().toIso8601String()}).eq('id', profileId);
     } catch (_) {}
   }
 
@@ -102,9 +101,24 @@ class SupabaseService {
       );
 
   Future<Perf?> savePerf(Perf perf) async {
-    final res =
-        await _db.from('perfs').insert(perf.toJson()).select().single();
+    final res = await _db.from('perfs').insert(perf.toJson()).select().single();
     return Perf.fromJson(res);
+  }
+
+  /// Séries de la dernière séance strictement avant [before] (vide s'il n'y
+  /// en a pas) : sert à reprendre la séance précédente dans Saisie.
+  Future<List<Perf>> getPreviousSession(String userId, DateTime before) async {
+    final last = await _db
+        .from('perfs')
+        .select('date')
+        .eq('user_id', userId)
+        .lt('date', DateFormat('yyyy-MM-dd').format(before))
+        .order('date', ascending: false)
+        .limit(1);
+    if (last.isEmpty) return [];
+    final perfs = await _fetchPerfs(userId,
+        onDate: last.first['date'] as String, ascending: true);
+    return perfs;
   }
 
   /// Renomme un exercice dans tout l'historique du profil.
@@ -133,8 +147,7 @@ class SupabaseService {
   // ─── Calendrier : jours actifs ────────────────────────────────────────────
 
   /// Nombre de séries par jour ; [months] null = tout l'historique.
-  Future<Map<DateTime, int>> getActiveDays(String userId,
-      {int? months}) async {
+  Future<Map<DateTime, int>> getActiveDays(String userId, {int? months}) async {
     final perfs = await _fetchPerfs(
       userId,
       fromDate: months == null
@@ -186,8 +199,7 @@ class SupabaseService {
 
   /// Upsert partiel : seules les colonnes de [data] sont modifiées, les
   /// réglages gérés par l'app web (calibration planche…) restent intacts.
-  Future<void> saveSettings(
-      String userId, Map<String, dynamic> data) async {
+  Future<void> saveSettings(String userId, Map<String, dynamic> data) async {
     await _db.from('user_settings').upsert({'user_id': userId, ...data});
   }
 
@@ -228,18 +240,14 @@ class SupabaseService {
         },
     ];
     for (var i = 0; i < rows.length; i += 500) {
-      await _db
-          .from('perfs')
-          .upsert(rows.sublist(i, i + 500 > rows.length ? rows.length : i + 500));
+      await _db.from('perfs').upsert(
+          rows.sublist(i, i + 500 > rows.length ? rows.length : i + 500));
     }
     return rows.length;
   }
 
   Future<void> setPin(String profileId, String pin) async {
     final hash = _sha256(pin.trim());
-    await _db
-        .from('profiles')
-        .update({'pin_hash': hash})
-        .eq('id', profileId);
+    await _db.from('profiles').update({'pin_hash': hash}).eq('id', profileId);
   }
 }

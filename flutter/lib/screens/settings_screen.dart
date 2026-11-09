@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../models/profile.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
+import '../services/session_store.dart';
 import 'calibration_screen.dart';
 import 'manage_screen.dart';
 import 'profile_screen.dart' show ProfileScreen;
@@ -123,7 +124,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _logout() {
+  Future<void> _logout() async {
+    await SessionStore.clear(); // le PIN sera redemandé
+    if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const ProfileScreen()),
       (_) => false,

@@ -33,6 +33,7 @@ class _StatsScreenState extends State<StatsScreen> {
   List<String> _exercices = [];
   String? _selected;
   _Period _period = _Period.all;
+  bool _plancheTime = false; // planche : effort (défaut) ou temps
   bool _loading = true;
   Object? _error;
 
@@ -43,12 +44,17 @@ class _StatsScreenState extends State<StatsScreen> {
   }
 
   Future<void> _load() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final all = await SupabaseService.instance.getAllPerfs(widget.userId);
       if (!mounted) return;
-      final names = {for (final p in all) if (p.exercice.isNotEmpty) p.exercice}
-          .toList()
+      final names = {
+        for (final p in all)
+          if (p.exercice.isNotEmpty) p.exercice
+      }.toList()
         ..sort();
       setState(() {
         _all = all;
@@ -61,15 +67,17 @@ class _StatsScreenState extends State<StatsScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() { _error = e; _loading = false; });
+      setState(() {
+        _error = e;
+        _loading = false;
+      });
     }
   }
 
   List<Perf> get _filtered {
     final days = _period.days;
-    final from = days == null
-        ? null
-        : DateTime.now().subtract(Duration(days: days));
+    final from =
+        days == null ? null : DateTime.now().subtract(Duration(days: days));
     return _all
         .where((p) =>
             p.exercice == _selected && (from == null || !p.date.isBefore(from)))
@@ -102,7 +110,9 @@ class _StatsScreenState extends State<StatsScreen> {
 
   Widget _buildContent(BuildContext context) {
     final perfs = _filtered;
-    final metric = metricFor(perfs);
+    final isPlanche = perfs.isNotEmpty && perfs.first.isPlanche;
+    final metric =
+        isPlanche && _plancheTime ? StatMetric.best : metricFor(perfs);
     final points = dailySeries(perfs, metric);
     final unit = metric.unit(perfs.isEmpty ? 'Sec' : perfs.first.unite);
 
@@ -131,6 +141,23 @@ class _StatsScreenState extends State<StatsScreen> {
             showSelectedIcon: false,
             onSelectionChanged: (s) => setState(() => _period = s.first),
           ),
+          if (isPlanche) ...[
+            const SizedBox(height: 8),
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(
+                    value: false,
+                    label: Text('Effort'),
+                    icon: Icon(Icons.bolt, size: 18)),
+                ButtonSegment(
+                    value: true,
+                    label: Text('Temps'),
+                    icon: Icon(Icons.timer_outlined, size: 18)),
+              ],
+              selected: {_plancheTime},
+              onSelectionChanged: (s) => setState(() => _plancheTime = s.first),
+            ),
+          ],
           const SizedBox(height: 16),
           if (points.isEmpty)
             Expanded(
@@ -154,7 +181,8 @@ class _StatsScreenState extends State<StatsScreen> {
   }
 }
 
-String _fmt(double v) => v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(1);
+String _fmt(double v) =>
+    v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(1);
 
 class _StatRow extends StatelessWidget {
   final List<DayPoint> points;
@@ -168,11 +196,13 @@ class _StatRow extends StatelessWidget {
     final last = points.last;
     return Row(
       children: [
-        Expanded(child: _StatCard(label: 'Record', value: '${_fmt(best)}$unit')),
+        Expanded(
+            child: _StatCard(label: 'Record', value: '${_fmt(best)}$unit')),
         const SizedBox(width: 10),
         Expanded(
           child: _StatCard(
-            label: 'Dernière séance\n${DateFormat('d MMM', 'fr_FR').format(last.date)}',
+            label:
+                'Dernière séance\n${DateFormat('d MMM', 'fr_FR').format(last.date)}',
             value: '${_fmt(last.value)}$unit',
           ),
         ),
@@ -223,14 +253,26 @@ class _TrendBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (IconData icon, Color color, String text) = switch (result.status) {
-      Trend.progress => (Icons.trending_up, Colors.green.shade700,
-          'En progression (+${(result.relativeSlope * 100).round()} % sur 21 j)'),
-      Trend.regression => (Icons.trending_down, Colors.red.shade700,
-          'En baisse (${(result.relativeSlope * 100).round()} % sur 21 j)'),
-      Trend.plateau => (Icons.trending_flat, Colors.orange.shade800,
-          'Plateau sur les 21 derniers jours'),
-      Trend.insufficientData => (Icons.info_outline, AppTheme.textSecondary,
-          'Pas assez de séances récentes pour une tendance'),
+      Trend.progress => (
+          Icons.trending_up,
+          Colors.green.shade700,
+          'En progression (+${(result.relativeSlope * 100).round()} % sur 21 j)'
+        ),
+      Trend.regression => (
+          Icons.trending_down,
+          Colors.red.shade700,
+          'En baisse (${(result.relativeSlope * 100).round()} % sur 21 j)'
+        ),
+      Trend.plateau => (
+          Icons.trending_flat,
+          Colors.orange.shade800,
+          'Plateau sur les 21 derniers jours'
+        ),
+      Trend.insufficientData => (
+          Icons.info_outline,
+          AppTheme.textSecondary,
+          'Pas assez de séances récentes pour une tendance'
+        ),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -266,7 +308,8 @@ class _LineChart extends StatelessWidget {
     final minX = spots.first.x;
     final maxX = spots.last.x == minX ? minX + 1 : spots.last.x;
     final ys = spots.map((s) => s.y);
-    final minY = (ys.reduce((a, b) => a < b ? a : b) * 0.9).clamp(0.0, double.infinity);
+    final minY =
+        (ys.reduce((a, b) => a < b ? a : b) * 0.9).clamp(0.0, double.infinity);
     var maxY = ys.reduce((a, b) => a > b ? a : b) * 1.1;
     if (maxY <= minY) maxY = minY + 1;
 
@@ -313,7 +356,8 @@ class _LineChart extends StatelessWidget {
               reservedSize: 40,
               getTitlesWidget: (val, meta) => Text(
                 val.toInt().toString(),
-                style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary),
+                style: const TextStyle(
+                    fontSize: 10, color: AppTheme.textSecondary),
               ),
             ),
           ),
@@ -326,13 +370,16 @@ class _LineChart extends StatelessWidget {
                 final date = origin.add(Duration(days: val.toInt()));
                 return Text(
                   DateFormat('d/MM/yy').format(date),
-                  style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary),
+                  style: const TextStyle(
+                      fontSize: 10, color: AppTheme.textSecondary),
                 );
               },
             ),
           ),
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
         ),
         lineTouchData: LineTouchData(
           touchTooltipData: LineTouchTooltipData(

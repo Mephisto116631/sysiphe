@@ -62,6 +62,9 @@ Pages et fonctions présentes sur le web, absentes ou simplifiées dans Flutter 
 - [ ] **Saisie planche** multi-séries (S1 à S5) avec variante, forme, élastique et tension par série
 - [x] **Saisie lestée** : champ « Lest (kg) » pour les séries en reps (enregistré dans `charge`)
 - [x] **Saisie** : options planche ouvertes automatiquement pour « Planche » ; bug du champ Exercice corrigé (curseur qui sautait)
+- [x] **Saisie** : carte « Séance précédente » — un appui pré-remplit l'exercice avec la série suivante telle que faite la dernière fois (valeur, lest, options planche) ; après chaque enregistrement, la série suivante s'enchaîne
+- [x] **Connexion** : profil mémorisé sur le téléphone (comme le cookie d'un an du web) — plus de liste ni de PIN à chaque ouverture ; PIN redemandé seulement après « Changer de profil »
+- [x] **Stats planche** : sélecteur Effort (par défaut) / Temps
 - [ ] **Saisie** : panneau « stats du jour et prochaine séance » (KPI)
 - [x] **Stats** : une valeur par séance, choix de période (30 j / 3 mois / 6 mois / tout), badge progression / plateau / régression (port testé de `detect_plateau`)
 - [x] **Stats** : effort pondéré pour la planche, tonnage (`performance × charge`) ou volume pour les reps
@@ -77,7 +80,7 @@ Pages et fonctions présentes sur le web, absentes ou simplifiées dans Flutter 
 
 ## Phase 5 — Qualité et robustesse
 
-- [x] Tests Flutter : `calculerEffort` donne les mêmes résultats que `data.py`, et `Perf.fromJson` est testé sur des lignes réelles (`flutter/test/`, 30 tests)
+- [x] Tests Flutter : `calculerEffort` donne les mêmes résultats que `data.py`, et `Perf.fromJson` est testé sur des lignes réelles (`flutter/test/`, 37 tests)
 - [x] CI : `flutter analyze` + `flutter test` sur chaque PR, et pas seulement à la publication (`ci.yml`)
 - [x] CI : `pytest test_data.py` sur chaque PR (28 tests)
 - [ ] Mode hors ligne Flutter : cache local et saisie différée, synchronisée au retour du réseau
