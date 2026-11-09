@@ -85,6 +85,9 @@ pytest test_data.py -v
 
 ## Application Android (APK)
 
+> ⚠️ **Section obsolète.** L'APK principal est désormais l'app Flutter (`flutter/`, workflow `build-flutter.yml`). L'APK WebView natif se trouve dans `android/` (workflow `build-apk.yml`). Voir le [README](README.md#cicd).
+> Ce qui suit décrit l'ancien wrapper Capacitor, conservé pour mémoire.
+
 L'APK est un wrapper Capacitor (dossier `mobile/`) qui ouvre l'app Streamlit Cloud. Il est compilé et signé par GitHub Actions (`.github/workflows/android-apk.yml`).
 
 - **Publier une version** : incrémenter `"version"` dans `mobile/package.json` et pousser sur `main` (faisable depuis l'éditeur web GitHub), ou `git tag v1.2.0 && git push origin v1.2.0` → l'APK apparaît dans les Releases du repo.
