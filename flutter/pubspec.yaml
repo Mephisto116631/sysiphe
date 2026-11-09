@@ -30,6 +30,11 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^4.0.0
 
+# app_links 6.4.0+ utilise flutter.compileSdkVersion dans build.gradle de librairie
+# ce qui n'est pas disponible pour les plugins → forcer la version 6.3.x
+dependency_overrides:
+  app_links: ">=6.0.0 <6.4.0"
+
 flutter:
   uses-material-design: true
   assets:
