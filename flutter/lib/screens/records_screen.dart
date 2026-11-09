@@ -16,9 +16,13 @@ class RecordsScreen extends StatefulWidget {
   State<RecordsScreen> createState() => _RecordsScreenState();
 }
 
+enum _Filtre { tout, planche, muscu }
+
 class _RecordsScreenState extends State<RecordsScreen> {
   List<PlancheRecord> _planche = [];
   List<VolumeRecord> _volume = [];
+  _Filtre _filtre = _Filtre.tout;
+  final _search = TextEditingController();
   bool _loading = true;
   Object? _error;
 
@@ -26,7 +30,32 @@ class _RecordsScreenState extends State<RecordsScreen> {
   void initState() {
     super.initState();
     _load();
+    _search.addListener(() => setState(() {}));
   }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  bool _match(String text) {
+    final q = _search.text.trim().toLowerCase();
+    return q.isEmpty || text.toLowerCase().contains(q);
+  }
+
+  /// Planche filtrée : la recherche porte sur variante, forme, élastique,
+  /// tension.
+  List<PlancheRecord> get _plancheVisible => _filtre == _Filtre.muscu
+      ? const []
+      : _planche
+          .where((r) => _match(
+              '${r.variante} ${r.best.forme} ${r.elastique} ${r.tension} planche'))
+          .toList();
+
+  List<VolumeRecord> get _volumeVisible => _filtre == _Filtre.planche
+      ? const []
+      : _volume.where((r) => _match(r.exercice)).toList();
 
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
@@ -65,33 +94,83 @@ class _RecordsScreenState extends State<RecordsScreen> {
                   ? Center(
                       child: Text('Aucun record',
                           style: theme.textTheme.bodyMedium))
-                  : ListView(
-                      padding: const EdgeInsets.all(16),
-                      children: [
-                        if (_planche.isNotEmpty) ...[
-                          Text('Planche', style: theme.textTheme.titleMedium),
-                          Text('Meilleure série par variante, élastique et tension',
-                              style: theme.textTheme.bodySmall),
-                          const SizedBox(height: 8),
-                          for (var i = 0; i < _planche.length; i++)
-                            _PlancheTile(
-                              r: _planche[i],
-                              // Intensité relative au meilleur effort.
-                              ratio: (_planche[i].best.effortPondere ?? 0) /
-                                  (_planche.first.best.effortPondere ?? 1),
-                              first: i == 0,
-                            ),
-                          const SizedBox(height: 20),
-                        ],
-                        if (_volume.isNotEmpty) ...[
-                          Text('Musculation', style: theme.textTheme.titleMedium),
-                          Text('Meilleure séance (volume ou tonnage) et meilleure série',
-                              style: theme.textTheme.bodySmall),
-                          const SizedBox(height: 8),
-                          for (final r in _volume) _VolumeTile(r: r),
-                        ],
-                      ],
-                    ),
+                  : _buildList(theme),
+    );
+  }
+
+  Widget _buildList(ThemeData theme) {
+    final planche = _plancheVisible;
+    final volume = _volumeVisible;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Column(
+            children: [
+              SegmentedButton<_Filtre>(
+                segments: const [
+                  ButtonSegment(value: _Filtre.tout, label: Text('Tout')),
+                  ButtonSegment(value: _Filtre.planche, label: Text('Planche')),
+                  ButtonSegment(value: _Filtre.muscu, label: Text('Musculation')),
+                ],
+                selected: {_filtre},
+                showSelectedIcon: false,
+                onSelectionChanged: (v) => setState(() => _filtre = v.first),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _search,
+                decoration: InputDecoration(
+                  isDense: true,
+                  prefixIcon: const Icon(Icons.search),
+                  hintText: _filtre == _Filtre.planche
+                      ? 'Variante, élastique… (ex. Straddle)'
+                      : 'Rechercher un exercice',
+                  suffixIcon: _search.text.isEmpty
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: _search.clear,
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: planche.isEmpty && volume.isEmpty
+              ? Center(
+                  child: Text('Aucun record pour ce filtre',
+                      style: theme.textTheme.bodyMedium))
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  children: [
+                    if (planche.isNotEmpty) ...[
+                      Text('Planche', style: theme.textTheme.titleMedium),
+                      Text('Meilleure série par variante, élastique et tension',
+                          style: theme.textTheme.bodySmall),
+                      const SizedBox(height: 8),
+                      for (var i = 0; i < planche.length; i++)
+                        _PlancheTile(
+                          r: planche[i],
+                          // Intensité relative au meilleur effort global.
+                          ratio: (planche[i].best.effortPondere ?? 0) /
+                              (_planche.first.best.effortPondere ?? 1),
+                          first: identical(planche[i], _planche.first),
+                        ),
+                      const SizedBox(height: 20),
+                    ],
+                    if (volume.isNotEmpty) ...[
+                      Text('Musculation', style: theme.textTheme.titleMedium),
+                      Text('Meilleure séance (volume ou tonnage) et meilleure série',
+                          style: theme.textTheme.bodySmall),
+                      const SizedBox(height: 8),
+                      for (final r in volume) _VolumeTile(r: r),
+                    ],
+                  ],
+                ),
+        ),
+      ],
     );
   }
 }

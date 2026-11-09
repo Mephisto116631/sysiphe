@@ -60,8 +60,12 @@ class _StatsScreenState extends State<StatsScreen> {
         _all = all;
         _exercices = names;
         if (_selected == null || !names.contains(_selected)) {
-          // Par défaut : l'exercice de la séance la plus récente.
-          _selected = all.isNotEmpty ? all.first.exercice : null;
+          // Par défaut : la planche si elle existe, sinon l'exercice le
+          // plus récent.
+          final planche = names.where(Perf.isPlancheName);
+          _selected = planche.isNotEmpty
+              ? planche.first
+              : (all.isNotEmpty ? all.first.exercice : null);
         }
         _loading = false;
       });

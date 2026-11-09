@@ -67,6 +67,33 @@ class _SaisieScreenState extends State<SaisieScreen> {
       _loadWeight(),
       _loadHistory(),
     ]);
+    _autoResume();
+  }
+
+  /// La séance précédente est remise directement : le formulaire est
+  /// pré-rempli avec le premier exercice pas encore fait aujourd'hui.
+  void _autoResume() {
+    if (!mounted || _exerciceCtrl.text.trim().isNotEmpty) return;
+    final next = nextPending(_previous, _doneToday);
+    if (next != null) _applyTemplate(next);
+  }
+
+  /// Exercices du plus récent au plus ancien (liste « Récents »,
+  /// autocomplétion) ; ordre alphabétique tant que l'historique charge.
+  List<String> get _recentNames =>
+      _history.isNotEmpty ? exercisesByRecency(_history) : _exerciceNames;
+
+  /// Choisir un exercice : reprend ce qui a été fait la dernière fois
+  /// (séance précédente, sinon dernière séance où il apparaît).
+  void _pickExercise(String ex) {
+    final t = _templateFor(ex) ?? lastTemplateFor(_history, ex, _date);
+    if (t != null) {
+      _applyTemplate(t);
+    } else {
+      _acCtrl?.text = ex;
+      _onExerciceChanged(ex);
+      setState(() => _serie = _doneToday(ex) + 1);
+    }
   }
 
   Future<void> _loadTodayPerfs() async {
@@ -349,15 +376,24 @@ class _SaisieScreenState extends State<SaisieScreen> {
       await _loadTodayPerfs();
       // Enchaîner : série suivante du même exercice, pré-remplie si
       // l'exercice figurait à la séance précédente.
+      // Enchaînement : séries restantes de cet exercice, puis exercice
+      // suivant de la séance précédente.
+      String? suivant;
       final t = _templateFor(exercice);
-      if (t != null) {
+      if (t != null && _doneToday(exercice) < t.series.length) {
         _applyTemplate(t);
+      } else if (t != null && nextPending(_previous, _doneToday) != null) {
+        final next = nextPending(_previous, _doneToday)!;
+        _applyTemplate(next);
+        suivant = next.exercice;
       } else if (mounted) {
         setState(() => _serie = _doneToday(exercice) + 1);
       }
       _loadHistory();
       _snack(newPr
           ? '🏆 Nouveau record en série : ${_num(best)} (ancien : ${_num(ins.prSerie)})'
+          : suivant != null
+              ? 'Enregistré ✓ — exercice suivant : $suivant'
           : perfs.length > 1
               ? '${perfs.length} séries enregistrées ✓'
               : 'Enregistré ✓');
@@ -533,12 +569,13 @@ class _SaisieScreenState extends State<SaisieScreen> {
                         children: [
                           Expanded(
                             child: Autocomplete<String>(
-                              optionsBuilder: (val) => _exerciceNames
+                              // Du plus récent au plus ancien
+                              optionsBuilder: (val) => _recentNames
                                   .where((e) => e
                                       .toLowerCase()
                                       .contains(val.text.toLowerCase()))
-                                  .take(6),
-                              onSelected: _onExerciceChanged,
+                                  .take(8),
+                              onSelected: _pickExercise,
                               fieldViewBuilder:
                                   (ctx, ctrl, focusNode, onSubmit) {
                                 // Branché une seule fois : avant, chaque rebuild
@@ -575,6 +612,34 @@ class _SaisieScreenState extends State<SaisieScreen> {
                           ),
                         ],
                       ),
+
+                      // Anciens exercices, du plus récent au plus ancien :
+                      // un appui reprend la dernière fois.
+                      if (_recentNames.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          height: 36,
+                          child: ListenableBuilder(
+                            listenable: _exerciceCtrl,
+                            builder: (context, _) {
+                              final cur = _exerciceCtrl.text.trim();
+                              final names = _recentNames.take(15).toList();
+                              return ListView.separated(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: names.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(width: 6),
+                                itemBuilder: (_, i) => ChoiceChip(
+                                  label: Text(names[i]),
+                                  selected: names[i] == cur,
+                                  visualDensity: VisualDensity.compact,
+                                  onSelected: (_) => _pickExercise(names[i]),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 12),
 
                       // Indicateurs de l'exercice (en-tête des blocs du web)

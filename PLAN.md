@@ -126,6 +126,15 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
 **Connexion web à trancher** (lié à la RLS, phase 3)
 - [ ] Comptes Google : **option d'association** à un profil existant (retrouver son profil sur un autre appareil ou sur le web, sans reconnexion à chaque ouverture) — à faire avec la RLS, en attente de validation
 
+## Demandes du 9 novembre (v2.3.0)
+
+- [x] Stats : « Planche » sélectionnée par défaut dans le menu
+- [x] Records : filtre Tout / Planche / Musculation + recherche (exercice, ou variante / élastique / tension)
+- [x] Saisie : la séance précédente est remise directement (formulaire pré-rempli avec le premier exercice pas
+      encore fait), enchaînement automatique sur l'exercice suivant quand ses séries sont faites
+- [x] Saisie : liste « Récents » des anciens exercices, du plus récent au plus ancien ; un appui reprend la dernière
+      fois où l'exercice a été fait (aussi pour l'autocomplétion)
+
 ## Phase 5 — Qualité et robustesse
 
 - [x] Tests Flutter : `calculerEffort` donne les mêmes résultats que `data.py`, et `Perf.fromJson` est testé sur des lignes réelles (`flutter/test/`, 53 tests)

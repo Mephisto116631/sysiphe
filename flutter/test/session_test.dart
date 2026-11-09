@@ -63,4 +63,36 @@ void main() {
     test('non numérique refusé',
         () => expect(() => parseSeries('12 abc 8'), throwsFormatException));
   });
+
+  group('reprise des exercices', () {
+    Perf at(int id, String ex, DateTime d, double v) => Perf(
+        id: id, userId: 'u', date: d, exercice: ex, performance: v, unite: 'Reps');
+    final h = [
+      at(1, 'Pompe', DateTime(2026, 7, 1), 20),
+      at(2, 'Dips', DateTime(2026, 7, 1), 10),
+      at(3, 'Traction', DateTime(2026, 7, 20), 8),
+      at(4, 'Traction', DateTime(2026, 7, 20), 7),
+      at(5, 'Pompe', DateTime(2026, 7, 25), 25),
+      at(6, 'Planche', DateTime(2026, 7, 25), 15),
+    ];
+    test('exercices par récence (jour, puis ordre de saisie)', () {
+      expect(exercisesByRecency(h), ['Planche', 'Pompe', 'Traction', 'Dips']);
+    });
+    test('dernière fois pour un exercice quelconque', () {
+      final t = lastTemplateFor(h, 'Traction', DateTime(2026, 8, 1))!;
+      expect(t.series.map((p) => p.performance), [8, 7]);
+      expect(lastTemplateFor(h, 'Traction', DateTime(2026, 7, 20)), isNull);
+      expect(lastTemplateFor(h, 'Inconnu', DateTime(2026, 8, 1)), isNull);
+    });
+    test('exercice suivant à faire', () {
+      final t = templatesFrom([
+        at(10, 'Planche', DateTime(2026, 8, 1), 23),
+        at(11, 'Planche', DateTime(2026, 8, 1), 21),
+        at(12, 'Pompe', DateTime(2026, 8, 1), 30),
+      ]);
+      expect(nextPending(t, (_) => 0)!.exercice, 'Planche');
+      expect(nextPending(t, (e) => e == 'Planche' ? 2 : 0)!.exercice, 'Pompe');
+      expect(nextPending(t, (_) => 5), isNull);
+    });
+  });
 }
