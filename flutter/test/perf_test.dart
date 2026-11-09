@@ -119,6 +119,28 @@ void main() {
     });
   });
 
+  group('isBetterRecord', () {
+    Perf p(String ex, double perf, {int? effort, double charge = 0}) => Perf(
+        userId: 'u', date: DateTime(2026), exercice: ex,
+        performance: perf, effortPondere: effort, charge: charge);
+
+    test('planche : l\'effort prime sur le temps', () {
+      expect(isBetterRecord(p('Planche', 8, effort: 120),
+          p('Planche', 15, effort: 90)), isTrue);
+    });
+    test('planche : à effort égal, le temps départage', () {
+      expect(isBetterRecord(p('Planche', 12, effort: 90),
+          p('Planche', 10, effort: 90)), isTrue);
+    });
+    test('reps : la valeur prime, puis le lest', () {
+      expect(isBetterRecord(p('Traction', 10), p('Traction', 8, charge: 20)),
+          isTrue);
+      expect(isBetterRecord(p('Traction', 8, charge: 20), p('Traction', 8)),
+          isTrue);
+      expect(isBetterRecord(p('Traction', 8), p('Traction', 8)), isFalse);
+    });
+  });
+
   test('isPlancheName est insensible à la casse et aux espaces', () {
     expect(Perf.isPlancheName(' planche '), isTrue);
     expect(Perf.isPlancheName('PLANCHE'), isTrue);

@@ -29,7 +29,7 @@ répondent **400**, et l'app reste bloquée sur un chargement infini.
 - [x] Charger **tout** l'historique : Supabase ne renvoie que 1 000 lignes par requête (tu en as 1 260) → pagination
 - [x] Stats / Records / Calendrier : afficher un message d'erreur et un bouton « Réessayer » au lieu d'un chargement infini
 - [x] Ordre des profils identique au web
-- [ ] **Toi** : vérifier que le build Flutter passe au vert (onglet *Actions* sur GitHub)
+- [x] Build Flutter vert après la fusion de la PR #4 (vérifié par Claude)
 - [ ] **Toi** : installer le nouvel APK et vérifier Saisie, Stats, Calendrier et Records sur tes vraies données
 
 ## Phase 2 — Mise en production
@@ -60,12 +60,13 @@ répondent **400**, et l'app reste bloquée sur un chargement infini.
 Pages et fonctions présentes sur le web, absentes ou simplifiées dans Flutter :
 
 - [ ] **Saisie planche** multi-séries (S1 à S5) avec variante, forme, élastique et tension par série
-- [ ] **Saisie lestée** : champ « charge (kg) » pour tractions et dips lestés
+- [x] **Saisie lestée** : champ « Lest (kg) » pour les séries en reps (enregistré dans `charge`)
+- [x] **Saisie** : options planche ouvertes automatiquement pour « Planche » ; bug du champ Exercice corrigé (curseur qui sautait)
 - [ ] **Saisie** : panneau « stats du jour et prochaine séance » (KPI)
 - [ ] **Stats** : choix de période, lissage, détection plateau / progression / régression
 - [ ] **Stats** : volume lesté (`performance × charge`) et effort planche
 - [ ] **Repos** : nouvelle page d'analyse de la récupération
-- [ ] **Records** : record planche basé sur l'effort pondéré, pas seulement sur le temps
+- [x] **Records** : record planche basé sur l'effort pondéré, puis le temps ; autres exercices départagés par le lest
 - [ ] **Paramètres** : édition de la calibration planche (variantes, formes, élastiques, tensions) + recalcul
 - [ ] **Paramètres** : gestion des profils (créer, renommer, supprimer)
 - [ ] **Paramètres** : renommer un exercice

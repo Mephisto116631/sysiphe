@@ -131,7 +131,7 @@ class SupabaseService {
     final records = <String, Perf>{};
     for (final p in perfs) {
       final existing = records[p.exercice];
-      if (existing == null || p.performance > existing.performance) {
+      if (existing == null || isBetterRecord(p, existing)) {
         records[p.exercice] = p;
       }
     }

@@ -14,7 +14,7 @@ class Perf {
   //   charge      = lest externe en kg (tractions lestées…), 0 sinon
   final double performance;
   final double charge;
-  final String unite;     // "Sec" | "Reps" | "Kg"
+  final String unite; // "Sec" | "Reps" | "Kg"
   final String categorie; // "Force Iso" | "Musculation"
   final String elastique;
   final String tension;
@@ -91,18 +91,33 @@ class Perf {
 // ─── Calcul d'effort planche (port fidèle de data.py) ────────────────────────
 
 const kVariantes = {
-  'Full': 10.0, 'Straddle': 9.0, 'Half_Lay': 9.0,
-  'Diamond': 5.0, 'Maltese': 11.0, 'Tuck': 2.0, 'Adv_Tuck': 3.0,
+  'Full': 10.0,
+  'Straddle': 9.0,
+  'Half_Lay': 9.0,
+  'Diamond': 5.0,
+  'Maltese': 11.0,
+  'Tuck': 2.0,
+  'Adv_Tuck': 3.0,
 };
 const kFormes = {
-  'Normal': 47.6, 'High': 34.0, 'Bas': 66.64, 'Dead': 93.296,
+  'Normal': 47.6,
+  'High': 34.0,
+  'Bas': 66.64,
+  'Dead': 93.296,
 };
 const kElastiques = {
-  'Aucun': 0.0, 'Rouge/Violet': 35.0, 'Jaune+Bleu': 40.0,
-  'Jaune': 25.0, 'Bleu': 15.0, 'Vert': 45.0,
+  'Aucun': 0.0,
+  'Rouge/Violet': 35.0,
+  'Jaune+Bleu': 40.0,
+  'Jaune': 25.0,
+  'Bleu': 15.0,
+  'Vert': 45.0,
 };
 const kTensions = {
-  'N/A': 0.70, 'Ecarté': 0.85, 'Normal': 0.70, 'Serré': 0.60,
+  'N/A': 0.70,
+  'Ecarté': 0.85,
+  'Normal': 0.70,
+  'Serré': 0.60,
 };
 
 int calculerEffort({
@@ -138,4 +153,19 @@ int calculerEffort({
   } catch (_) {
     return 0;
   }
+}
+
+// ─── Records ────────────────────────────────────────────────────────────────
+
+/// Planche : le record est l'effort pondéré le plus élevé (comme l'onglet
+/// Records du web), puis le temps. Autres exercices : la valeur la plus
+/// haute, puis le lest le plus lourd.
+bool isBetterRecord(Perf a, Perf b) {
+  if (a.isPlanche) {
+    final ea = a.effortPondere ?? 0, eb = b.effortPondere ?? 0;
+    if (ea != eb) return ea > eb;
+    return a.performance > b.performance;
+  }
+  if (a.performance != b.performance) return a.performance > b.performance;
+  return a.charge > b.charge;
 }

@@ -17,7 +17,9 @@ class SaisieScreen extends StatefulWidget {
 class _SaisieScreenState extends State<SaisieScreen> {
   // ── État du formulaire ────────────────────────────────────────────────────
   final _exerciceCtrl = TextEditingController();
-  final _chargeCtrl = TextEditingController();
+  final _chargeCtrl = TextEditingController(); // valeur de la série (performance)
+  final _lestCtrl = TextEditingController();   // lest externe en kg (charge)
+  TextEditingController? _acCtrl; // contrôleur interne de l'Autocomplete
   DateTime _date = DateTime.now();
   int _serie = 1;
   String _variante = 'Full';
@@ -102,6 +104,19 @@ class _SaisieScreenState extends State<SaisieScreen> {
     return merged;
   }
 
+  /// Synchronise le nom d'exercice et adapte le formulaire :
+  /// « Planche » → options planche ouvertes et unité en secondes.
+  void _onExerciceChanged(String text) {
+    _exerciceCtrl.text = text;
+    final planche = Perf.isPlancheName(text);
+    if (planche && (!_showOptions || _unite != 'Sec')) {
+      setState(() {
+        _showOptions = true;
+        _unite = 'Sec';
+      });
+    }
+  }
+
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -152,6 +167,9 @@ class _SaisieScreenState extends State<SaisieScreen> {
       forme: _forme,
       serie: _serie,
       performance: valeur,
+      charge: _unite == 'Reps'
+          ? (double.tryParse(_lestCtrl.text.replaceAll(',', '.')) ?? 0)
+          : 0,
       unite: _unite,
       categorie: _unite == 'Sec' ? 'Force Iso' : 'Musculation',
       elastique: _elastique,
@@ -214,6 +232,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
   void dispose() {
     _exerciceCtrl.dispose();
     _chargeCtrl.dispose();
+    _lestCtrl.dispose();
     super.dispose();
   }
 
@@ -286,12 +305,18 @@ class _SaisieScreenState extends State<SaisieScreen> {
                                 .toLowerCase()
                                 .contains(val.text.toLowerCase()))
                             .take(6),
-                        onSelected: (s) => _exerciceCtrl.text = s,
+                        onSelected: _onExerciceChanged,
                         fieldViewBuilder:
                             (ctx, ctrl, focusNode, onSubmit) {
-                          // Synchronise notre controller avec celui de l'Autocomplete
-                          ctrl.text = _exerciceCtrl.text;
-                          ctrl.addListener(() => _exerciceCtrl.text = ctrl.text);
+                          // Branché une seule fois : avant, chaque rebuild
+                          // ajoutait un listener et réécrivait le texte
+                          // (curseur qui saute pendant la frappe).
+                          if (!identical(_acCtrl, ctrl)) {
+                            _acCtrl = ctrl
+                              ..text = _exerciceCtrl.text
+                              ..addListener(
+                                  () => _onExerciceChanged(ctrl.text));
+                          }
                           return TextFormField(
                             controller: ctrl,
                             focusNode: focusNode,
@@ -382,6 +407,30 @@ class _SaisieScreenState extends State<SaisieScreen> {
                         ],
                       ),
                       const SizedBox(height: 12),
+
+                      // Lest (tractions / dips lestés) — conservé d'une
+                      // série à l'autre, vide = sans lest.
+                      if (_unite == 'Reps') ...[
+                        TextFormField(
+                          controller: _lestCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
+                          ],
+                          decoration: const InputDecoration(
+                            labelText: 'Lest (kg) — optionnel',
+                            hintText: '0',
+                            prefixIcon: Icon(Icons.fitness_center, size: 18),
+                          ),
+                          validator: (v) {
+                            if (v == null || v.trim().isEmpty) return null;
+                            final x = double.tryParse(v.replaceAll(',', '.'));
+                            return (x == null || x < 0) ? 'Invalide' : null;
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                      ],
 
                       // Options planche (repliables)
                       GestureDetector(
