@@ -84,24 +84,12 @@ class _SaisieScreenState extends State<SaisieScreen> {
     if (mounted) {
       setState(() {
         _weight = (settings['weight'] as num?)?.toDouble() ?? 97.0;
-        _variantesCfg = _cfg(settings['variantes_config'], kVariantes);
-        _formesCfg = _cfg(settings['formes_config'], kFormes);
-        _elastiquesCfg = _cfg(settings['elastiques_config'], kElastiques);
-        _tensionsCfg = _cfg(settings['tensions_config'], kTensions);
+        _variantesCfg = mergeConfig(settings['variantes_config'], kVariantes);
+        _formesCfg = mergeConfig(settings['formes_config'], kFormes);
+        _elastiquesCfg = mergeConfig(settings['elastiques_config'], kElastiques);
+        _tensionsCfg = mergeConfig(settings['tensions_config'], kTensions);
       });
     }
-  }
-
-  /// Fusionne la config JSONB stockée avec les valeurs par défaut,
-  /// comme load_user_settings() côté Python.
-  static Map<String, double> _cfg(dynamic raw, Map<String, double> defaults) {
-    final merged = Map<String, double>.of(defaults);
-    if (raw is Map) {
-      raw.forEach((k, v) {
-        if (v is num) merged[k.toString()] = v.toDouble();
-      });
-    }
-    return merged;
   }
 
   /// Synchronise le nom d'exercice et adapte le formulaire :

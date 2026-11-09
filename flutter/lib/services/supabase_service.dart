@@ -165,6 +165,50 @@ class SupabaseService {
     await _db.from('user_settings').upsert({'user_id': userId, ...data});
   }
 
+  /// Recalcule effort_pondere de toutes les séries de planche du profil avec
+  /// le poids et la calibration donnés (équivalent de recalculate_all_efforts).
+  /// Retourne le nombre de séries mises à jour.
+  Future<int> recalculateEfforts(
+    String userId, {
+    required double weight,
+    required Map<String, double> variantes,
+    required Map<String, double> formes,
+    required Map<String, double> elastiques,
+    required Map<String, double> tensions,
+  }) async {
+    final planches =
+        (await _fetchPerfs(userId)).where((p) => p.isPlanche).toList();
+    // Upsert = INSERT … ON CONFLICT : les colonnes NOT NULL (user_id, date,
+    // exercice) doivent être présentes, seule effort_pondere est modifiée.
+    final rows = [
+      for (final p in planches)
+        {
+          'id': p.id,
+          'user_id': p.userId,
+          'date': DateFormat('yyyy-MM-dd').format(p.date),
+          'exercice': p.exercice,
+          'effort_pondere': calculerEffort(
+            variante: p.variante,
+            elastique: p.elastique,
+            tension: p.tension,
+            forme: p.forme,
+            temps: p.performance,
+            weight: weight,
+            variantes: variantes,
+            formes: formes,
+            elastiquesMap: elastiques,
+            tensions: tensions,
+          ),
+        },
+    ];
+    for (var i = 0; i < rows.length; i += 500) {
+      await _db
+          .from('perfs')
+          .upsert(rows.sublist(i, i + 500 > rows.length ? rows.length : i + 500));
+    }
+    return rows.length;
+  }
+
   Future<void> setPin(String profileId, String pin) async {
     final hash = _sha256(pin.trim());
     await _db

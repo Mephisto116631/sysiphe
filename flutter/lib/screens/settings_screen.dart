@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../models/profile.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
+import 'calibration_screen.dart';
 import 'profile_screen.dart' show ProfileScreen;
 
 /// Version injectée par la CI (`--dart-define=APP_VERSION=2.1.0+42`).
@@ -215,6 +216,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ],
                     ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.tune,
+                        color: AppTheme.primaryBlue),
+                    title: const Text('Calibration planche'),
+                    subtitle: const Text(
+                        'Coefficients de l\'effort et recalcul'),
+                    trailing: const Icon(Icons.chevron_right,
+                        color: AppTheme.textSecondary),
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) =>
+                            CalibrationScreen(userId: widget.userId))),
                   ),
                 ),
                 const SizedBox(height: 20),

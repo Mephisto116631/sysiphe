@@ -16,7 +16,7 @@
 - [x] Flutter : colonne `performance` (valeur) distincte de `charge` (lest kg), comme l'app web
 - [x] Flutter : réglages lus/écrits dans `user_settings` (au lieu de `settings`, inexistante)
 - [x] Flutter : effort calculé seulement pour « Planche », avec la calibration de l'utilisateur
-- [x] Web : bouton « recalcul des efforts » réparé (recherche insensible à la casse)
+- [x] Web : bouton « recalcul des efforts » réparé (recherche insensible à la casse, puis upsert qui échouait toujours sur les colonnes NOT NULL)
 - [x] NAS, APK WebView et Capacitor archivés dans `archive/` (rien de supprimé)
 
 ## Phase 1 — Rendre les données visibles dans Flutter 🔴 (bloquant)
@@ -67,7 +67,7 @@ Pages et fonctions présentes sur le web, absentes ou simplifiées dans Flutter 
 - [x] **Stats** : effort pondéré pour la planche, tonnage (`performance × charge`) ou volume pour les reps
 - [ ] **Repos** : nouvelle page d'analyse de la récupération
 - [x] **Records** : record planche basé sur l'effort pondéré, puis le temps ; autres exercices départagés par le lest
-- [ ] **Paramètres** : édition de la calibration planche (variantes, formes, élastiques, tensions) + recalcul
+- [x] **Paramètres** : écran « Calibration planche » (variantes, formes, élastiques, tensions), partagé avec le web, + recalcul des efforts
 - [ ] **Paramètres** : gestion des profils (créer, renommer, supprimer)
 - [ ] **Paramètres** : renommer un exercice
 - [ ] **Paramètres** : export CSV
@@ -75,7 +75,7 @@ Pages et fonctions présentes sur le web, absentes ou simplifiées dans Flutter 
 
 ## Phase 5 — Qualité et robustesse
 
-- [x] Tests Flutter : `calculerEffort` donne les mêmes résultats que `data.py`, et `Perf.fromJson` est testé sur des lignes réelles (`flutter/test/`, 24 tests)
+- [x] Tests Flutter : `calculerEffort` donne les mêmes résultats que `data.py`, et `Perf.fromJson` est testé sur des lignes réelles (`flutter/test/`, 25 tests)
 - [x] CI : `flutter analyze` + `flutter test` sur chaque PR, et pas seulement à la publication (`ci.yml`)
 - [x] CI : `pytest test_data.py` sur chaque PR (28 tests)
 - [ ] Mode hors ligne Flutter : cache local et saisie différée, synchronisée au retour du réseau

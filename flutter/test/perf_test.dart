@@ -141,6 +141,15 @@ void main() {
     });
   });
 
+  test('mergeConfig : clés stockées prioritaires, défauts sinon', () {
+    final m = mergeConfig({'Full': 12, 'Bidon': 'x', 'Nouvelle': 4}, kVariantes);
+    expect(m['Full'], 12.0); // surchargé
+    expect(m['Tuck'], 2.0); // défaut conservé
+    expect(m['Nouvelle'], 4.0); // clé ajoutée par l'utilisateur
+    expect(m.containsKey('Bidon'), isFalse); // non numérique ignoré
+    expect(mergeConfig(null, kFormes), kFormes);
+  });
+
   test('isPlancheName est insensible à la casse et aux espaces', () {
     expect(Perf.isPlancheName(' planche '), isTrue);
     expect(Perf.isPlancheName('PLANCHE'), isTrue);

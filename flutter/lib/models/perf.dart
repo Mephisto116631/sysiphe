@@ -42,7 +42,7 @@ class Perf {
         userId: json['user_id'] as String,
         date: DateTime.parse(json['date'] as String),
         exercice: (json['exercice'] as String?)?.trim() ?? '',
-        variante: (json['variante'] as String?)?.trim() ?? 'Full',
+        variante: (json['variante'] as String?)?.trim() ?? 'Tuck', // comme load_data()
         forme: (json['forme'] as String?)?.trim() ?? 'Normal',
         serie: (json['serie'] as num?)?.toInt() ?? 1,
         performance: (json['performance'] as num?)?.toDouble() ?? 0.0,
@@ -119,6 +119,19 @@ const kTensions = {
   'Normal': 0.70,
   'Serré': 0.60,
 };
+
+/// Fusionne une config JSONB stockée (user_settings) avec les valeurs par
+/// défaut, comme load_user_settings() côté Python : les clés absentes ou non
+/// numériques gardent leur valeur par défaut.
+Map<String, double> mergeConfig(dynamic raw, Map<String, double> defaults) {
+  final merged = Map<String, double>.of(defaults);
+  if (raw is Map) {
+    raw.forEach((k, v) {
+      if (v is num) merged[k.toString()] = v.toDouble();
+    });
+  }
+  return merged;
+}
 
 int calculerEffort({
   required String variante,
