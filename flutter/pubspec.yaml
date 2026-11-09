@@ -1,6 +1,6 @@
 name: sysiphe
 description: Sysiphe — fitness tracker natif Flutter
-version: 2.2.0+1
+version: 2.2.1+1
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -11,6 +11,7 @@ dependencies:
 
   # Supabase
   supabase_flutter: ^2.5.0
+  crypto: ^3.0.3          # repli de transition : PIN vérifié localement
 
   # Charts
   fl_chart: ^0.68.0

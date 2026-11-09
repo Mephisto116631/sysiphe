@@ -148,10 +148,33 @@ def touch_profile_login(profile_id: str) -> None:
         pass
 
 
+def _has_session() -> bool:
+    try:
+        return get_supabase_client().auth.get_session() is not None
+    except Exception:
+        return False
+
+
+def _legacy_pin_ok(profile_id: str, pin: str | None) -> bool:
+    """Repli de transition (session anonyme indisponible, RLS pas encore
+    activée) : vérification locale du PIN, comme avant la v2.2."""
+    import hashlib
+    q = get_supabase_client().table("profiles").select("id").eq("id", profile_id)
+    p = (pin or "").strip()
+    q = q.is_("pin_hash", "null") if not p else q.eq(
+        "pin_hash", hashlib.sha256(p.encode()).hexdigest())
+    return bool(q.execute().data)
+
+
 def claim_profile(profile_id: str, pin: str | None = None) -> str:
     """Fait vérifier le PIN par le serveur, qui rattache ce navigateur au
     profil. Retourne 'ok', 'bad_pin', 'locked' (5 essais faux → 15 min) ou
     'error' (réseau, session absente)."""
+    if not _has_session():
+        try:
+            return "ok" if _legacy_pin_ok(profile_id, pin) else "bad_pin"
+        except Exception:
+            return "error"
     try:
         res = get_supabase_client().rpc(
             "claim_profile",
@@ -171,6 +194,13 @@ def verify_pin(profile_id: str, pin: str) -> bool:
 def set_pin(profile_id: str, pin: str) -> bool:
     """Définit ou change le PIN d'un profil (vérifié côté serveur). True si OK."""
     try:
+        if not _has_session():
+            import hashlib
+            get_supabase_client().table("profiles").update(
+                {"pin_hash": hashlib.sha256(pin.strip().encode()).hexdigest()}
+            ).eq("id", profile_id).execute()
+            _clear_profiles_cache()
+            return True
         get_supabase_client().rpc(
             "set_profile_pin", {"p_profile": profile_id, "p_pin": pin.strip()}
         ).execute()
@@ -189,6 +219,14 @@ def create_profile(name: str, pin: str | None = None) -> dict | None:
     """Crée un profil (PIN facultatif) rattaché à ce navigateur.
     Retourne {id, name} ou None si erreur."""
     try:
+        if not _has_session():
+            import hashlib
+            row = {"name": name.strip()}
+            if pin and pin.strip():
+                row["pin_hash"] = hashlib.sha256(pin.strip().encode()).hexdigest()
+            data = get_supabase_client().table("profiles").insert(row).execute().data
+            _clear_profiles_cache()
+            return data[0] if data else None
         res = get_supabase_client().rpc(
             "create_profile",
             {"p_name": name.strip(), "p_pin": pin.strip() if pin else None},

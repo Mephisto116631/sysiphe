@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import '../models/profile.dart';
@@ -24,6 +26,22 @@ class SupabaseService {
         );
   }
 
+  /// true si une session est disponible ; false si elle ne peut pas être
+  /// ouverte (connexions anonymes désactivées côté Supabase, réseau…).
+  /// Dans ce cas, l'app reprend l'ancien fonctionnement au lieu de bloquer :
+  /// possible tant que la RLS n'est pas activée (étape 2 du PLAN). Dès que la
+  /// session redevient possible, on repasse automatiquement par le serveur.
+  Future<bool> _hasSession() async {
+    try {
+      await ensureSession();
+      return _db.auth.currentSession != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  String _sha256(String input) => sha256.convert(utf8.encode(input)).toString();
+
   /// Ferme la session (« Changer de profil »). Erreurs réseau ignorées : la
   /// session locale est supprimée de toute façon.
   Future<void> signOut() async {
@@ -37,7 +55,17 @@ class SupabaseService {
   /// Profils pour l'écran de connexion (RPC : le hash du PIN n'est pas
   /// exposé ; is_member indique si cet appareil est déjà rattaché).
   Future<List<Profile>> getProfiles() async {
-    await ensureSession();
+    if (!await _hasSession()) {
+      // Repli de transition : lecture directe (hash lu mais non affiché).
+      final rows = await _db
+          .from('profiles')
+          .select('id, name, pin_hash, last_login')
+          .order('last_login', ascending: false, nullsFirst: false)
+          .order('created_at', ascending: true);
+      return (rows as List)
+          .map((j) => Profile.fromJson(j as Map<String, dynamic>))
+          .toList();
+    }
     final res = await _db.rpc('list_profiles');
     return (res as List)
         .map((j) => Profile.fromJson(j as Map<String, dynamic>))
@@ -47,7 +75,15 @@ class SupabaseService {
   /// Vérifie le PIN côté serveur et rattache cet appareil au profil.
   /// [pin] null pour un profil sans PIN.
   Future<ClaimResult> claimProfile(String profileId, {String? pin}) async {
-    await ensureSession();
+    if (!await _hasSession()) {
+      // Repli de transition : vérification locale, comme en v2.1.
+      final p = (pin ?? '').trim();
+      final q = _db.from('profiles').select('id').eq('id', profileId);
+      final rows = p.isEmpty
+          ? await q.isFilter('pin_hash', null)
+          : await q.eq('pin_hash', _sha256(p));
+      return (rows as List).isNotEmpty ? ClaimResult.ok : ClaimResult.badPin;
+    }
     final res = await _db.rpc('claim_profile',
         params: {'p_profile': profileId, 'p_pin': pin?.trim()});
     return switch (res as String?) {
@@ -59,7 +95,8 @@ class SupabaseService {
 
   /// Cet appareil a-t-il déjà accès au profil ?
   Future<bool> isMember(String profileId) async {
-    await ensureSession();
+    // Sans session, pas de rattachement possible : ne pas redemander le PIN.
+    if (!await _hasSession()) return true;
     final res = await _db
         .rpc('is_profile_member', params: {'p_profile': profileId});
     return res == true;
@@ -67,7 +104,18 @@ class SupabaseService {
 
   /// Crée un profil (PIN facultatif) rattaché à cet appareil et le renvoie.
   Future<Profile> createProfile(String name, {String? pin}) async {
-    await ensureSession();
+    if (!await _hasSession()) {
+      final row = await _db
+          .from('profiles')
+          .insert({
+            'name': name.trim(),
+            if (pin != null && pin.trim().isNotEmpty)
+              'pin_hash': _sha256(pin.trim()),
+          })
+          .select('id, name, pin_hash, last_login')
+          .single();
+      return Profile.fromJson(row);
+    }
     final id = await _db.rpc('create_profile', params: {
       'p_name': name.trim(),
       'p_pin': (pin == null || pin.trim().isEmpty) ? null : pin.trim(),
@@ -284,7 +332,12 @@ class SupabaseService {
   }
 
   Future<void> setPin(String profileId, String pin) async {
-    await ensureSession();
+    if (!await _hasSession()) {
+      await _db
+          .from('profiles')
+          .update({'pin_hash': _sha256(pin.trim())}).eq('id', profileId);
+      return;
+    }
     await _db.rpc('set_profile_pin',
         params: {'p_profile': profileId, 'p_pin': pin.trim()});
   }
