@@ -326,3 +326,12 @@ List<VolumeRecord> volumeRecords(Iterable<Perf> perfs) {
   out.sort((a, b) => b.volume.compareTo(a.volume));
   return out;
 }
+
+/// Jours de séance depuis [days] jours avant [now] (null = tout).
+List<DateTime> sessionDatesSince(Iterable<DateTime> dates, int? days,
+    {DateTime? now}) {
+  if (days == null) return dates.toList();
+  final ref = _day(now ?? DateTime.now());
+  final from = ref.subtract(Duration(days: days));
+  return [for (final d in dates) if (!_day(d).isBefore(from)) d];
+}

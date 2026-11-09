@@ -138,6 +138,7 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
 - [x] Mise à jour intégrée (v2.4.0) : Paramètres → « Mises à jour » vérifie la dernière Release GitHub, télécharge
       l'APK et ouvre l'installeur Android ; nouvelle version signalée au démarrage
 - [x] CI : build d'APK de test sur chaque PR (le code Android natif est validé avant fusion)
+- [x] Récupération (Calendrier) : filtre de période 30 j / 3 mois / 6 mois / Tout (v2.4.1)
 
 ## Phase 5 — Qualité et robustesse
 

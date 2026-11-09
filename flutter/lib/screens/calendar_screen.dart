@@ -174,7 +174,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
                   // Récupération (onglet Repos du web)
                   const SizedBox(height: 10),
-                  _RestCard(rest: computeRest(_activeDays.keys)),
+                  _RestCard(dates: _activeDays.keys.toList()),
                 ],
               ),
             ),
@@ -263,57 +263,102 @@ class _StatItem extends StatelessWidget {
 
 /// Repos entre séances : moyenne, habitude, plus longue coupure, prochaine
 /// séance suggérée et dernières tranches de récupération.
-class _RestCard extends StatelessWidget {
-  final RestStats? rest;
+/// Période d'analyse de la récupération (comme les Stats).
+enum _RestPeriod {
+  d30('30 j', 30),
+  m3('3 mois', 90),
+  m6('6 mois', 180),
+  all('Tout', null);
 
-  const _RestCard({required this.rest});
+  final String label;
+  final int? days;
+  const _RestPeriod(this.label, this.days);
+}
+
+/// Repos entre séances sur la période choisie : moyenne, habitude, plus
+/// longue coupure, prochaine séance suggérée et dernières reprises.
+class _RestCard extends StatefulWidget {
+  final List<DateTime> dates;
+
+  const _RestCard({required this.dates});
+
+  @override
+  State<_RestCard> createState() => _RestCardState();
+}
+
+class _RestCardState extends State<_RestCard> {
+  _RestPeriod _period = _RestPeriod.all;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final r = rest;
+    final dates = sessionDatesSince(widget.dates, _period.days);
+    final r = computeRest(dates);
+    final sessions = {for (final d in dates) DateTime(d.year, d.month, d.day)}.length;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: r == null
-            ? Text('Ajoute au moins deux séances à des dates différentes '
-                'pour analyser ta récupération.',
-                style: theme.textTheme.bodyMedium)
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Récupération', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: SegmentedButton<_RestPeriod>(
+                segments: [
+                  for (final p in _RestPeriod.values)
+                    ButtonSegment(value: p, label: Text(p.label)),
+                ],
+                selected: {_period},
+                showSelectedIcon: false,
+                onSelectionChanged: (s) => setState(() => _period = s.first),
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (r == null)
+              Text(
+                sessions == 0
+                    ? 'Aucune séance sur cette période.'
+                    : 'Une seule séance sur cette période : il en faut au moins '
+                        'deux pour analyser la récupération.',
+                style: theme.textTheme.bodyMedium,
+              )
+            else ...[
+              Text('$sessions séances analysées',
+                  style: theme.textTheme.bodySmall),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  Text('Récupération', style: theme.textTheme.titleMedium),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _RestMetric('${r.mean.round()} j', 'Repos moyen'),
-                      _RestMetric('${r.mode} j', 'Habituel'),
-                      _RestMetric('${r.longest} j', 'Plus longue\ncoupure'),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  _NextSession(next: r.nextSession),
-                  const SizedBox(height: 12),
-                  Text('Dernières reprises', style: theme.textTheme.titleSmall),
-                  const SizedBox(height: 4),
-                  for (final g in r.gaps.reversed.take(5))
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 3),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(DateFormat('EEEE d MMMM yyyy', 'fr_FR')
-                                .format(g.resume)),
-                          ),
-                          Text(g.restDays == 0
-                              ? 'enchaîné'
-                              : '${g.restDays} j de repos'),
-                        ],
-                      ),
-                    ),
+                  _RestMetric('${r.mean.round()} j', 'Repos moyen'),
+                  _RestMetric('${r.mode} j', 'Habituel'),
+                  _RestMetric('${r.longest} j', 'Plus longue\ncoupure'),
                 ],
               ),
+              const SizedBox(height: 12),
+              _NextSession(next: r.nextSession),
+              const SizedBox(height: 12),
+              Text('Dernières reprises', style: theme.textTheme.titleSmall),
+              const SizedBox(height: 4),
+              for (final g in r.gaps.reversed.take(5))
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(DateFormat('EEEE d MMMM yyyy', 'fr_FR')
+                            .format(g.resume)),
+                      ),
+                      Text(g.restDays == 0
+                          ? 'enchaîné'
+                          : '${g.restDays} j de repos'),
+                    ],
+                  ),
+                ),
+            ],
+          ],
+        ),
       ),
     );
   }
