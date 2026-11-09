@@ -26,8 +26,7 @@ class ExerciseTemplate {
 /// Regroupe les séries d'une séance par exercice, dans l'ordre où ils ont
 /// été faits (ordre d'insertion = id croissant).
 List<ExerciseTemplate> templatesFrom(List<Perf> session) {
-  final sorted = [...session]
-    ..sort((a, b) {
+  final sorted = [...session]..sort((a, b) {
       final c = (a.id ?? 0).compareTo(b.id ?? 0);
       return c != 0 ? c : a.serie.compareTo(b.serie);
     });
@@ -43,4 +42,20 @@ List<ExerciseTemplate> templatesFrom(List<Perf> session) {
         e.value..sort((a, b) => a.serie.compareTo(b.serie)),
       ),
   ];
+}
+
+/// Port de `parse_reps` (data.py) : « 12 10 8 » → [12, 10, 8].
+/// Accepte aussi « / », « + » et « ; » comme séparateurs (le pavé numérique
+/// Android n'a pas toujours d'espace) et la virgule décimale (« 12,5 »). Lève FormatException si
+/// une valeur n'est pas un nombre positif.
+List<double> parseSeries(String raw) {
+  final out = <double>[];
+  for (final token in raw.trim().split(RegExp(r'[\s/+;]+'))) {
+    if (token.isEmpty) continue;
+    final v = double.tryParse(token.replaceAll(',', '.'));
+    if (v == null) throw FormatException('Valeur non numérique : $token');
+    if (v < 0) throw FormatException('Valeur négative : $token');
+    out.add(v);
+  }
+  return out;
 }

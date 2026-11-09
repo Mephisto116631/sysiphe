@@ -24,12 +24,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _load() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final profiles = await SupabaseService.instance.getProfiles();
-      setState(() { _profiles = profiles; _loading = false; });
+      setState(() {
+        _profiles = profiles;
+        _loading = false;
+      });
     } catch (e) {
-      setState(() { _error = 'Connexion impossible : $e'; _loading = false; });
+      setState(() {
+        _error = 'Connexion impossible : $e';
+        _loading = false;
+      });
     }
   }
 
@@ -46,6 +55,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  /// « Créer un compte » : prénom + PIN facultatif, puis entrée directe.
+  Future<void> _createAccount() async {
+    final res = await showDialog<(String, String)>(
+      context: context,
+      builder: (_) => const _CreateAccountDialog(),
+    );
+    if (res == null) return;
+    final (name, pin) = res;
+    try {
+      final profile =
+          await SupabaseService.instance.createProfile(name, pin: pin);
+      await SessionStore.save(profile);
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => HomeScreen(profile: profile)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      final dup = '$e'.contains('duplicate') || '$e'.contains('23505');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(dup ? 'Le profil « $name » existe déjà' : 'Erreur : $e'),
+        backgroundColor: Colors.red,
+      ));
+    }
+  }
+
   Future<bool> _askPin(Profile profile) async {
     final ctrl = TextEditingController();
     bool ok = false;
@@ -57,8 +92,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return StatefulBuilder(builder: (ctx2, setLocal) {
           Future<void> submit() async {
             setLocal(() => checking = true);
-            final valid = await SupabaseService.instance
-                .verifyPin(profile.id, ctrl.text);
+            final valid =
+                await SupabaseService.instance.verifyPin(profile.id, ctrl.text);
             setLocal(() => checking = false);
             if (valid) {
               ok = true;
@@ -156,7 +191,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.wifi_off, size: 48, color: Colors.grey),
+                        const Icon(Icons.wifi_off,
+                            size: 48, color: Colors.grey),
                         const SizedBox(height: 16),
                         Text(
                           _error!,
@@ -186,11 +222,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       mainAxisSpacing: 14,
                       childAspectRatio: 1.15,
                     ),
-                    itemCount: _profiles.length,
-                    itemBuilder: (ctx, i) => _ProfileCard(
-                      profile: _profiles[i],
-                      onTap: () => _pick(_profiles[i]),
-                    ),
+                    itemCount: _profiles.length + 1,
+                    itemBuilder: (ctx, i) => i == _profiles.length
+                        ? _NewProfileCard(onTap: _createAccount)
+                        : _ProfileCard(
+                            profile: _profiles[i],
+                            onTap: () => _pick(_profiles[i]),
+                          ),
                   ),
                 ),
             ],
@@ -247,8 +285,7 @@ class _ProfileCard extends StatelessWidget {
                     SizedBox(width: 3),
                     Text('PIN',
                         style: TextStyle(
-                            fontSize: 11,
-                            color: AppTheme.textSecondary)),
+                            fontSize: 11, color: AppTheme.textSecondary)),
                   ],
                 ),
               ],
@@ -256,6 +293,128 @@ class _ProfileCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _NewProfileCard extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _NewProfileCard({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: const Padding(
+          padding: EdgeInsets.all(16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: Color(0xFFE3F2FD),
+                child: Icon(Icons.person_add_alt_1,
+                    color: AppTheme.primaryBlue, size: 28),
+              ),
+              SizedBox(height: 10),
+              Text('Créer un compte',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.primaryBlue)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Renvoie (prénom, PIN) — PIN vide = pas de PIN.
+class _CreateAccountDialog extends StatefulWidget {
+  const _CreateAccountDialog();
+
+  @override
+  State<_CreateAccountDialog> createState() => _CreateAccountDialogState();
+}
+
+class _CreateAccountDialogState extends State<_CreateAccountDialog> {
+  final _form = GlobalKey<FormState>();
+  final _name = TextEditingController();
+  final _pin = TextEditingController();
+  final _pin2 = TextEditingController();
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _pin.dispose();
+    _pin2.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (!_form.currentState!.validate()) return;
+    Navigator.pop(context, (_name.text.trim(), _pin.text.trim()));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Créer un compte'),
+      content: Form(
+        key: _form,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextFormField(
+              controller: _name,
+              autofocus: true,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                  labelText: 'Prénom / pseudo', hintText: 'ex. Sarah'),
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty) ? 'Requis' : null,
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: _pin,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              decoration: const InputDecoration(
+                  labelText: 'PIN (facultatif)', counterText: ''),
+              validator: (v) {
+                final t = v?.trim() ?? '';
+                if (t.isEmpty) return null;
+                return RegExp(r'^\d{4,6}$').hasMatch(t)
+                    ? null
+                    : '4 à 6 chiffres';
+              },
+            ),
+            TextFormField(
+              controller: _pin2,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              decoration: const InputDecoration(
+                  labelText: 'Confirmer le PIN', counterText: ''),
+              validator: (v) => (v?.trim() ?? '') == _pin.text.trim()
+                  ? null
+                  : 'Les PIN ne correspondent pas',
+              onFieldSubmitted: (_) => _submit(),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annuler')),
+        FilledButton(onPressed: _submit, child: const Text('Créer')),
+      ],
     );
   }
 }

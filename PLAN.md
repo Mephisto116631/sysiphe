@@ -78,9 +78,49 @@ Pages et fonctions présentes sur le web, absentes ou simplifiées dans Flutter 
 - [ ] **Paramètres** : export CSV
 - [ ] Rappel d'inactivité (`inactivity_days`) en notification locale
 
+## Phase 4 bis — Fonctions perdues (audit du 9 novembre) 🔎
+
+Comparaison ligne à ligne du web (Streamlit) avec Flutter, plus les colonnes de `user_settings`
+qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant l'historique git**
+(le dépôt commence le 14 octobre, déjà en v17/v18). Rien n'a été perdu côté web depuis.
+
+**Demandé**
+- [x] Créer un compte (nouveau profil, avec PIN facultatif) depuis l'écran de connexion
+- [x] Créer un exercice (nom, unité, catégorie) depuis Saisie (bouton ⊕ à côté du champ Exercice)
+
+**Saisie** (web → absent de Flutter)
+- [x] Saisie rapide de plusieurs séries d'un coup : « 12 10 8 », « 12/10/8 » ou « 12+10+8 » (port testé de `parse_reps`)
+- [x] Navigation ◀ jour précédent / retour à aujourd'hui (pas de saisie dans le futur)
+- [x] Supprimer toute la séance du jour (avec confirmation)
+- [ ] Par exercice : PR en série, moyenne des dernières séances, écart en % et alerte « Nouveau PR »
+- [x] Catégorie libre par exercice (choisie à la création, reprise de la séance précédente)
+- [ ] Planche : bloc S1 à S5 avec forme par série et couleur d'intensité
+- [ ] « Tout sauvegarder » en un appui
+- [ ] Panneau du jour : nb d'exercices, volume, meilleur effort ; volume semaine vs semaine précédente ; « N séances ce mois »
+- [ ] Rappel de prochaine séance dans l'agenda (`.ics`)
+
+**Stats / Records**
+- [ ] Graphe « séries par catégorie »
+- [ ] Planche : une courbe par variante
+- [ ] Comparer plusieurs exercices sur un même graphe
+- [ ] Records planche par combinaison variante / élastique / tension ; records muscu = volume max par séance
+
+**Paramètres**
+- [ ] « Inclure la planche » et taille de la moyenne glissante (`include_planche`, `nb_days_avg`)
+- [ ] Afficher / masquer le champ lest (`enable_charges`)
+- [ ] Export CSV de l'historique
+
+**Traces d'avant git (colonnes orphelines de `user_settings`)**
+- [ ] Thèmes (`app_theme`, défaut « Abysse » → probablement un thème sombre)
+- [ ] Rappel après N jours sans séance (`inactivity_days`, défaut 2)
+- [ ] Période de graphe mémorisée (`graph_period`)
+
+**Connexion web à trancher** (lié à la RLS, phase 3)
+- [ ] Comptes Google / e-mail : présents sur le web, absents de Flutter
+
 ## Phase 5 — Qualité et robustesse
 
-- [x] Tests Flutter : `calculerEffort` donne les mêmes résultats que `data.py`, et `Perf.fromJson` est testé sur des lignes réelles (`flutter/test/`, 37 tests)
+- [x] Tests Flutter : `calculerEffort` donne les mêmes résultats que `data.py`, et `Perf.fromJson` est testé sur des lignes réelles (`flutter/test/`, 44 tests)
 - [x] CI : `flutter analyze` + `flutter test` sur chaque PR, et pas seulement à la publication (`ci.yml`)
 - [x] CI : `pytest test_data.py` sur chaque PR (28 tests)
 - [ ] Mode hors ligne Flutter : cache local et saisie différée, synchronisée au retour du réseau
