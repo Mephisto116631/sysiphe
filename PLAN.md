@@ -52,7 +52,7 @@ répondent **400**, et l'app reste bloquée sur un chargement infini.
         annulée puis appliquée
   - [x] Étape 1 (app Flutter v2.2.0) : session anonyme, PIN vérifié par le serveur, hash du PIN plus jamais
         envoyé au téléphone
-  - [ ] Étape 1 (site web) : même principe, session gardée dans le cookie d'un an
+  - [x] Étape 1 (site web) : même principe, session gardée dans le cookie d'un an ; une session anonyme n'est jamais prise pour un compte Google
   - [ ] **Toi** : installer la v2.2.0 et confirmer ton PIN une dernière fois
   - [ ] Étape 2 (base) : activer la RLS sur `perfs`, `profiles`, `user_settings` + retirer l'accès direct aux
         hash de PIN — testée en transaction annulée d'abord

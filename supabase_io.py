@@ -109,7 +109,9 @@ def delete_perfs(uid: str, date_str: str, exercice: str = None) -> bool:
 # GESTION DES PROFILS (table profiles)
 # =========================================================================
 def load_profiles() -> list[dict]:
-    """Retourne la liste des profils triée par dernière connexion (récent en premier).
+    """Profils triés par dernière connexion (récent en premier), via la RPC
+    list_profiles : le hash du PIN n'est jamais exposé. Chaque profil porte
+    has_pin et is_member (ce navigateur est déjà rattaché au profil).
     Cache court dans st.session_state pour éviter les requêtes répétées.
     """
     import time
@@ -117,14 +119,20 @@ def load_profiles() -> list[dict]:
     if cache and time.time() - cache["ts"] < 30:
         return cache["data"]
     try:
-        res = (get_supabase_client().table("profiles")
-               .select("id, name, pin_hash, last_login")
-               .order("last_login", desc=True, nullsfirst=False)
-               .order("created_at")
-               .execute())
-        data = res.data or []
+        data = get_supabase_client().rpc("list_profiles").execute().data or []
     except Exception:
-        data = []
+        # Repli de transition (session anonyme indisponible) : lecture
+        # directe, possible tant que la RLS n'est pas activée (étape 2).
+        try:
+            rows = (get_supabase_client().table("profiles")
+                    .select("id, name, pin_hash, last_login")
+                    .order("last_login", desc=True, nullsfirst=False)
+                    .order("created_at").execute().data or [])
+            data = [{"id": r["id"], "name": r["name"], "last_login": r.get("last_login"),
+                     "has_pin": bool(r.get("pin_hash")), "is_member": False}
+                    for r in rows]
+        except Exception:
+            data = []
     st.session_state["_profiles_cache"] = {"data": data, "ts": time.time()}
     return data
 
@@ -140,26 +148,32 @@ def touch_profile_login(profile_id: str) -> None:
         pass
 
 
-def verify_pin(profile_id: str, pin: str) -> bool:
-    """Vérifie le PIN d'un profil (SHA-256). Retourne True si correct."""
-    import hashlib
-    # strip() comme set_pin() et l'app Flutter : un espace parasite ne doit pas
-    # rendre un PIN correct invalide.
-    pin_hash = hashlib.sha256(pin.strip().encode()).hexdigest()
+def claim_profile(profile_id: str, pin: str | None = None) -> str:
+    """Fait vérifier le PIN par le serveur, qui rattache ce navigateur au
+    profil. Retourne 'ok', 'bad_pin', 'locked' (5 essais faux → 15 min) ou
+    'error' (réseau, session absente)."""
     try:
-        res = (get_supabase_client().table("profiles")
-               .select("id").eq("id", profile_id).eq("pin_hash", pin_hash).execute())
-        return bool(res.data)
+        res = get_supabase_client().rpc(
+            "claim_profile",
+            {"p_profile": profile_id, "p_pin": pin.strip() if pin else None},
+        ).execute()
+        _clear_profiles_cache()
+        return res.data if res.data in ("ok", "bad_pin", "locked") else "error"
     except Exception:
-        return False
+        return "error"
+
+
+def verify_pin(profile_id: str, pin: str) -> bool:
+    """Compatibilité : True si le serveur accepte le PIN (et rattache)."""
+    return claim_profile(profile_id, pin) == "ok"
 
 
 def set_pin(profile_id: str, pin: str) -> bool:
-    """Définit ou change le PIN d'un profil. Retourne True si OK."""
-    import hashlib
-    pin_hash = hashlib.sha256(pin.strip().encode()).hexdigest()
+    """Définit ou change le PIN d'un profil (vérifié côté serveur). True si OK."""
     try:
-        get_supabase_client().table("profiles").update({"pin_hash": pin_hash}).eq("id", profile_id).execute()
+        get_supabase_client().rpc(
+            "set_profile_pin", {"p_profile": profile_id, "p_pin": pin.strip()}
+        ).execute()
         _clear_profiles_cache()
         return True
     except Exception as e:
@@ -171,15 +185,23 @@ def _clear_profiles_cache() -> None:
     st.session_state.pop("_profiles_cache", None)
 
 
-def create_profile(name: str) -> dict | None:
-    """Crée un nouveau profil. Retourne {id, name} ou None si erreur."""
+def create_profile(name: str, pin: str | None = None) -> dict | None:
+    """Crée un profil (PIN facultatif) rattaché à ce navigateur.
+    Retourne {id, name} ou None si erreur."""
     try:
-        res = get_supabase_client().table("profiles").insert({"name": name.strip()}).execute()
+        res = get_supabase_client().rpc(
+            "create_profile",
+            {"p_name": name.strip(), "p_pin": pin.strip() if pin else None},
+        ).execute()
         if res.data:
             _clear_profiles_cache()
-            return res.data[0]
+            return {"id": res.data, "name": name.strip()}
     except Exception as e:
-        st.error(f"❌ Erreur création profil : {e}")
+        msg = str(e)
+        if "duplicate" in msg or "23505" in msg:
+            st.error(f"❌ Le profil « {name.strip()} » existe déjà.")
+        else:
+            st.error(f"❌ Erreur création profil : {e}")
     return None
 
 
