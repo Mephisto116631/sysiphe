@@ -111,4 +111,83 @@ void main() {
       expect(computeRest([DateTime(2026, 7, 1)]), isNull);
     });
   });
+
+  group('comparePeriods — parité avec compute_period_comparison', () {
+    Perf v(DateTime d, double x) =>
+        Perf(userId: 'u', date: d, exercice: 'Pompe', performance: x, unite: 'Reps');
+    final perfs = [
+      v(DateTime(2026, 6, 1), 100),
+      v(DateTime(2026, 6, 8), 0),
+      v(DateTime(2026, 6, 15), 150),
+    ];
+    test('période précédente à 0 : pas de pourcentage', () {
+      final r = comparePeriods(perfs, (p) => p.performance,
+          currentStart: DateTime(2026, 6, 15), currentEnd: DateTime(2026, 6, 21),
+          previousStart: DateTime(2026, 6, 8), previousEnd: DateTime(2026, 6, 14));
+      expect(r.current, 150);
+      expect(r.previous, 0);
+      expect(r.deltaPct, isNull);
+    });
+    test('delta positif arrondi à 0,1', () {
+      final r = comparePeriods(perfs, (p) => p.performance,
+          currentStart: DateTime(2026, 6, 15), currentEnd: DateTime(2026, 6, 21),
+          previousStart: DateTime(2026, 6, 1), previousEnd: DateTime(2026, 6, 7));
+      expect(r.deltaPct, 50.0);
+    });
+    test('semaine lundi → dimanche', () {
+      // mercredi 17 juin 2026 : semaine du 15 au 21
+      final r = weekVolume(perfs, DateTime(2026, 6, 17));
+      expect(r.current, 150);
+      expect(r.previous, 0);
+    });
+  });
+
+  group('insightFor / sessionsInMonth', () {
+    Perf v(DateTime d, double x) =>
+        Perf(userId: 'u', date: d, exercice: 'Pompe', performance: x, unite: 'Reps');
+    final h = [
+      v(DateTime(2026, 7, 1), 10), v(DateTime(2026, 7, 1), 8), // 18
+      v(DateTime(2026, 7, 3), 12), v(DateTime(2026, 7, 3), 10), // 22
+      v(DateTime(2026, 7, 5), 30), // aujourd'hui : exclu
+    ];
+    test('PR et moyenne hors séance du jour', () {
+      final i = insightFor(h, DateTime(2026, 7, 5))!;
+      expect(i.prSerie, 12);
+      expect(i.avgVolume, 20);
+      expect(i.sessions, 2);
+      expect(i.deltaPct(30), closeTo(50, 1e-9));
+    });
+    test('fenêtre des N dernières séances', () {
+      expect(insightFor(h, DateTime(2026, 7, 5), nbDaysAvg: 1)!.avgVolume, 22);
+    });
+    test('pas d\'historique', () => expect(insightFor(h, DateTime(2026, 7, 1)), isNull));
+    test('séances du mois', () => expect(sessionsInMonth(h, DateTime(2026, 7, 20)), 3));
+  });
+
+  group('records', () {
+    Perf pl(String v, String e, double t, int eff) => Perf(
+        userId: 'u', date: DateTime(2026, 7, 1), exercice: 'Planche',
+        variante: v, elastique: e, tension: 'N/A', performance: t,
+        unite: 'Sec', effortPondere: eff);
+    test('planche : meilleure série par combinaison, triées par effort', () {
+      final r = plancheRecords([
+        pl('Tuck', 'Aucun', 20, 40), pl('Tuck', 'Aucun', 25, 50),
+        pl('Full', 'Jaune', 8, 90),
+      ]);
+      expect(r.map((e) => e.variante), ['Full', 'Tuck']);
+      expect(r[1].best.performance, 25);
+    });
+    test('volume : meilleure séance et meilleure série', () {
+      Perf t(DateTime d, double x, double kg) => Perf(userId: 'u', date: d,
+          exercice: 'Traction', performance: x, unite: 'Reps', charge: kg);
+      final r = volumeRecords([
+        t(DateTime(2026, 7, 1), 8, 10), t(DateTime(2026, 7, 1), 6, 10), // 140 kg
+        t(DateTime(2026, 7, 3), 10, 0), // 10
+      ]).single;
+      expect(r.tonnage, isTrue);
+      expect(r.volume, 140);
+      expect(r.date, DateTime(2026, 7, 1));
+      expect(r.bestSerie, 10);
+    });
+  });
 }
