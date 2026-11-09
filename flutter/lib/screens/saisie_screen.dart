@@ -24,6 +24,10 @@ class _SaisieScreenState extends State<SaisieScreen> {
   TextEditingController? _acCtrl; // contrôleur interne de l'Autocomplete
   DateTime _date = DateTime.now();
   int _serie = 1;
+  // Catégorie choisie (création d'exercice ou séance précédente), valable
+  // tant que l'exercice saisi reste [_categorieExo]. Sinon : déduite de l'unité.
+  String? _categorie;
+  String? _categorieExo;
   String _variante = 'Full';
   String _forme = 'Normal';
   String _elastique = 'Aucun';
@@ -115,6 +119,8 @@ class _SaisieScreenState extends State<SaisieScreen> {
     _lestCtrl.text = model.charge > 0 ? _num(model.charge) : '';
     setState(() {
       _serie = serie;
+      _categorie = model.categorie;
+      _categorieExo = t.exercice;
       _unite = const ['Sec', 'Reps', 'Kg'].contains(t.unite) ? t.unite : 'Reps';
       if (model.isPlanche) {
         _showOptions = true;
@@ -168,6 +174,74 @@ class _SaisieScreenState extends State<SaisieScreen> {
     }
   }
 
+  void _setDate(DateTime d) {
+    final day = DateTime(d.year, d.month, d.day);
+    if (day == DateTime(_date.year, _date.month, _date.day)) return;
+    setState(() => _date = day);
+    _loadTodayPerfs();
+    _loadPrevious();
+  }
+
+  bool get _isToday {
+    final n = DateTime.now();
+    return _date.year == n.year && _date.month == n.month && _date.day == n.day;
+  }
+
+  /// Supprime toutes les séries du jour affiché (comme le web), après
+  /// confirmation.
+  Future<void> _deleteSession() async {
+    final label = DateFormat('EEEE d MMMM', 'fr_FR').format(_date);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer la séance ?'),
+        content: Text('Les ${_todayPerfs.length} séries du $label seront '
+            'supprimées définitivement.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annuler')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await SupabaseService.instance.deleteSession(widget.userId, _date);
+      await _loadTodayPerfs();
+      _snack('Séance du $label supprimée');
+    } catch (e) {
+      _snack('Erreur : $e', error: true);
+    }
+  }
+
+  /// « Nouvel exercice » : nom, unité et catégorie, puis formulaire prêt.
+  Future<void> _newExercice() async {
+    final res = await showDialog<(String, String, String)>(
+      context: context,
+      builder: (_) => _NewExerciceDialog(existing: _exerciceNames),
+    );
+    if (res == null) return;
+    final (name, unite, categorie) = res;
+    _acCtrl?.text = name;
+    _exerciceCtrl.text = name;
+    _chargeCtrl.clear();
+    _lestCtrl.clear();
+    setState(() {
+      if (!_exerciceNames.contains(name)) {
+        _exerciceNames = [..._exerciceNames, name]..sort();
+      }
+      _unite = unite;
+      _categorie = categorie;
+      _categorieExo = name;
+      _serie = _doneToday(name) + 1;
+    });
+  }
+
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -188,50 +262,63 @@ class _SaisieScreenState extends State<SaisieScreen> {
       _snack('Renseignez un exercice', error: true);
       return;
     }
-    final valeur = double.tryParse(_chargeCtrl.text.replaceAll(',', '.'));
-    if (valeur == null || valeur <= 0) {
+    // Une ou plusieurs séries : « 12 » ou « 12 10 8 » (comme le web).
+    List<double> valeurs;
+    try {
+      valeurs = parseSeries(_chargeCtrl.text);
+    } on FormatException catch (e) {
+      _snack(e.message, error: true);
+      return;
+    }
+    if (valeurs.isEmpty || valeurs.any((v) => v <= 0)) {
       _snack('Valeur invalide', error: true);
       return;
     }
 
     final exercice = _exerciceCtrl.text.trim();
     final planche = Perf.isPlancheName(exercice);
-    final effort = planche
-        ? calculerEffort(
-            variante: _variante,
-            elastique: _elastique,
-            tension: _tension,
-            forme: _forme,
-            temps: valeur,
-            weight: _weight,
-            variantes: _variantesCfg,
-            formes: _formesCfg,
-            elastiquesMap: _elastiquesCfg,
-            tensions: _tensionsCfg,
-          )
-        : 0;
+    final categorie = _categorie != null && _categorieExo == exercice
+        ? _categorie!
+        : (_unite == 'Sec' ? 'Force Iso' : 'Musculation');
+    final lest = _unite == 'Reps'
+        ? (double.tryParse(_lestCtrl.text.replaceAll(',', '.')) ?? 0)
+        : 0.0;
 
-    final perf = Perf(
-      userId: widget.userId,
-      date: _date,
-      exercice: exercice,
-      variante: _variante,
-      forme: _forme,
-      serie: _serie,
-      performance: valeur,
-      charge: _unite == 'Reps'
-          ? (double.tryParse(_lestCtrl.text.replaceAll(',', '.')) ?? 0)
-          : 0,
-      unite: _unite,
-      categorie: _unite == 'Sec' ? 'Force Iso' : 'Musculation',
-      elastique: _elastique,
-      tension: _tension,
-      effortPondere: effort,
-    );
+    final perfs = [
+      for (var i = 0; i < valeurs.length; i++)
+        Perf(
+          userId: widget.userId,
+          date: _date,
+          exercice: exercice,
+          variante: _variante,
+          forme: _forme,
+          serie: _serie + i,
+          performance: valeurs[i],
+          charge: lest,
+          unite: _unite,
+          categorie: categorie,
+          elastique: _elastique,
+          tension: _tension,
+          effortPondere: planche
+              ? calculerEffort(
+                  variante: _variante,
+                  elastique: _elastique,
+                  tension: _tension,
+                  forme: _forme,
+                  temps: valeurs[i],
+                  weight: _weight,
+                  variantes: _variantesCfg,
+                  formes: _formesCfg,
+                  elastiquesMap: _elastiquesCfg,
+                  tensions: _tensionsCfg,
+                )
+              : 0,
+        ),
+    ];
 
     setState(() => _saving = true);
     try {
-      await SupabaseService.instance.savePerf(perf);
+      await SupabaseService.instance.savePerfs(perfs);
       _chargeCtrl.clear();
       setState(() => _saving = false);
       await _loadTodayPerfs();
@@ -243,7 +330,9 @@ class _SaisieScreenState extends State<SaisieScreen> {
       } else if (mounted) {
         setState(() => _serie = _doneToday(exercice) + 1);
       }
-      _snack('Enregistré ✓');
+      _snack(perfs.length > 1
+          ? '${perfs.length} séries enregistrées ✓'
+          : 'Enregistré ✓');
     } catch (e) {
       setState(() => _saving = false);
       _snack('Erreur : $e', error: true);
@@ -304,6 +393,12 @@ class _SaisieScreenState extends State<SaisieScreen> {
       appBar: AppBar(
         title: const Text('Saisie'),
         actions: [
+          if (_todayPerfs.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.delete_sweep_outlined),
+              onPressed: _deleteSession,
+              tooltip: 'Supprimer la séance',
+            ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadTodayPerfs,
@@ -345,64 +440,109 @@ class _SaisieScreenState extends State<SaisieScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Date
-                      GestureDetector(
-                        onTap: _pickDate,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 12),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: AppTheme.borderColor),
-                            borderRadius: BorderRadius.circular(10),
-                            color: Colors.white,
+                      // Date : ◀ jour précédent · sélecteur · jour suivant ▶
+                      Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.chevron_left),
+                            tooltip: 'Jour précédent',
+                            onPressed: () => _setDate(
+                                _date.subtract(const Duration(days: 1))),
                           ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.calendar_today,
-                                  size: 18, color: AppTheme.textSecondary),
-                              const SizedBox(width: 10),
-                              Text(
-                                DateFormat('EEEE d MMMM', 'fr_FR')
-                                    .format(_date),
-                                style: const TextStyle(fontSize: 15),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: _pickDate,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 12),
+                                decoration: BoxDecoration(
+                                  border:
+                                      Border.all(color: AppTheme.borderColor),
+                                  borderRadius: BorderRadius.circular(10),
+                                  color: Colors.white,
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.calendar_today,
+                                        size: 18,
+                                        color: AppTheme.textSecondary),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        _isToday
+                                            ? "Aujourd'hui"
+                                            : DateFormat('EEE d MMM', 'fr_FR')
+                                                .format(_date),
+                                        style: const TextStyle(fontSize: 15),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ],
+                            ),
                           ),
-                        ),
+                          if (_isToday)
+                            const IconButton(
+                                icon: Icon(Icons.chevron_right),
+                                onPressed: null)
+                          else
+                            IconButton(
+                              icon: const Icon(Icons.today),
+                              tooltip: "Revenir à aujourd'hui",
+                              onPressed: () => _setDate(DateTime.now()),
+                            ),
+                        ],
                       ),
                       const SizedBox(height: 12),
 
-                      // Exercice
-                      Autocomplete<String>(
-                        optionsBuilder: (val) => _exerciceNames
-                            .where((e) => e
-                                .toLowerCase()
-                                .contains(val.text.toLowerCase()))
-                            .take(6),
-                        onSelected: _onExerciceChanged,
-                        fieldViewBuilder: (ctx, ctrl, focusNode, onSubmit) {
-                          // Branché une seule fois : avant, chaque rebuild
-                          // ajoutait un listener et réécrivait le texte
-                          // (curseur qui saute pendant la frappe).
-                          if (!identical(_acCtrl, ctrl)) {
-                            _acCtrl = ctrl
-                              ..text = _exerciceCtrl.text
-                              ..addListener(
-                                  () => _onExerciceChanged(ctrl.text));
-                          }
-                          return TextFormField(
-                            controller: ctrl,
-                            focusNode: focusNode,
-                            textCapitalization: TextCapitalization.sentences,
-                            decoration: const InputDecoration(
-                              labelText: 'Exercice',
-                              hintText: 'ex. Planche, Dips…',
+                      // Exercice + création d'un nouvel exercice
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Autocomplete<String>(
+                              optionsBuilder: (val) => _exerciceNames
+                                  .where((e) => e
+                                      .toLowerCase()
+                                      .contains(val.text.toLowerCase()))
+                                  .take(6),
+                              onSelected: _onExerciceChanged,
+                              fieldViewBuilder:
+                                  (ctx, ctrl, focusNode, onSubmit) {
+                                // Branché une seule fois : avant, chaque rebuild
+                                // ajoutait un listener et réécrivait le texte
+                                // (curseur qui saute pendant la frappe).
+                                if (!identical(_acCtrl, ctrl)) {
+                                  _acCtrl = ctrl
+                                    ..text = _exerciceCtrl.text
+                                    ..addListener(
+                                        () => _onExerciceChanged(ctrl.text));
+                                }
+                                return TextFormField(
+                                  controller: ctrl,
+                                  focusNode: focusNode,
+                                  textCapitalization:
+                                      TextCapitalization.sentences,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Exercice',
+                                    hintText: 'ex. Planche, Dips…',
+                                  ),
+                                  validator: (v) =>
+                                      (v == null || v.trim().isEmpty)
+                                          ? 'Requis'
+                                          : null,
+                                );
+                              },
                             ),
-                            validator: (v) => (v == null || v.trim().isEmpty)
-                                ? 'Requis'
-                                : null,
-                          );
-                        },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.add_circle_outline,
+                                color: AppTheme.primaryBlue),
+                            tooltip: 'Nouvel exercice',
+                            onPressed: _newExercice,
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 12),
 
@@ -462,9 +602,11 @@ class _SaisieScreenState extends State<SaisieScreen> {
                               keyboardType:
                                   const TextInputType.numberWithOptions(
                                       decimal: true),
+                              // Plusieurs séries d'un coup : « 12 10 8 »,
+                              // « 12/10/8 » ou « 12+10+8 ».
                               inputFormatters: [
                                 FilteringTextInputFormatter.allow(
-                                    RegExp(r'[\d.,]')),
+                                    RegExp(r'[\d.,/+; ]')),
                               ],
                               decoration: InputDecoration(
                                 labelText: _unite == 'Sec'
@@ -472,10 +614,22 @@ class _SaisieScreenState extends State<SaisieScreen> {
                                     : _unite == 'Reps'
                                         ? 'Répétitions'
                                         : 'Poids (kg)',
+                                hintText: 'ex. 12 10 8',
+                                helperText: 'Plusieurs séries : 12/10/8',
+                                helperStyle: const TextStyle(fontSize: 10),
                               ),
-                              validator: (v) => (v == null || v.trim().isEmpty)
-                                  ? 'Requis'
-                                  : null,
+                              validator: (v) {
+                                if (v == null || v.trim().isEmpty) {
+                                  return 'Requis';
+                                }
+                                try {
+                                  return parseSeries(v).isEmpty
+                                      ? 'Requis'
+                                      : null;
+                                } on FormatException {
+                                  return 'Invalide';
+                                }
+                              },
                             ),
                           ),
                         ],
@@ -855,6 +1009,108 @@ class _PreviousSessionCard extends StatelessWidget {
               : const Icon(Icons.play_circle_outline,
                   color: AppTheme.primaryBlue),
       onTap: () => onPick(t),
+    );
+  }
+}
+
+/// « Nouvel exercice » : renvoie (nom, unité, catégorie).
+class _NewExerciceDialog extends StatefulWidget {
+  final List<String> existing;
+
+  const _NewExerciceDialog({required this.existing});
+
+  @override
+  State<_NewExerciceDialog> createState() => _NewExerciceDialogState();
+}
+
+class _NewExerciceDialogState extends State<_NewExerciceDialog> {
+  final _form = GlobalKey<FormState>();
+  final _name = TextEditingController();
+  final _cat = TextEditingController(text: 'Musculation');
+  String _unite = 'Reps';
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _cat.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (!_form.currentState!.validate()) return;
+    final cat = _cat.text.trim();
+    Navigator.pop(context, (
+      _name.text.trim(),
+      _unite,
+      cat.isEmpty ? (_unite == 'Sec' ? 'Force Iso' : 'Musculation') : cat,
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Nouvel exercice'),
+      content: Form(
+        key: _form,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextFormField(
+                controller: _name,
+                autofocus: true,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                    labelText: 'Nom', hintText: 'ex. Tractions lestées'),
+                validator: (v) {
+                  final n = v?.trim() ?? '';
+                  if (n.isEmpty) return 'Requis';
+                  final exists = widget.existing
+                      .any((e) => e.toLowerCase() == n.toLowerCase());
+                  return exists
+                      ? 'Existe déjà : choisissez-le dans la liste'
+                      : null;
+                },
+              ),
+              const SizedBox(height: 16),
+              const Text('Unité'),
+              const SizedBox(height: 6),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'Reps', label: Text('Reps')),
+                  ButtonSegment(value: 'Sec', label: Text('Secondes')),
+                  ButtonSegment(value: 'Kg', label: Text('Kg')),
+                ],
+                selected: {_unite},
+                showSelectedIcon: false,
+                onSelectionChanged: (v) => setState(() {
+                  _unite = v.first;
+                  // Catégorie par défaut cohérente avec l'unité.
+                  if (_cat.text == 'Musculation' || _cat.text == 'Force Iso') {
+                    _cat.text = _unite == 'Sec' ? 'Force Iso' : 'Musculation';
+                  }
+                }),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _cat,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                    labelText: 'Catégorie',
+                    hintText: 'Musculation, Force Iso, Gainage…'),
+                onFieldSubmitted: (_) => _submit(),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annuler')),
+        FilledButton(onPressed: _submit, child: const Text('Créer')),
+      ],
     );
   }
 }

@@ -35,8 +35,18 @@ class SupabaseService {
     return (res as List).isNotEmpty;
   }
 
-  Future<void> createProfile(String name) async {
-    await _db.from('profiles').insert({'name': name.trim()});
+  /// Crée un profil (avec PIN facultatif) et le renvoie.
+  Future<Profile> createProfile(String name, {String? pin}) async {
+    final row = await _db
+        .from('profiles')
+        .insert({
+          'name': name.trim(),
+          if (pin != null && pin.trim().isNotEmpty)
+            'pin_hash': _sha256(pin.trim()),
+        })
+        .select('id, name, pin_hash, last_login')
+        .single();
+    return Profile.fromJson(row);
   }
 
   Future<void> renameProfile(String profileId, String name) async {
@@ -129,6 +139,21 @@ class SupabaseService {
         .update({'exercice': newName.trim()})
         .eq('user_id', userId)
         .eq('exercice', oldName);
+  }
+
+  /// Insère plusieurs séries en une requête (saisie « 12 10 8 »).
+  Future<void> savePerfs(List<Perf> perfs) async {
+    if (perfs.isEmpty) return;
+    await _db.from('perfs').insert([for (final p in perfs) p.toJson()]);
+  }
+
+  /// Supprime toutes les séries d'un jour (« Supprimer la séance »).
+  Future<void> deleteSession(String userId, DateTime date) async {
+    await _db
+        .from('perfs')
+        .delete()
+        .eq('user_id', userId)
+        .eq('date', DateFormat('yyyy-MM-dd').format(date));
   }
 
   Future<void> deletePerf(int id) async {

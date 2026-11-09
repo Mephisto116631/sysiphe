@@ -48,4 +48,19 @@ void main() {
   });
 
   test('séance vide', () => expect(templatesFrom([]), isEmpty));
+
+  group('parseSeries — parité avec data.parse_reps', () {
+    test('simple', () => expect(parseSeries('12 10 8'), [12, 10, 8]));
+    test('vide', () => expect(parseSeries(''), isEmpty));
+    test('décimal (point et virgule)',
+        () => expect(parseSeries('12.5 10,5'), [12.5, 10.5]));
+    test(
+        'espaces multiples', () => expect(parseSeries('  12   10 '), [12, 10]));
+    test('séparateurs du pavé numérique',
+        () => expect(parseSeries('12/10+8;6'), [12, 10, 8, 6]));
+    test('négatif refusé',
+        () => expect(() => parseSeries('12 -5 8'), throwsFormatException));
+    test('non numérique refusé',
+        () => expect(() => parseSeries('12 abc 8'), throwsFormatException));
+  });
 }
