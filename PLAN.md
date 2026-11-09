@@ -35,7 +35,7 @@ répondent **400**, et l'app reste bloquée sur un chargement infini.
 ## Phase 2 — Mise en production
 
 - [x] Ouvrir la PR `ccr-6aa55910-p46qv7` → `main`
-- [ ] Relire et fusionner la PR (toi)
+- [x] Relire et fusionner la PR [#4](https://github.com/Mephisto116631/sysiphe/pull/4) (CI verte, fusionnée le 9 novembre)
 - [ ] Vérifier que Streamlit Cloud a redéployé l'app web sans erreur
 - [ ] Désinstaller l'ancienne app WebView du téléphone
 - [ ] Supprimer les secrets GitHub inutiles : `KEYSTORE_BASE64`, `KEY_ALIAS`
@@ -79,6 +79,7 @@ Pages et fonctions présentes sur le web, absentes ou simplifiées dans Flutter 
 - [x] CI : `pytest test_data.py` sur chaque PR (28 tests)
 - [ ] Mode hors ligne Flutter : cache local et saisie différée, synchronisée au retour du réseau
 - [ ] Numéro de version affiché dans l'app, tiré de `pubspec.yaml`
+- [ ] Version incrémentée à chaque build (`versionCode` = numéro du run CI) : aujourd'hui chaque build écrase la Release `v2.0.0`, et on ne distingue pas les APK entre eux
 
 ## Phase 6 — Plus tard / à décider
 
