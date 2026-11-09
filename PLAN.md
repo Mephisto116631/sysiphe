@@ -34,7 +34,7 @@ répondent **400**, et l'app reste bloquée sur un chargement infini.
 
 ## Phase 2 — Mise en production
 
-- [ ] Ouvrir la PR `ccr-6aa55910-p46qv7` → `main` (Claude, sur ton feu vert)
+- [x] Ouvrir la PR `ccr-6aa55910-p46qv7` → `main`
 - [ ] Relire et fusionner la PR (toi)
 - [ ] Vérifier que Streamlit Cloud a redéployé l'app web sans erreur
 - [ ] Désinstaller l'ancienne app WebView du téléphone
@@ -75,8 +75,8 @@ Pages et fonctions présentes sur le web, absentes ou simplifiées dans Flutter 
 ## Phase 5 — Qualité et robustesse
 
 - [x] Tests Flutter : `calculerEffort` donne les mêmes résultats que `data.py`, et `Perf.fromJson` est testé sur des lignes réelles (`flutter/test/perf_test.dart`, 12 tests)
-- [ ] CI : `flutter analyze` + `flutter test` sur chaque PR, et pas seulement à la publication
-- [ ] CI : `pytest test_data.py` sur chaque PR
+- [x] CI : `flutter analyze` + `flutter test` sur chaque PR, et pas seulement à la publication (`ci.yml`)
+- [x] CI : `pytest test_data.py` sur chaque PR (28 tests)
 - [ ] Mode hors ligne Flutter : cache local et saisie différée, synchronisée au retour du réseau
 - [ ] Numéro de version affiché dans l'app, tiré de `pubspec.yaml`
 

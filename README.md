@@ -289,7 +289,12 @@ L'app mobile est l'**APK Flutter**, publié dans les Releases GitHub.
 
 ## CI/CD
 
-Un seul workflow actif : `.github/workflows/build-flutter.yml`, qui produit l'APK Flutter.
+Deux workflows actifs :
+
+- **`ci.yml`** (sur chaque PR et chaque push sur `main`) : `flutter analyze` + `flutter test`, et `pytest test_data.py`. Ne publie rien.
+- **`build-flutter.yml`** : construit, signe et publie l'APK Flutter.
+
+#### `build-flutter.yml`
 
 Déclenché sur push vers `main` touchant `flutter/**` (ou le workflow lui-même), ou manuellement (*Run workflow*).
 
