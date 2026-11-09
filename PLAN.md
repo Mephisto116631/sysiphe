@@ -134,6 +134,10 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
       encore fait), enchaînement automatique sur l'exercice suivant quand ses séries sont faites
 - [x] Saisie : liste « Récents » des anciens exercices, du plus récent au plus ancien ; un appui reprend la dernière
       fois où l'exercice a été fait (aussi pour l'autocomplétion)
+- [x] **Toi** : v2.3.0 installée et validée sur le téléphone (« ça marche »)
+- [x] Mise à jour intégrée (v2.4.0) : Paramètres → « Mises à jour » vérifie la dernière Release GitHub, télécharge
+      l'APK et ouvre l'installeur Android ; nouvelle version signalée au démarrage
+- [x] CI : build d'APK de test sur chaque PR (le code Android natif est validé avant fusion)
 
 ## Phase 5 — Qualité et robustesse
 

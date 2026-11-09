@@ -3,6 +3,7 @@ import '../models/profile.dart';
 import '../services/session_store.dart';
 import '../services/supabase_service.dart';
 import '../widgets/pin_dialog.dart';
+import '../widgets/update_flow.dart';
 import 'profile_screen.dart';
 import 'saisie_screen.dart';
 import 'stats_screen.dart';
@@ -28,7 +29,11 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     // Après le premier affichage : jamais de latence à l'ouverture.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkAccess());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _checkAccess();
+      // Nouvelle version ? Signalée discrètement (rien si à jour ou hors ligne).
+      if (mounted) checkAndOfferUpdate(context, silent: true);
+    });
     final uid = widget.profile.id;
     _screens = [
       SaisieScreen(userId: uid),

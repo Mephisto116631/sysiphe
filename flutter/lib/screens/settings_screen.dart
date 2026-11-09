@@ -4,13 +4,13 @@ import '../models/profile.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
 import '../services/session_store.dart';
+import '../app_version.dart';
+import '../widgets/update_flow.dart';
 import 'calibration_screen.dart';
 import 'manage_screen.dart';
 import 'profile_screen.dart' show ProfileScreen;
 
-/// Version injectée par la CI (`--dart-define=APP_VERSION=2.1.0+42`).
-/// « dev » pour un build local sans cette option.
-const kAppVersion = String.fromEnvironment('APP_VERSION', defaultValue: 'dev');
+
 
 class SettingsScreen extends StatefulWidget {
   final String userId;
@@ -254,6 +254,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     onTap: () => Navigator.of(context).push(MaterialPageRoute(
                         builder: (_) =>
                             ManageScreen(current: widget.profile))),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                _SectionLabel('Application'),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.system_update,
+                        color: AppTheme.primaryBlue),
+                    title: const Text('Mises à jour'),
+                    subtitle: Text('Version $kAppVersion · vérifier'),
+                    trailing: const Icon(Icons.chevron_right,
+                        color: AppTheme.textSecondary),
+                    onTap: () => checkAndOfferUpdate(context),
                   ),
                 ),
                 const SizedBox(height: 20),
