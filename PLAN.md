@@ -92,18 +92,18 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
 - [x] Saisie rapide de plusieurs séries d'un coup : « 12 10 8 », « 12/10/8 » ou « 12+10+8 » (port testé de `parse_reps`)
 - [x] Navigation ◀ jour précédent / retour à aujourd'hui (pas de saisie dans le futur)
 - [x] Supprimer toute la séance du jour (avec confirmation)
-- [ ] Par exercice : PR en série, moyenne des dernières séances, écart en % et alerte « Nouveau PR »
+- [x] Par exercice : record en série, moyenne des N dernières séances, écart du jour en % et alerte « Nouveau record » à l'enregistrement
 - [x] Catégorie libre par exercice (choisie à la création, reprise de la séance précédente)
 - [ ] Planche : bloc S1 à S5 avec forme par série et couleur d'intensité
 - [ ] « Tout sauvegarder » en un appui
-- [ ] Panneau du jour : nb d'exercices, volume, meilleur effort ; volume semaine vs semaine précédente ; « N séances ce mois »
+- [x] Panneau du jour : séries ou effort du jour, séances du mois, reps de la semaine vs semaine précédente (port testé de `compute_period_comparison`)
 - [ ] Rappel de prochaine séance dans l'agenda (`.ics`)
 
 **Stats / Records**
 - [ ] Graphe « séries par catégorie »
 - [ ] Planche : une courbe par variante
 - [ ] Comparer plusieurs exercices sur un même graphe
-- [ ] Records planche par combinaison variante / élastique / tension ; records muscu = volume max par séance
+- [x] Records planche par combinaison variante / élastique / tension (couleur d'intensité) ; records muscu = meilleure séance (volume ou tonnage) + meilleure série
 
 **Paramètres**
 - [ ] « Inclure la planche » et taille de la moyenne glissante (`include_planche`, `nb_days_avg`)
@@ -111,16 +111,16 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
 - [ ] Export CSV de l'historique
 
 **Traces d'avant git (colonnes orphelines de `user_settings`)**
-- [ ] Thèmes (`app_theme`, défaut « Abysse » → probablement un thème sombre)
+- [ ] Thèmes (`app_theme`, défaut « Abysse ») — **reporté** (décision du 9 novembre : pas prioritaire)
 - [ ] Rappel après N jours sans séance (`inactivity_days`, défaut 2)
 - [ ] Période de graphe mémorisée (`graph_period`)
 
 **Connexion web à trancher** (lié à la RLS, phase 3)
-- [ ] Comptes Google / e-mail : présents sur le web, absents de Flutter
+- [ ] Comptes Google : **option d'association** à un profil existant (retrouver son profil sur un autre appareil ou sur le web, sans reconnexion à chaque ouverture) — à faire avec la RLS, en attente de validation
 
 ## Phase 5 — Qualité et robustesse
 
-- [x] Tests Flutter : `calculerEffort` donne les mêmes résultats que `data.py`, et `Perf.fromJson` est testé sur des lignes réelles (`flutter/test/`, 44 tests)
+- [x] Tests Flutter : `calculerEffort` donne les mêmes résultats que `data.py`, et `Perf.fromJson` est testé sur des lignes réelles (`flutter/test/`, 53 tests)
 - [x] CI : `flutter analyze` + `flutter test` sur chaque PR, et pas seulement à la publication (`ci.yml`)
 - [x] CI : `pytest test_data.py` sur chaque PR (28 tests)
 - [ ] Mode hors ligne Flutter : cache local et saisie différée, synchronisée au retour du réseau

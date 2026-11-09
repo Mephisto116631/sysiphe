@@ -188,24 +188,6 @@ class SupabaseService {
     return map;
   }
 
-  // ─── Records : meilleure perf par exercice ────────────────────────────────
-
-  Future<List<Map<String, dynamic>>> getRecords(String userId) async {
-    final perfs = await getAllPerfs(userId);
-    final records = <String, Perf>{};
-    for (final p in perfs) {
-      final existing = records[p.exercice];
-      if (existing == null || isBetterRecord(p, existing)) {
-        records[p.exercice] = p;
-      }
-    }
-    return records.entries
-        .map((e) => {'exercice': e.key, 'perf': e.value})
-        .toList()
-      ..sort((a, b) =>
-          (a['exercice'] as String).compareTo(b['exercice'] as String));
-  }
-
   // ─── Paramètres utilisateur (table user_settings, partagée avec Streamlit) ─
 
   Future<Map<String, dynamic>> getSettings(String userId) async {

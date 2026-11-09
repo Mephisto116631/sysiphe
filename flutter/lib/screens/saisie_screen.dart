@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../models/perf.dart';
 import '../models/session.dart';
+import '../models/stats.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
 
@@ -38,6 +39,9 @@ class _SaisieScreenState extends State<SaisieScreen> {
   // ── État UI ───────────────────────────────────────────────────────────────
   List<Perf> _todayPerfs = [];
   List<String> _exerciceNames = [];
+  // Tout l'historique : panneau du jour, indicateurs par exercice, records.
+  List<Perf> _history = [];
+  int _nbDaysAvg = 5; // user_settings.nb_days_avg
   // Séance précédente, pour la reprendre exercice par exercice.
   List<ExerciseTemplate> _previous = [];
   DateTime? _previousDate;
@@ -61,6 +65,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
       _loadPrevious(),
       _loadExerciceNames(),
       _loadWeight(),
+      _loadHistory(),
     ]);
   }
 
@@ -147,11 +152,25 @@ class _SaisieScreenState extends State<SaisieScreen> {
     }
   }
 
+  Future<void> _loadHistory() async {
+    try {
+      final all = await SupabaseService.instance.getAllPerfs(widget.userId);
+      if (mounted) setState(() => _history = all);
+    } catch (_) {
+      // Non bloquant : indicateurs masqués.
+    }
+  }
+
+  ExerciseInsight? _insight(String exercice) => insightFor(
+      _history.where((p) => p.exercice == exercice).toList(), _date,
+      nbDaysAvg: _nbDaysAvg);
+
   Future<void> _loadWeight() async {
     final settings = await SupabaseService.instance.getSettings(widget.userId);
     if (mounted) {
       setState(() {
         _weight = (settings['weight'] as num?)?.toDouble() ?? 97.0;
+        _nbDaysAvg = (settings['nb_days_avg'] as num?)?.toInt() ?? 5;
         _variantesCfg = mergeConfig(settings['variantes_config'], kVariantes);
         _formesCfg = mergeConfig(settings['formes_config'], kFormes);
         _elastiquesCfg =
@@ -213,6 +232,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
     try {
       await SupabaseService.instance.deleteSession(widget.userId, _date);
       await _loadTodayPerfs();
+      _loadHistory();
       _snack('Séance du $label supprimée');
     } catch (e) {
       _snack('Erreur : $e', error: true);
@@ -316,6 +336,11 @@ class _SaisieScreenState extends State<SaisieScreen> {
         ),
     ];
 
+    // Nouveau record en une série ? (hors planche : son record est l'effort)
+    final ins = planche ? null : _insight(exercice);
+    final best = valeurs.reduce((a, b) => a > b ? a : b);
+    final newPr = ins != null && ins.prSerie > 0 && best > ins.prSerie;
+
     setState(() => _saving = true);
     try {
       await SupabaseService.instance.savePerfs(perfs);
@@ -330,9 +355,12 @@ class _SaisieScreenState extends State<SaisieScreen> {
       } else if (mounted) {
         setState(() => _serie = _doneToday(exercice) + 1);
       }
-      _snack(perfs.length > 1
-          ? '${perfs.length} séries enregistrées ✓'
-          : 'Enregistré ✓');
+      _loadHistory();
+      _snack(newPr
+          ? '🏆 Nouveau record en série : ${_num(best)} (ancien : ${_num(ins.prSerie)})'
+          : perfs.length > 1
+              ? '${perfs.length} séries enregistrées ✓'
+              : 'Enregistré ✓');
     } catch (e) {
       setState(() => _saving = false);
       _snack('Erreur : $e', error: true);
@@ -361,6 +389,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
     try {
       await SupabaseService.instance.deletePerf(id);
       await _loadTodayPerfs();
+      _loadHistory();
     } catch (e) {
       _snack('Erreur : $e', error: true);
     }
@@ -412,10 +441,12 @@ class _SaisieScreenState extends State<SaisieScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // ── Résumé du jour ────────────────────────────────────────────
-            if (_todayPerfs.isNotEmpty) ...[
+            if (_history.isNotEmpty || _todayPerfs.isNotEmpty) ...[
               _KpiRow(
                 sets: _todayPerfs.length,
                 effort: _todayEffort,
+                monthSessions: sessionsInMonth(_history, _date),
+                week: weekVolume(_history, DateTime.now()),
               ),
               const SizedBox(height: 16),
             ],
@@ -545,6 +576,27 @@ class _SaisieScreenState extends State<SaisieScreen> {
                         ],
                       ),
                       const SizedBox(height: 12),
+
+                      // Indicateurs de l'exercice (en-tête des blocs du web)
+                      ListenableBuilder(
+                        listenable: _exerciceCtrl,
+                        builder: (context, _) {
+                          final ex = _exerciceCtrl.text.trim();
+                          if (ex.isEmpty || Perf.isPlancheName(ex)) {
+                            return const SizedBox.shrink();
+                          }
+                          final ins = _insight(ex);
+                          final today = _todayPerfs
+                              .where((p) => p.exercice == ex)
+                              .fold(0.0, (s, p) => s + p.performance);
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _InsightLine(
+                                insight: ins, todayVolume: today,
+                                nbDaysAvg: _nbDaysAvg),
+                          );
+                        },
+                      ),
 
                       // Série + Unite + Charge
                       Row(
@@ -801,22 +853,87 @@ class _SaisieScreenState extends State<SaisieScreen> {
 
 // ─── Composants ───────────────────────────────────────────────────────────────
 
+/// Panneau du jour : séries / effort, séances du mois, volume de la
+/// semaine comparé à la précédente (panneau KPI du web).
 class _KpiRow extends StatelessWidget {
   final int sets;
   final int effort;
+  final int monthSessions;
+  final PeriodComparison week;
 
-  const _KpiRow({required this.sets, required this.effort});
+  const _KpiRow({
+    required this.sets,
+    required this.effort,
+    required this.monthSessions,
+    required this.week,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final d = week.deltaPct;
     return Row(
       children: [
-        Expanded(child: _Kpi(label: 'Séries aujourd\'hui', value: '$sets')),
-        const SizedBox(width: 10),
         Expanded(
             child: _Kpi(
-                label: 'Effort total',
-                value: effort > 0 ? '$effort pts' : '—')),
+                label: effort > 0 ? 'Effort du jour' : 'Séries du jour',
+                value: effort > 0 ? '$effort pts' : '$sets')),
+        const SizedBox(width: 8),
+        Expanded(child: _Kpi(label: 'Séances ce mois', value: '$monthSessions')),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _Kpi(
+            label: d == null
+                ? 'Reps cette semaine'
+                : 'Reps semaine (${d >= 0 ? '+' : ''}${d.round()} %)',
+            value: week.current.round().toString(),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// « Record série : 15 · Moy. 5 séances : 42 · Aujourd'hui : 30 (−29 %) »
+class _InsightLine extends StatelessWidget {
+  final ExerciseInsight? insight;
+  final double todayVolume;
+  final int nbDaysAvg;
+
+  const _InsightLine(
+      {required this.insight, required this.todayVolume, required this.nbDaysAvg});
+
+  static String _n(double v) =>
+      v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(1);
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.bodySmall;
+    final ins = insight;
+    if (ins == null) {
+      return Row(children: [
+        const Icon(Icons.fiber_new, size: 18, color: AppTheme.primaryBlue),
+        const SizedBox(width: 6),
+        Text('Nouvel exercice', style: style),
+      ]);
+    }
+    final delta = todayVolume > 0 ? ins.deltaPct(todayVolume) : null;
+    return Wrap(
+      spacing: 12,
+      runSpacing: 4,
+      children: [
+        Text('🏆 Record série : ${_n(ins.prSerie)}', style: style),
+        Text('Moy. ${nbDaysAvg < ins.sessions ? nbDaysAvg : ins.sessions} '
+            'séances : ${_n(ins.avgVolume)}', style: style),
+        if (todayVolume > 0)
+          Text(
+            "Aujourd'hui : ${_n(todayVolume)}"
+            '${delta == null ? '' : ' (${delta >= 0 ? '+' : ''}${delta.round()} %)'}',
+            style: style?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: (delta ?? 0) >= 0
+                    ? Colors.green.shade700
+                    : Colors.orange.shade800),
+          ),
       ],
     );
   }
