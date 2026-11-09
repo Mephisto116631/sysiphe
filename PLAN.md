@@ -103,7 +103,7 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
 - [x] Par exercice : record en série, moyenne des N dernières séances, écart du jour en % et alerte « Nouveau record » à l'enregistrement
 - [x] Catégorie libre par exercice (choisie à la création, reprise de la séance précédente)
 - [ ] Planche : bloc S1 à S5 avec forme par série et couleur d'intensité
-- [ ] « Tout sauvegarder » en un appui
+- [~] « Tout sauvegarder » en un appui — remplacé par l'enregistrement carte par carte (v2.6.0)
 - [x] Panneau du jour : séries ou effort du jour, séances du mois, reps de la semaine vs semaine précédente (port testé de `compute_period_comparison`)
 - [ ] Rappel de prochaine séance dans l'agenda (`.ics`)
 
@@ -152,7 +152,9 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
 - [x] Autres générateurs de l'ancien Excel : aucun — variantes construites pas à pas depuis Fibonacci, élastiques =
       kg des élastiques du commerce (repères affichés dans l'onglet Modèle)
 - [x] Champ « Lest (kg) » désactivable dans les Réglages (colonne `enable_charges`, respectée aussi par le web) (v2.5.2)
-- [ ] Petites cartes d'exercices sous la carte de saisie principale — proposition envoyée, en attente de validation
+- [x] Petites cartes d'exercices sous la carte de saisie principale (v2.6.0) : une par exercice de la séance reprise
+      (hors planche), champ vide avec la dernière fois en gris dedans, date et record en gris dessous, « 12/10/8 »,
+      réenregistrer remplace les séries du jour ; « + Ajouter un exercice » (récents ou nouveau)
 
 ## Phase 5 — Qualité et robustesse
 
