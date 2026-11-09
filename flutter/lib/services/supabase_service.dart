@@ -132,7 +132,7 @@ class SupabaseService {
     final records = <String, Perf>{};
     for (final p in perfs) {
       final existing = records[p.exercice];
-      if (existing == null || p.charge > existing.charge) {
+      if (existing == null || p.performance > existing.performance) {
         records[p.exercice] = p;
       }
     }
@@ -143,24 +143,27 @@ class SupabaseService {
           (a['exercice'] as String).compareTo(b['exercice'] as String));
   }
 
-  // ─── Paramètres utilisateur ───────────────────────────────────────────────
+  // ─── Paramètres utilisateur (table user_settings, partagée avec Streamlit) ─
 
   Future<Map<String, dynamic>> getSettings(String userId) async {
     try {
       final res = await _db
-          .from('settings')
+          .from('user_settings')
           .select('*')
           .eq('user_id', userId)
           .maybeSingle();
       return (res as Map<String, dynamic>?) ?? {};
     } catch (_) {
+      // Table absente ou réseau : valeurs par défaut (même règle que Python).
       return {};
     }
   }
 
+  /// Upsert partiel : seules les colonnes de [data] sont modifiées, les
+  /// réglages gérés par l'app web (calibration planche…) restent intacts.
   Future<void> saveSettings(
       String userId, Map<String, dynamic> data) async {
-    await _db.from('settings').upsert({'user_id': userId, ...data});
+    await _db.from('user_settings').upsert({'user_id': userId, ...data});
   }
 
   Future<void> setPin(String profileId, String pin) async {

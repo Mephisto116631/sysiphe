@@ -20,7 +20,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _weightCtrl = TextEditingController();
   bool _saving = false;
   bool _loading = true;
-  Map<String, dynamic> _settings = {};
 
   @override
   void initState() {
@@ -33,7 +32,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final s = await SupabaseService.instance.getSettings(widget.userId);
     if (!mounted) return;
     setState(() {
-      _settings = s;
       _weightCtrl.text = ((s['weight'] as num?)?.toString() ?? '97');
       _loading = false;
     });
@@ -48,7 +46,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => _saving = true);
     try {
       await SupabaseService.instance
-          .saveSettings(widget.userId, {..._settings, 'weight': weight});
+          .saveSettings(widget.userId, {'weight': weight});
       setState(() => _saving = false);
       _snack('Poids enregistré');
     } catch (e) {

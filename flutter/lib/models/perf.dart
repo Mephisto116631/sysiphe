@@ -9,8 +9,13 @@ class Perf {
   final String variante;
   final String forme;
   final int serie;
-  final double charge; // Secondes pour planche, kg/reps sinon
-  final String unite;  // "Sec" | "Reps" | "Kg" …
+  // Schéma partagé avec l'app Streamlit (supabase_io.py / ui_saisie.py) :
+  //   performance = valeur de la série (secondes, reps ou kg selon `unite`)
+  //   charge      = lest externe en kg (tractions lestées…), 0 sinon
+  final double performance;
+  final double charge;
+  final String unite;     // "Sec" | "Reps" | "Kg"
+  final String categorie; // "Force Iso" | "Musculation"
   final String elastique;
   final String tension;
   final int? effortPondere;
@@ -24,8 +29,10 @@ class Perf {
     this.variante = 'Full',
     this.forme = 'Normal',
     this.serie = 1,
+    this.performance = 0.0,
     this.charge = 0.0,
     this.unite = 'Sec',
+    this.categorie = 'Musculation',
     this.elastique = 'Aucun',
     this.tension = 'N/A',
     this.effortPondere,
@@ -40,8 +47,10 @@ class Perf {
         variante: (json['variante'] as String?)?.trim() ?? 'Full',
         forme: (json['forme'] as String?)?.trim() ?? 'Normal',
         serie: (json['serie'] as num?)?.toInt() ?? 1,
+        performance: (json['performance'] as num?)?.toDouble() ?? 0.0,
         charge: (json['charge'] as num?)?.toDouble() ?? 0.0,
         unite: (json['unite'] as String?)?.trim() ?? 'Sec',
+        categorie: (json['categorie'] as String?)?.trim() ?? 'Musculation',
         elastique: (json['elastique'] as String?)?.trim() ?? 'Aucun',
         tension: (json['tension'] as String?)?.trim() ?? 'N/A',
         effortPondere: (json['effort_pondere'] as num?)?.toInt(),
@@ -57,21 +66,31 @@ class Perf {
         'variante': variante,
         'forme': forme,
         'serie': serie,
+        'performance': performance,
         'charge': charge,
         'unite': unite,
+        'categorie': categorie,
         'elastique': elastique,
         'tension': tension,
-        if (effortPondere != null) 'effort_pondere': effortPondere,
+        'effort_pondere': effortPondere ?? 0,
       };
 
   String get displayValue {
-    if (unite == 'Sec') return '${charge.toStringAsFixed(0)}s';
-    return charge % 1 == 0
-        ? '${charge.toInt()} $unite'
-        : '${charge.toStringAsFixed(1)} $unite';
+    if (unite == 'Sec') return '${performance.toStringAsFixed(0)}s';
+    final v = performance % 1 == 0
+        ? '${performance.toInt()} $unite'
+        : '${performance.toStringAsFixed(1)} $unite';
+    return charge > 0 ? '$v · +${_fmt(charge)} kg' : v;
   }
 
-  bool get isPlanche => unite == 'Sec';
+  static String _fmt(double x) =>
+      x % 1 == 0 ? x.toInt().toString() : x.toStringAsFixed(1);
+
+  /// Même règle que l'app Streamlit : la planche est identifiée par son nom.
+  bool get isPlanche => isPlancheName(exercice);
+
+  static bool isPlancheName(String exercice) =>
+      exercice.trim().toLowerCase() == 'planche';
 }
 
 // ─── Calcul d'effort planche (port fidèle de data.py) ────────────────────────

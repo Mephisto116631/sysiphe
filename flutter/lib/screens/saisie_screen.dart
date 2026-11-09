@@ -32,7 +32,9 @@ class _SaisieScreenState extends State<SaisieScreen> {
   List<String> _exerciceNames = [];
   bool _saving = false;
   bool _loadingPerfs = true;
-  double _weight = 97.0; // poids par défaut, chargé depuis settings
+  double _weight = 97.0; // poids par défaut, chargé depuis user_settings
+  // Calibration planche de l'utilisateur (null = valeurs par défaut).
+  Map<String, double>? _variantesCfg, _formesCfg, _elastiquesCfg, _tensionsCfg;
 
   final _fb = GlobalKey<FormState>();
 
@@ -73,8 +75,24 @@ class _SaisieScreenState extends State<SaisieScreen> {
     if (mounted) {
       setState(() {
         _weight = (settings['weight'] as num?)?.toDouble() ?? 97.0;
+        _variantesCfg = _cfg(settings['variantes_config'], kVariantes);
+        _formesCfg = _cfg(settings['formes_config'], kFormes);
+        _elastiquesCfg = _cfg(settings['elastiques_config'], kElastiques);
+        _tensionsCfg = _cfg(settings['tensions_config'], kTensions);
       });
     }
+  }
+
+  /// Fusionne la config JSONB stockée avec les valeurs par défaut,
+  /// comme load_user_settings() côté Python.
+  static Map<String, double> _cfg(dynamic raw, Map<String, double> defaults) {
+    final merged = Map<String, double>.of(defaults);
+    if (raw is Map) {
+      raw.forEach((k, v) {
+        if (v is num) merged[k.toString()] = v.toDouble();
+      });
+    }
+    return merged;
   }
 
   Future<void> _pickDate() async {
@@ -96,33 +114,39 @@ class _SaisieScreenState extends State<SaisieScreen> {
       _snack('Renseignez un exercice', error: true);
       return;
     }
-    final charge = double.tryParse(_chargeCtrl.text.replaceAll(',', '.'));
-    if (charge == null || charge <= 0) {
+    final valeur = double.tryParse(_chargeCtrl.text.replaceAll(',', '.'));
+    if (valeur == null || valeur <= 0) {
       _snack('Valeur invalide', error: true);
       return;
     }
 
-    int? effort;
-    if (_unite == 'Sec') {
-      effort = calculerEffort(
-        variante: _variante,
-        elastique: _elastique,
-        tension: _tension,
-        forme: _forme,
-        temps: charge,
-        weight: _weight,
-      );
-    }
+    final exercice = _exerciceCtrl.text.trim();
+    final planche = Perf.isPlancheName(exercice);
+    final effort = planche
+        ? calculerEffort(
+            variante: _variante,
+            elastique: _elastique,
+            tension: _tension,
+            forme: _forme,
+            temps: valeur,
+            weight: _weight,
+            variantes: _variantesCfg,
+            formes: _formesCfg,
+            elastiquesMap: _elastiquesCfg,
+            tensions: _tensionsCfg,
+          )
+        : 0;
 
     final perf = Perf(
       userId: widget.userId,
       date: _date,
-      exercice: _exerciceCtrl.text.trim(),
+      exercice: exercice,
       variante: _variante,
       forme: _forme,
       serie: _serie,
-      charge: charge,
+      performance: valeur,
       unite: _unite,
+      categorie: _unite == 'Sec' ? 'Force Iso' : 'Musculation',
       elastique: _elastique,
       tension: _tension,
       effortPondere: effort,

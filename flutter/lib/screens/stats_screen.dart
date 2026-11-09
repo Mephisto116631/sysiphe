@@ -53,7 +53,7 @@ class _StatsScreenState extends State<StatsScreen> {
     final origin = _perfs.first.date;
     return _perfs.map((p) {
       final x = p.date.difference(origin).inDays.toDouble();
-      return FlSpot(x, p.charge);
+      return FlSpot(x, p.performance);
     }).toList();
   }
 
@@ -124,7 +124,7 @@ class _StatRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final max = perfs.map((p) => p.charge).reduce((a, b) => a > b ? a : b);
+    final max = perfs.map((p) => p.performance).reduce((a, b) => a > b ? a : b);
     final last = perfs.last;
     final unite = perfs.first.unite;
     final suffix = unite == 'Sec' ? 's' : unite;
@@ -143,7 +143,7 @@ class _StatRow extends StatelessWidget {
           child: _StatCard(
             label: 'Dernière perf',
             value:
-                '${last.charge % 1 == 0 ? last.charge.toInt() : last.charge.toStringAsFixed(1)}$suffix',
+                '${last.performance % 1 == 0 ? last.performance.toInt() : last.performance.toStringAsFixed(1)}$suffix',
           ),
         ),
         const SizedBox(width: 10),
