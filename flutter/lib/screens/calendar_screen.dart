@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
+import '../widgets/load_error.dart';
 
 class CalendarScreen extends StatefulWidget {
   final String userId;
@@ -17,6 +18,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
   bool _loading = true;
+  Object? _error;
 
   @override
   void initState() {
@@ -25,10 +27,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
-    final days = await SupabaseService.instance
-        .getActiveDays(widget.userId, months: 6);
-    setState(() { _activeDays = days; _loading = false; });
+    setState(() { _loading = true; _error = null; });
+    try {
+      final days = await SupabaseService.instance
+          .getActiveDays(widget.userId, months: 6);
+      if (!mounted) return;
+      setState(() { _activeDays = days; _loading = false; });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() { _error = e; _loading = false; });
+    }
   }
 
   int _countFor(DateTime day) {
@@ -57,6 +65,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
+          : _error != null
+          ? LoadError(error: _error!, onRetry: _load)
           : SingleChildScrollView(
               padding: const EdgeInsets.all(12),
               child: Column(

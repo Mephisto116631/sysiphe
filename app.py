@@ -17,7 +17,8 @@ from ui_stats import (
 
 CLOUD_URL = "https://sysiphe-voseesdgwwcstfepbdepkh.streamlit.app"
 try:
-    # Instance NAS : APP_URL vient de secrets.toml (URL Funnel).
+    # URL publique de l'app (redirections d'auth). Surchargeable via
+    # secrets.toml, par ex. en local ; Streamlit Cloud par défaut.
     APP_URL = st.secrets.get("APP_URL") or CLOUD_URL
 except Exception:
     APP_URL = CLOUD_URL

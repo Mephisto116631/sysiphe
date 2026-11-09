@@ -255,7 +255,7 @@ def recalculate_all_efforts(uid: str, current_weight: float,
     from data import calculer_effort as _calc
     supabase = get_supabase_client()
     res = supabase.table("perfs").select("id, variante, elastique, tension, forme, performance") \
-        .eq("user_id", uid).eq("exercice", "planche").execute()
+        .eq("user_id", uid).ilike("exercice", "planche").execute()  # insensible à la casse : saisi « Planche »
     if not res.data:
         return 0
     updates = []

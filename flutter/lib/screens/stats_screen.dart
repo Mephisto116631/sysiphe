@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../models/perf.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
+import '../widgets/load_error.dart';
 
 class StatsScreen extends StatefulWidget {
   final String userId;
@@ -19,6 +20,7 @@ class _StatsScreenState extends State<StatsScreen> {
   String? _selected;
   List<Perf> _perfs = [];
   bool _loading = true;
+  Object? _error;
 
   @override
   void initState() {
@@ -27,25 +29,39 @@ class _StatsScreenState extends State<StatsScreen> {
   }
 
   Future<void> _loadExercices() async {
-    setState(() => _loading = true);
-    final names =
-        await SupabaseService.instance.getExerciceNames(widget.userId);
-    setState(() {
-      _exercices = names;
-      _selected = names.isNotEmpty ? names.first : null;
-      _loading = false;
-    });
-    if (_selected != null) _loadPerfs(_selected!);
+    setState(() { _loading = true; _error = null; });
+    try {
+      final names =
+          await SupabaseService.instance.getExerciceNames(widget.userId);
+      if (!mounted) return;
+      setState(() {
+        _exercices = names;
+        if (_selected == null || !names.contains(_selected)) {
+          _selected = names.isNotEmpty ? names.first : null;
+        }
+        _loading = false;
+      });
+      if (_selected != null) await _loadPerfs(_selected!);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() { _error = e; _loading = false; });
+    }
   }
 
   Future<void> _loadPerfs(String exercice) async {
-    setState(() { _loading = true; _perfs = []; });
-    final all = await SupabaseService.instance
-        .getRecentPerfs(widget.userId, days: 180);
-    setState(() {
-      _perfs = all.where((p) => p.exercice == exercice).toList();
-      _loading = false;
-    });
+    setState(() { _loading = true; _error = null; _perfs = []; });
+    try {
+      final all = await SupabaseService.instance
+          .getRecentPerfs(widget.userId, days: 180);
+      if (!mounted) return;
+      setState(() {
+        _perfs = all.where((p) => p.exercice == exercice).toList();
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() { _error = e; _loading = false; });
+    }
   }
 
   List<FlSpot> get _spots {
@@ -53,7 +69,7 @@ class _StatsScreenState extends State<StatsScreen> {
     final origin = _perfs.first.date;
     return _perfs.map((p) {
       final x = p.date.difference(origin).inDays.toDouble();
-      return FlSpot(x, p.charge);
+      return FlSpot(x, p.performance);
     }).toList();
   }
 
@@ -84,6 +100,9 @@ class _StatsScreenState extends State<StatsScreen> {
 
             if (_loading)
               const Expanded(child: Center(child: CircularProgressIndicator()))
+            else if (_error != null)
+              Expanded(
+                  child: LoadError(error: _error!, onRetry: _loadExercices))
             else if (_perfs.isEmpty)
               Expanded(
                 child: Center(
@@ -124,7 +143,7 @@ class _StatRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final max = perfs.map((p) => p.charge).reduce((a, b) => a > b ? a : b);
+    final max = perfs.map((p) => p.performance).reduce((a, b) => a > b ? a : b);
     final last = perfs.last;
     final unite = perfs.first.unite;
     final suffix = unite == 'Sec' ? 's' : unite;
@@ -143,7 +162,7 @@ class _StatRow extends StatelessWidget {
           child: _StatCard(
             label: 'Dernière perf',
             value:
-                '${last.charge % 1 == 0 ? last.charge.toInt() : last.charge.toStringAsFixed(1)}$suffix',
+                '${last.performance % 1 == 0 ? last.performance.toInt() : last.performance.toStringAsFixed(1)}$suffix',
           ),
         ),
         const SizedBox(width: 10),

@@ -22,7 +22,7 @@ class SupabaseService {
         .from('profiles')
         .select('id, name, pin_hash, last_login')
         .order('last_login', ascending: false, nullsFirst: false)
-        .order('created_at');
+        .order('created_at', ascending: true); // même ordre que l'app web
     return (res as List).map((j) => Profile.fromJson(j)).toList();
   }
 
@@ -47,79 +47,78 @@ class SupabaseService {
 
   // ─── Performances ─────────────────────────────────────────────────────────
 
-  Future<List<Perf>> getAllPerfs(String userId) async {
-    final res = await _db
-        .from('perfs')
-        .select('*')
-        .eq('user_id', userId)
-        .order('date', ascending: false)
-        .order('created_at', ascending: false);
-    return (res as List).map((j) => Perf.fromJson(j)).toList();
+  // La table perfs n'a pas de colonne created_at : l'ordre d'insertion est
+  // donné par `id` (bigint identity). Trier sur created_at renvoie une 400.
+
+  /// Supabase plafonne chaque réponse à 1 000 lignes : on pagine.
+  static const _pageSize = 1000;
+
+  Future<List<Perf>> _fetchPerfs(
+    String userId, {
+    String? fromDate,
+    String? onDate,
+    bool ascending = false,
+  }) async {
+    final out = <Perf>[];
+    for (var start = 0;; start += _pageSize) {
+      var q = _db.from('perfs').select('*').eq('user_id', userId);
+      if (fromDate != null) q = q.gte('date', fromDate);
+      if (onDate != null) q = q.eq('date', onDate);
+      final res = await q
+          .order('date', ascending: ascending)
+          .order('id', ascending: ascending)
+          .range(start, start + _pageSize - 1);
+      final rows = res as List;
+      out.addAll(rows.map((j) => Perf.fromJson(j as Map<String, dynamic>)));
+      if (rows.length < _pageSize) break;
+    }
+    return out;
   }
 
-  Future<List<Perf>> getPerfsForDate(String userId, DateTime date) async {
-    final dateStr = DateFormat('yyyy-MM-dd').format(date);
-    final res = await _db
-        .from('perfs')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('date', dateStr)
-        .order('created_at', ascending: false);
-    return (res as List).map((j) => Perf.fromJson(j)).toList();
-  }
+  Future<List<Perf>> getAllPerfs(String userId) => _fetchPerfs(userId);
 
-  Future<List<Perf>> getRecentPerfs(String userId, {int days = 90}) async {
-    final from =
-        DateFormat('yyyy-MM-dd').format(DateTime.now().subtract(Duration(days: days)));
-    final res = await _db
-        .from('perfs')
-        .select('*')
-        .eq('user_id', userId)
-        .gte('date', from)
-        .order('date', ascending: true)
-        .order('created_at', ascending: true);
-    return (res as List).map((j) => Perf.fromJson(j)).toList();
-  }
+  Future<List<Perf>> getPerfsForDate(String userId, DateTime date) =>
+      _fetchPerfs(userId, onDate: DateFormat('yyyy-MM-dd').format(date));
+
+  Future<List<Perf>> getRecentPerfs(String userId, {int days = 90}) =>
+      _fetchPerfs(
+        userId,
+        fromDate: DateFormat('yyyy-MM-dd')
+            .format(DateTime.now().subtract(Duration(days: days))),
+        ascending: true,
+      );
 
   Future<Perf?> savePerf(Perf perf) async {
     final res =
         await _db.from('perfs').insert(perf.toJson()).select().single();
-    return Perf.fromJson(res as Map<String, dynamic>);
+    return Perf.fromJson(res);
   }
 
-  Future<void> deletePerf(String id) async {
+  Future<void> deletePerf(int id) async {
     await _db.from('perfs').delete().eq('id', id);
   }
 
   Future<List<String>> getExerciceNames(String userId) async {
-    final res = await _db
-        .from('perfs')
-        .select('exercice')
-        .eq('user_id', userId);
-    final set = <String>{};
-    for (final row in res as List) {
-      final ex = (row['exercice'] as String?)?.trim();
-      if (ex != null && ex.isNotEmpty) set.add(ex);
-    }
-    final list = set.toList()..sort();
-    return list;
+    final perfs = await _fetchPerfs(userId);
+    final set = <String>{
+      for (final p in perfs)
+        if (p.exercice.isNotEmpty) p.exercice,
+    };
+    return set.toList()..sort();
   }
 
   // ─── Calendrier : jours actifs ────────────────────────────────────────────
 
   Future<Map<DateTime, int>> getActiveDays(String userId,
       {int months = 3}) async {
-    final from = DateFormat('yyyy-MM-dd')
-        .format(DateTime.now().subtract(Duration(days: months * 30)));
-    final res = await _db
-        .from('perfs')
-        .select('date')
-        .eq('user_id', userId)
-        .gte('date', from);
+    final perfs = await _fetchPerfs(
+      userId,
+      fromDate: DateFormat('yyyy-MM-dd')
+          .format(DateTime.now().subtract(Duration(days: months * 30))),
+    );
     final map = <DateTime, int>{};
-    for (final row in res as List) {
-      final d = DateTime.parse(row['date'] as String);
-      final key = DateTime(d.year, d.month, d.day);
+    for (final p in perfs) {
+      final key = DateTime(p.date.year, p.date.month, p.date.day);
       map[key] = (map[key] ?? 0) + 1;
     }
     return map;
@@ -132,7 +131,7 @@ class SupabaseService {
     final records = <String, Perf>{};
     for (final p in perfs) {
       final existing = records[p.exercice];
-      if (existing == null || p.charge > existing.charge) {
+      if (existing == null || p.performance > existing.performance) {
         records[p.exercice] = p;
       }
     }
@@ -143,24 +142,27 @@ class SupabaseService {
           (a['exercice'] as String).compareTo(b['exercice'] as String));
   }
 
-  // ─── Paramètres utilisateur ───────────────────────────────────────────────
+  // ─── Paramètres utilisateur (table user_settings, partagée avec Streamlit) ─
 
   Future<Map<String, dynamic>> getSettings(String userId) async {
     try {
       final res = await _db
-          .from('settings')
+          .from('user_settings')
           .select('*')
           .eq('user_id', userId)
           .maybeSingle();
-      return (res as Map<String, dynamic>?) ?? {};
+      return res ?? {};
     } catch (_) {
+      // Table absente ou réseau : valeurs par défaut (même règle que Python).
       return {};
     }
   }
 
+  /// Upsert partiel : seules les colonnes de [data] sont modifiées, les
+  /// réglages gérés par l'app web (calibration planche…) restent intacts.
   Future<void> saveSettings(
       String userId, Map<String, dynamic> data) async {
-    await _db.from('settings').upsert({'user_id': userId, ...data});
+    await _db.from('user_settings').upsert({'user_id': userId, ...data});
   }
 
   Future<void> setPin(String profileId, String pin) async {

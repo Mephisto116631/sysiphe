@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../models/perf.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
+import '../widgets/load_error.dart';
 
 class RecordsScreen extends StatefulWidget {
   final String userId;
@@ -16,6 +17,7 @@ class RecordsScreen extends StatefulWidget {
 class _RecordsScreenState extends State<RecordsScreen> {
   List<Map<String, dynamic>> _records = [];
   bool _loading = true;
+  Object? _error;
 
   @override
   void initState() {
@@ -24,9 +26,15 @@ class _RecordsScreenState extends State<RecordsScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
-    final records = await SupabaseService.instance.getRecords(widget.userId);
-    setState(() { _records = records; _loading = false; });
+    setState(() { _loading = true; _error = null; });
+    try {
+      final records = await SupabaseService.instance.getRecords(widget.userId);
+      if (!mounted) return;
+      setState(() { _records = records; _loading = false; });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() { _error = e; _loading = false; });
+    }
   }
 
   @override
@@ -43,6 +51,8 @@ class _RecordsScreenState extends State<RecordsScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
+          : _error != null
+          ? LoadError(error: _error!, onRetry: _load)
           : _records.isEmpty
               ? Center(
                   child: Text('Aucun record',

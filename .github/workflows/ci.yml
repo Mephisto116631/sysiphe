@@ -1,0 +1,50 @@
+name: CI
+
+# Vérifie chaque PR (et chaque push sur main) AVANT publication :
+# analyse + tests Flutter, tests Python. Ne construit ni ne publie d'APK.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flutter:
+    name: Flutter — analyze + test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flutter
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.3'   # même version que build-flutter.yml
+          channel: 'stable'
+          cache: true
+
+      - run: flutter pub get
+      # Échoue sur les erreurs et avertissements, pas sur les remarques de style.
+      - run: flutter analyze --no-fatal-infos
+      - run: flutter test
+
+  python:
+    name: Python — tests data.py
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - run: pip install pandas numpy pytest
+      - run: pytest test_data.py -v
