@@ -115,7 +115,7 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
 
 **Paramètres**
 - [ ] « Inclure la planche » et taille de la moyenne glissante (`include_planche`, `nb_days_avg`)
-- [ ] Afficher / masquer le champ lest (`enable_charges`)
+- [x] Afficher / masquer le champ lest (`enable_charges`) — Réglages, v2.5.2
 - [ ] Export CSV de l'historique
 
 **Traces d'avant git (colonnes orphelines de `user_settings`)**
@@ -149,7 +149,10 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
 - [x] Contraste des puces « Récents » : texte blanc sur gris clair (1,1:1) → texte foncé (≥ 4,5:1), testé
 - [x] Onglet Modèle : la section ouverte se repliait (et le clavier se fermait) au premier chiffre tapé ; champs
       arrondis à l'affichage (66,6 au lieu de 66,64)
-- [ ] Autres générateurs de l'ancien Excel (variantes, élastiques ?) — à confirmer avec toi
+- [x] Autres générateurs de l'ancien Excel : aucun — variantes construites pas à pas depuis Fibonacci, élastiques =
+      kg des élastiques du commerce (repères affichés dans l'onglet Modèle)
+- [x] Champ « Lest (kg) » désactivable dans les Réglages (colonne `enable_charges`, respectée aussi par le web) (v2.5.2)
+- [ ] Petites cartes d'exercices sous la carte de saisie principale — proposition envoyée, en attente de validation
 
 ## Phase 5 — Qualité et robustesse
 

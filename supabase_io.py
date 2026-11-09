@@ -280,7 +280,7 @@ def load_user_settings(uid: str) -> dict:
     """
     try:
         res = get_supabase_client().table("user_settings") \
-            .select("variantes_config, formes_config, elastiques_config, tensions_config, weight, nb_days_avg, include_planche") \
+            .select("variantes_config, formes_config, elastiques_config, tensions_config, weight, nb_days_avg, include_planche, enable_charges") \
             .eq("user_id", uid).execute()
         if res.data:
             row = res.data[0]
@@ -292,6 +292,7 @@ def load_user_settings(uid: str) -> dict:
                 "weight":          int(row["weight"])          if row.get("weight")          is not None else 97,
                 "nb_days_avg":     int(row["nb_days_avg"])     if row.get("nb_days_avg")     is not None else 5,
                 "include_planche": bool(row["include_planche"]) if row.get("include_planche") is not None else True,
+                "enable_charges":  bool(row["enable_charges"]) if row.get("enable_charges") is not None else True,
             }
     except Exception:
         pass
@@ -303,6 +304,7 @@ def load_user_settings(uid: str) -> dict:
         "weight":           97,
         "nb_days_avg":      5,
         "include_planche":  True,
+        "enable_charges":   True,
     }
 
 
