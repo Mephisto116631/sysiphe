@@ -68,14 +68,15 @@ Pages et fonctions présentes sur le web, absentes ou simplifiées dans Flutter 
 - [ ] **Repos** : nouvelle page d'analyse de la récupération
 - [x] **Records** : record planche basé sur l'effort pondéré, puis le temps ; autres exercices départagés par le lest
 - [x] **Paramètres** : écran « Calibration planche » (variantes, formes, élastiques, tensions), partagé avec le web, + recalcul des efforts
-- [ ] **Paramètres** : gestion des profils (créer, renommer, supprimer)
-- [ ] **Paramètres** : renommer un exercice
+- [x] **Paramètres** : gestion des profils (créer, renommer, supprimer sauf le profil actif)
+- [x] **Paramètres** : renommer un exercice dans tout l'historique (avec confirmation si fusion)
+- [x] Initiales des profils : l'emoji de « Dilbert 🐶 » n'est plus coupé en deux, un double espace ne fait plus planter
 - [ ] **Paramètres** : export CSV
 - [ ] Rappel d'inactivité (`inactivity_days`) en notification locale
 
 ## Phase 5 — Qualité et robustesse
 
-- [x] Tests Flutter : `calculerEffort` donne les mêmes résultats que `data.py`, et `Perf.fromJson` est testé sur des lignes réelles (`flutter/test/`, 25 tests)
+- [x] Tests Flutter : `calculerEffort` donne les mêmes résultats que `data.py`, et `Perf.fromJson` est testé sur des lignes réelles (`flutter/test/`, 26 tests)
 - [x] CI : `flutter analyze` + `flutter test` sur chaque PR, et pas seulement à la publication (`ci.yml`)
 - [x] CI : `pytest test_data.py` sur chaque PR (28 tests)
 - [ ] Mode hors ligne Flutter : cache local et saisie différée, synchronisée au retour du réseau

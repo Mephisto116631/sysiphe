@@ -4,6 +4,7 @@ import '../models/profile.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
 import 'calibration_screen.dart';
+import 'manage_screen.dart';
 import 'profile_screen.dart' show ProfileScreen;
 
 /// Version injectée par la CI (`--dart-define=APP_VERSION=2.1.0+42`).
@@ -231,6 +232,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     onTap: () => Navigator.of(context).push(MaterialPageRoute(
                         builder: (_) =>
                             CalibrationScreen(userId: widget.userId))),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.manage_accounts_outlined,
+                        color: AppTheme.primaryBlue),
+                    title: const Text('Profils et exercices'),
+                    subtitle:
+                        const Text('Créer, renommer, supprimer, corriger'),
+                    trailing: const Icon(Icons.chevron_right,
+                        color: AppTheme.textSecondary),
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) =>
+                            ManageScreen(current: widget.profile))),
                   ),
                 ),
                 const SizedBox(height: 20),

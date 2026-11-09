@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sysiphe/models/perf.dart';
+import 'package:sysiphe/models/profile.dart';
 
 void main() {
   group('Perf.fromJson — lignes réelles de la table perfs', () {
@@ -148,6 +149,14 @@ void main() {
     expect(m['Nouvelle'], 4.0); // clé ajoutée par l'utilisateur
     expect(m.containsKey('Bidon'), isFalse); // non numérique ignoré
     expect(mergeConfig(null, kFormes), kFormes);
+  });
+
+  test('Profile.initials : emoji entier, espaces multiples, nom vide', () {
+    Profile p(String n) => Profile(id: 'x', name: n, hasPin: false);
+    expect(p('Dilbert 🐶').initials, 'D🐶'); // emoji non coupé
+    expect(p('Medhi').initials, 'M');
+    expect(p('jean  paul').initials, 'JP'); // double espace : plus de crash
+    expect(p('   ').initials, '?');
   });
 
   test('isPlancheName est insensible à la casse et aux espaces', () {

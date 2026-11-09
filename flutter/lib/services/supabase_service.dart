@@ -36,6 +36,19 @@ class SupabaseService {
     return (res as List).isNotEmpty;
   }
 
+  Future<void> createProfile(String name) async {
+    await _db.from('profiles').insert({'name': name.trim()});
+  }
+
+  Future<void> renameProfile(String profileId, String name) async {
+    await _db.from('profiles').update({'name': name.trim()}).eq('id', profileId);
+  }
+
+  /// Supprime le profil ; ses séries restent en base (comme le web).
+  Future<void> deleteProfile(String profileId) async {
+    await _db.from('profiles').delete().eq('id', profileId);
+  }
+
   Future<void> touchLogin(String profileId) async {
     try {
       await _db
@@ -92,6 +105,16 @@ class SupabaseService {
     final res =
         await _db.from('perfs').insert(perf.toJson()).select().single();
     return Perf.fromJson(res);
+  }
+
+  /// Renomme un exercice dans tout l'historique du profil.
+  Future<void> renameExercice(
+      String userId, String oldName, String newName) async {
+    await _db
+        .from('perfs')
+        .update({'exercice': newName.trim()})
+        .eq('user_id', userId)
+        .eq('exercice', oldName);
   }
 
   Future<void> deletePerf(int id) async {
