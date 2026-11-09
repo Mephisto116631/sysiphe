@@ -42,7 +42,7 @@ class AppTheme {
           selectedLabelStyle: TextStyle(fontWeight: FontWeight.w600, fontSize: 11),
           unselectedLabelStyle: TextStyle(fontSize: 11),
         ),
-        cardTheme: CardThemeData(
+        cardTheme: const CardTheme(
           color: cardWhite,
           elevation: 0,
           shape: RoundedRectangleBorder(

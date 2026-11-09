@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import '../models/profile.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
-import 'profile_screen.dart' show unawaited;
+import 'profile_screen.dart' show unawaited, ProfileScreen;
 
 class SettingsScreen extends StatefulWidget {
   final String userId;
