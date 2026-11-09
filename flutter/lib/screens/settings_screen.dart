@@ -6,7 +6,7 @@ import '../theme.dart';
 import '../services/session_store.dart';
 import '../app_version.dart';
 import '../widgets/update_flow.dart';
-import 'calibration_screen.dart';
+import 'model_screen.dart';
 import 'manage_screen.dart';
 import 'profile_screen.dart' show ProfileScreen;
 
@@ -233,12 +233,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         color: AppTheme.primaryBlue),
                     title: const Text('Calibration planche'),
                     subtitle: const Text(
-                        'Coefficients de l\'effort et recalcul'),
+                        'Coefficients, grille des efforts, recalcul'),
                     trailing: const Icon(Icons.chevron_right,
                         color: AppTheme.textSecondary),
                     onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) =>
-                            CalibrationScreen(userId: widget.userId))),
+                        builder: (_) => ModelScreen(userId: widget.userId))),
                   ),
                 ),
                 const SizedBox(height: 8),

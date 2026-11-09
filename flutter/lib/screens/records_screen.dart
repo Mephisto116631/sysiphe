@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/stats.dart';
+import '../services/data_events.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
 import '../widgets/load_error.dart';
@@ -29,12 +30,18 @@ class _RecordsScreenState extends State<RecordsScreen> {
   @override
   void initState() {
     super.initState();
+    dataVersion.addListener(_onDataChanged);
     _load();
     _search.addListener(() => setState(() {}));
   }
 
+  void _onDataChanged() {
+    if (mounted) _load();
+  }
+
   @override
   void dispose() {
+    dataVersion.removeListener(_onDataChanged);
     _search.dispose();
     super.dispose();
   }
