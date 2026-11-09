@@ -143,7 +143,9 @@ def touch_profile_login(profile_id: str) -> None:
 def verify_pin(profile_id: str, pin: str) -> bool:
     """Vérifie le PIN d'un profil (SHA-256). Retourne True si correct."""
     import hashlib
-    pin_hash = hashlib.sha256(pin.encode()).hexdigest()
+    # strip() comme set_pin() et l'app Flutter : un espace parasite ne doit pas
+    # rendre un PIN correct invalide.
+    pin_hash = hashlib.sha256(pin.strip().encode()).hexdigest()
     try:
         res = (get_supabase_client().table("profiles")
                .select("id").eq("id", profile_id).eq("pin_hash", pin_hash).execute())

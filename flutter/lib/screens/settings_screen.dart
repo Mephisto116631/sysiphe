@@ -5,6 +5,10 @@ import '../services/supabase_service.dart';
 import '../theme.dart';
 import 'profile_screen.dart' show ProfileScreen;
 
+/// Version injectée par la CI (`--dart-define=APP_VERSION=2.1.0+42`).
+/// « dev » pour un build local sans cette option.
+const kAppVersion = String.fromEnvironment('APP_VERSION', defaultValue: 'dev');
+
 class SettingsScreen extends StatefulWidget {
   final String userId;
   final Profile profile;
@@ -240,7 +244,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const SizedBox(height: 40),
                 Center(
-                  child: Text('Sysiphe v2.0 · Flutter',
+                  child: Text('Sysiphe v$kAppVersion · Flutter',
                       style: Theme.of(context).textTheme.bodyMedium),
                 ),
               ],

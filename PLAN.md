@@ -52,8 +52,8 @@ répondent **400**, et l'app reste bloquée sur un chargement infini.
 - [ ] `user_settings.user_id` pointe sur `auth.users` : les profils « Dilbert 🐶 » et « Profil 3 » ne peuvent pas
       enregistrer de réglages (violation de clé étrangère). → Faire pointer la clé sur `profiles(id)`
 - [ ] Harmoniser les catégories en base (`Force isométrique `, `Gainage`, `Force Iso`) : migration SQL
-- [ ] Hachage du PIN : appliquer `strip()` aussi à la vérification côté web (`supabase_io.py:146`)
-- [ ] Mettre à jour `SETUP.md` avec le schéma réel (colonnes `app_theme`, `inactivity_days`, `enable_charges`, `graph_period`)
+- [x] Hachage du PIN : `strip()` aussi à la vérification côté web, comme à l'enregistrement et dans Flutter
+- [x] `SETUP.md` réécrit avec le schéma réel de production (3 tables, toutes les colonnes)
 
 ## Phase 4 — Parité fonctionnelle Flutter ↔ web
 
@@ -78,8 +78,8 @@ Pages et fonctions présentes sur le web, absentes ou simplifiées dans Flutter 
 - [x] CI : `flutter analyze` + `flutter test` sur chaque PR, et pas seulement à la publication (`ci.yml`)
 - [x] CI : `pytest test_data.py` sur chaque PR (28 tests)
 - [ ] Mode hors ligne Flutter : cache local et saisie différée, synchronisée au retour du réseau
-- [ ] Numéro de version affiché dans l'app, tiré de `pubspec.yaml`
-- [ ] Version incrémentée à chaque build (`versionCode` = numéro du run CI) : aujourd'hui chaque build écrase la Release `v2.0.0`, et on ne distingue pas les APK entre eux
+- [x] Numéro de version affiché dans l'app (bas de l'écran Paramètres, ex. `2.1.0+7`)
+- [x] Version incrémentée à chaque build (`versionCode` = numéro du run CI) et notes de version générées depuis les PR → passage en **v2.1.0**
 
 ## Phase 6 — Plus tard / à décider
 
