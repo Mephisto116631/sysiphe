@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
+import 'package:intl/intl.dart';
 import '../services/supabase_service.dart';
+import '../models/stats.dart';
 import '../theme.dart';
 import '../widgets/load_error.dart';
 
@@ -30,7 +32,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     setState(() { _loading = true; _error = null; });
     try {
       final days = await SupabaseService.instance
-          .getActiveDays(widget.userId, months: 6);
+          .getActiveDays(widget.userId); // tout l'historique
       if (!mounted) return;
       setState(() { _activeDays = days; _loading = false; });
     } catch (e) {
@@ -169,6 +171,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   // Stats globales
                   const SizedBox(height: 10),
                   _GlobalStats(activeDays: _activeDays),
+
+                  // Récupération (onglet Repos du web)
+                  const SizedBox(height: 10),
+                  _RestCard(rest: computeRest(_activeDays.keys)),
                 ],
               ),
             ),
@@ -251,6 +257,119 @@ class _StatItem extends StatelessWidget {
         Text(label,
             style: Theme.of(context).textTheme.bodyMedium),
       ],
+    );
+  }
+}
+
+/// Repos entre séances : moyenne, habitude, plus longue coupure, prochaine
+/// séance suggérée et dernières tranches de récupération.
+class _RestCard extends StatelessWidget {
+  final RestStats? rest;
+
+  const _RestCard({required this.rest});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final r = rest;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: r == null
+            ? Text('Ajoute au moins deux séances à des dates différentes '
+                'pour analyser ta récupération.',
+                style: theme.textTheme.bodyMedium)
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Récupération', style: theme.textTheme.titleMedium),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _RestMetric('${r.mean.round()} j', 'Repos moyen'),
+                      _RestMetric('${r.mode} j', 'Habituel'),
+                      _RestMetric('${r.longest} j', 'Plus longue\ncoupure'),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _NextSession(next: r.nextSession),
+                  const SizedBox(height: 12),
+                  Text('Dernières reprises', style: theme.textTheme.titleSmall),
+                  const SizedBox(height: 4),
+                  for (final g in r.gaps.reversed.take(5))
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 3),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(DateFormat('EEEE d MMMM yyyy', 'fr_FR')
+                                .format(g.resume)),
+                          ),
+                          Text(g.restDays == 0
+                              ? 'enchaîné'
+                              : '${g.restDays} j de repos'),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+class _RestMetric extends StatelessWidget {
+  final String value;
+  final String label;
+
+  const _RestMetric(this.value, this.label);
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(value,
+            style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.primaryBlue)),
+        Text(label,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall),
+      ],
+    );
+  }
+}
+
+class _NextSession extends StatelessWidget {
+  final DateTime next;
+
+  const _NextSession({required this.next});
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final delta = next.difference(today).inDays;
+    final (String text, Color color) = delta > 0
+        ? ('Prochaine séance conseillée : '
+              '${DateFormat('EEEE d MMMM', 'fr_FR').format(next)}',
+            Colors.green.shade700)
+        : delta == 0
+            ? ('Séance conseillée aujourd\'hui', Colors.green.shade700)
+            : ('Séance conseillée depuis le '
+                  '${DateFormat('d MMMM', 'fr_FR').format(next)} '
+                  '(${-delta} j de retard)',
+                Colors.orange.shade800);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(text, style: TextStyle(color: color)),
     );
   }
 }

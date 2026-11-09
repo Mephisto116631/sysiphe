@@ -46,18 +46,31 @@ jobs:
         working-directory: flutter
         run: flutter pub get
 
-      # ── 6. Build APK release ───────────────────────────────────────────────
+      # ── 6. Version : nom depuis pubspec.yaml, numéro de build = n° du run ──
+      #    Le versionCode Android augmente à chaque build : le téléphone
+      #    reconnaît toujours le nouvel APK comme une mise à jour.
+      - name: Get version
+        id: version
+        working-directory: flutter
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
+          echo "name=v$VERSION" >> $GITHUB_OUTPUT
+          echo "full=$VERSION+${{ github.run_number }}" >> $GITHUB_OUTPUT
+
+      # ── 7. Build APK release ───────────────────────────────────────────────
       #    Les clés Supabase sont injectées au moment de la compilation
       #    via --dart-define (jamais dans le code source).
       - name: Build APK
         working-directory: flutter
         run: |
           flutter build apk --release \
+            --build-number=${{ github.run_number }} \
+            --dart-define=APP_VERSION=${{ steps.version.outputs.full }} \
             --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
             --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
         timeout-minutes: 20
 
-      # ── 7. Signature ───────────────────────────────────────────────────────
+      # ── 8. Signature ───────────────────────────────────────────────────────
       - name: Sign APK
         run: |
           echo "${{ secrets.SIGNING_KEY }}" | base64 -d > /tmp/keystore.jks
@@ -71,26 +84,16 @@ jobs:
             flutter/build/app/outputs/flutter-apk/app-release.apk
           rm /tmp/keystore.jks
 
-      # ── 8. Version depuis pubspec.yaml ────────────────────────────────────
-      - name: Get version
-        id: version
-        working-directory: flutter
-        run: |
-          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
-          echo "name=v$VERSION" >> $GITHUB_OUTPUT
-
       # ── 9. GitHub Release ─────────────────────────────────────────────────
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.name }}
           name: "Sysiphe ${{ steps.version.outputs.name }}"
+          # Notes générées depuis les PR fusionnées depuis la Release précédente.
+          # Un rebuild de la même version met à jour cette Release.
           body: |
-            Build Flutter automatique — commit ${{ github.sha }}
-
-            **Nouveautés v2.0 :**
-            - App native Flutter (plus de WebView)
-            - Connexion directe à Supabase
-            - 5 onglets : Saisie, Stats, Calendrier, Records, Paramètres
+            Build ${{ steps.version.outputs.full }} — commit ${{ github.sha }}
+          generate_release_notes: true
           files: sysiphe.apk
           make_latest: true

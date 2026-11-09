@@ -16,7 +16,7 @@
 - [x] Flutter : colonne `performance` (valeur) distincte de `charge` (lest kg), comme l'app web
 - [x] Flutter : réglages lus/écrits dans `user_settings` (au lieu de `settings`, inexistante)
 - [x] Flutter : effort calculé seulement pour « Planche », avec la calibration de l'utilisateur
-- [x] Web : bouton « recalcul des efforts » réparé (recherche insensible à la casse)
+- [x] Web : bouton « recalcul des efforts » réparé (recherche insensible à la casse, puis upsert qui échouait toujours sur les colonnes NOT NULL)
 - [x] NAS, APK WebView et Capacitor archivés dans `archive/` (rien de supprimé)
 
 ## Phase 1 — Rendre les données visibles dans Flutter 🔴 (bloquant)
@@ -29,13 +29,13 @@ répondent **400**, et l'app reste bloquée sur un chargement infini.
 - [x] Charger **tout** l'historique : Supabase ne renvoie que 1 000 lignes par requête (tu en as 1 260) → pagination
 - [x] Stats / Records / Calendrier : afficher un message d'erreur et un bouton « Réessayer » au lieu d'un chargement infini
 - [x] Ordre des profils identique au web
-- [ ] **Toi** : vérifier que le build Flutter passe au vert (onglet *Actions* sur GitHub)
+- [x] Build Flutter vert après la fusion de la PR #4 (vérifié par Claude)
 - [ ] **Toi** : installer le nouvel APK et vérifier Saisie, Stats, Calendrier et Records sur tes vraies données
 
 ## Phase 2 — Mise en production
 
 - [x] Ouvrir la PR `ccr-6aa55910-p46qv7` → `main`
-- [ ] Relire et fusionner la PR (toi)
+- [x] Relire et fusionner la PR [#4](https://github.com/Mephisto116631/sysiphe/pull/4) (CI verte, fusionnée le 9 novembre)
 - [ ] Vérifier que Streamlit Cloud a redéployé l'app web sans erreur
 - [ ] Désinstaller l'ancienne app WebView du téléphone
 - [ ] Supprimer les secrets GitHub inutiles : `KEYSTORE_BASE64`, `KEY_ALIAS`
@@ -52,33 +52,40 @@ répondent **400**, et l'app reste bloquée sur un chargement infini.
 - [ ] `user_settings.user_id` pointe sur `auth.users` : les profils « Dilbert 🐶 » et « Profil 3 » ne peuvent pas
       enregistrer de réglages (violation de clé étrangère). → Faire pointer la clé sur `profiles(id)`
 - [ ] Harmoniser les catégories en base (`Force isométrique `, `Gainage`, `Force Iso`) : migration SQL
-- [ ] Hachage du PIN : appliquer `strip()` aussi à la vérification côté web (`supabase_io.py:146`)
-- [ ] Mettre à jour `SETUP.md` avec le schéma réel (colonnes `app_theme`, `inactivity_days`, `enable_charges`, `graph_period`)
+- [x] Hachage du PIN : `strip()` aussi à la vérification côté web, comme à l'enregistrement et dans Flutter
+- [x] `SETUP.md` réécrit avec le schéma réel de production (3 tables, toutes les colonnes)
 
 ## Phase 4 — Parité fonctionnelle Flutter ↔ web
 
 Pages et fonctions présentes sur le web, absentes ou simplifiées dans Flutter :
 
 - [ ] **Saisie planche** multi-séries (S1 à S5) avec variante, forme, élastique et tension par série
-- [ ] **Saisie lestée** : champ « charge (kg) » pour tractions et dips lestés
+- [x] **Saisie lestée** : champ « Lest (kg) » pour les séries en reps (enregistré dans `charge`)
+- [x] **Saisie** : options planche ouvertes automatiquement pour « Planche » ; bug du champ Exercice corrigé (curseur qui sautait)
+- [x] **Saisie** : carte « Séance précédente » — un appui pré-remplit l'exercice avec la série suivante telle que faite la dernière fois (valeur, lest, options planche) ; après chaque enregistrement, la série suivante s'enchaîne
+- [x] **Connexion** : profil mémorisé sur le téléphone (comme le cookie d'un an du web) — plus de liste ni de PIN à chaque ouverture ; PIN redemandé seulement après « Changer de profil »
+- [x] **Stats planche** : sélecteur Effort (par défaut) / Temps
 - [ ] **Saisie** : panneau « stats du jour et prochaine séance » (KPI)
-- [ ] **Stats** : choix de période, lissage, détection plateau / progression / régression
-- [ ] **Stats** : volume lesté (`performance × charge`) et effort planche
-- [ ] **Repos** : nouvelle page d'analyse de la récupération
-- [ ] **Records** : record planche basé sur l'effort pondéré, pas seulement sur le temps
-- [ ] **Paramètres** : édition de la calibration planche (variantes, formes, élastiques, tensions) + recalcul
-- [ ] **Paramètres** : gestion des profils (créer, renommer, supprimer)
-- [ ] **Paramètres** : renommer un exercice
+- [x] **Stats** : une valeur par séance, choix de période (30 j / 3 mois / 6 mois / tout), badge progression / plateau / régression (port testé de `detect_plateau`)
+- [x] **Stats** : effort pondéré pour la planche, tonnage (`performance × charge`) ou volume pour les reps
+- [x] **Repos** : analyse de la récupération dans l'écran Calendrier (repos moyen / habituel / plus long, prochaine séance conseillée, dernières reprises) — port testé de `suggest_next_session`
+- [x] **Records** : record planche basé sur l'effort pondéré, puis le temps ; autres exercices départagés par le lest
+- [x] **Paramètres** : écran « Calibration planche » (variantes, formes, élastiques, tensions), partagé avec le web, + recalcul des efforts
+- [x] **Paramètres** : gestion des profils (créer, renommer, supprimer sauf le profil actif)
+- [x] **Paramètres** : renommer un exercice dans tout l'historique (avec confirmation si fusion)
+- [x] Initiales des profils : l'emoji de « Dilbert 🐶 » n'est plus coupé en deux, un double espace ne fait plus planter
+- [x] **Calendrier** : tout l'historique est chargé (avant : 6 derniers mois seulement, les mois plus anciens paraissaient vides)
 - [ ] **Paramètres** : export CSV
 - [ ] Rappel d'inactivité (`inactivity_days`) en notification locale
 
 ## Phase 5 — Qualité et robustesse
 
-- [x] Tests Flutter : `calculerEffort` donne les mêmes résultats que `data.py`, et `Perf.fromJson` est testé sur des lignes réelles (`flutter/test/perf_test.dart`, 12 tests)
+- [x] Tests Flutter : `calculerEffort` donne les mêmes résultats que `data.py`, et `Perf.fromJson` est testé sur des lignes réelles (`flutter/test/`, 37 tests)
 - [x] CI : `flutter analyze` + `flutter test` sur chaque PR, et pas seulement à la publication (`ci.yml`)
 - [x] CI : `pytest test_data.py` sur chaque PR (28 tests)
 - [ ] Mode hors ligne Flutter : cache local et saisie différée, synchronisée au retour du réseau
-- [ ] Numéro de version affiché dans l'app, tiré de `pubspec.yaml`
+- [x] Numéro de version affiché dans l'app (bas de l'écran Paramètres, ex. `2.1.0+7`)
+- [x] Version incrémentée à chaque build (`versionCode` = numéro du run CI) et notes de version générées depuis les PR → passage en **v2.1.0**
 
 ## Phase 6 — Plus tard / à décider
 

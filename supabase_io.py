@@ -143,7 +143,9 @@ def touch_profile_login(profile_id: str) -> None:
 def verify_pin(profile_id: str, pin: str) -> bool:
     """Vérifie le PIN d'un profil (SHA-256). Retourne True si correct."""
     import hashlib
-    pin_hash = hashlib.sha256(pin.encode()).hexdigest()
+    # strip() comme set_pin() et l'app Flutter : un espace parasite ne doit pas
+    # rendre un PIN correct invalide.
+    pin_hash = hashlib.sha256(pin.strip().encode()).hexdigest()
     try:
         res = (get_supabase_client().table("profiles")
                .select("id").eq("id", profile_id).eq("pin_hash", pin_hash).execute())
@@ -254,19 +256,30 @@ def recalculate_all_efforts(uid: str, current_weight: float,
     """
     from data import calculer_effort as _calc
     supabase = get_supabase_client()
-    res = supabase.table("perfs").select("id, variante, elastique, tension, forme, performance") \
-        .eq("user_id", uid).ilike("exercice", "planche").execute()  # insensible à la casse : saisi « Planche »
-    if not res.data:
+    # L'upsert passe par un INSERT … ON CONFLICT : Postgres vérifie les
+    # colonnes NOT NULL (user_id, date, exercice) AVANT de gérer le conflit.
+    # Elles doivent donc figurer dans chaque ligne envoyée, sinon tout échoue.
+    cols = "id, user_id, date, exercice, variante, elastique, tension, forme, performance"
+    rows, page = [], 1000  # une réponse Supabase est plafonnée à 1 000 lignes
+    while True:
+        res = (supabase.table("perfs").select(cols)
+               .eq("user_id", uid).ilike("exercice", "planche")  # saisi « Planche »
+               .order("id").range(len(rows), len(rows) + page - 1).execute())
+        rows.extend(res.data or [])
+        if len(res.data or []) < page:
+            break
+    if not rows:
         return 0
     updates = []
-    for row in res.data:
+    for row in rows:
         effort = _calc(
-            row.get("variante", "Tuck"), row.get("elastique", "Aucun"),
-            row.get("tension", "Normal"), row.get("forme", "Normal"),
+            row.get("variante") or "Tuck", row.get("elastique") or "Aucun",
+            row.get("tension") or "Normal", row.get("forme") or "Normal",
             row.get("performance"), current_weight,
             variantes_config, formes_config, elastiques_config, tensions_config,
         )
-        updates.append({"id": row["id"], "effort_pondere": effort})
+        updates.append({"id": row["id"], "user_id": row["user_id"], "date": row["date"],
+                        "exercice": row["exercice"], "effort_pondere": effort})
     for i in range(0, len(updates), 500):
         supabase.table("perfs").upsert(updates[i:i + 500]).execute()
     return len(updates)

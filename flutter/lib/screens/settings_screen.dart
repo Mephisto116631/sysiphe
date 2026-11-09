@@ -3,7 +3,14 @@ import 'package:flutter/services.dart';
 import '../models/profile.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
+import '../services/session_store.dart';
+import 'calibration_screen.dart';
+import 'manage_screen.dart';
 import 'profile_screen.dart' show ProfileScreen;
+
+/// Version injectée par la CI (`--dart-define=APP_VERSION=2.1.0+42`).
+/// « dev » pour un build local sans cette option.
+const kAppVersion = String.fromEnvironment('APP_VERSION', defaultValue: 'dev');
 
 class SettingsScreen extends StatefulWidget {
   final String userId;
@@ -117,7 +124,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _logout() {
+  Future<void> _logout() async {
+    await SessionStore.clear(); // le PIN sera redemandé
+    if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const ProfileScreen()),
       (_) => false,
@@ -213,6 +222,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 8),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.tune,
+                        color: AppTheme.primaryBlue),
+                    title: const Text('Calibration planche'),
+                    subtitle: const Text(
+                        'Coefficients de l\'effort et recalcul'),
+                    trailing: const Icon(Icons.chevron_right,
+                        color: AppTheme.textSecondary),
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) =>
+                            CalibrationScreen(userId: widget.userId))),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.manage_accounts_outlined,
+                        color: AppTheme.primaryBlue),
+                    title: const Text('Profils et exercices'),
+                    subtitle:
+                        const Text('Créer, renommer, supprimer, corriger'),
+                    trailing: const Icon(Icons.chevron_right,
+                        color: AppTheme.textSecondary),
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) =>
+                            ManageScreen(current: widget.profile))),
+                  ),
+                ),
                 const SizedBox(height: 20),
 
                 _SectionLabel('Sécurité'),
@@ -240,7 +279,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const SizedBox(height: 40),
                 Center(
-                  child: Text('Sysiphe v2.0 · Flutter',
+                  child: Text('Sysiphe v$kAppVersion · Flutter',
                       style: Theme.of(context).textTheme.bodyMedium),
                 ),
               ],

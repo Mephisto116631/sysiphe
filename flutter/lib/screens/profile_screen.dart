@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/profile.dart';
+import '../services/session_store.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
 import 'home_screen.dart';
@@ -38,6 +39,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!ok) return;
     }
     unawaited(SupabaseService.instance.touchLogin(profile.id));
+    await SessionStore.save(profile); // plus de PIN aux prochaines ouvertures
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => HomeScreen(profile: profile)),

@@ -1,3 +1,5 @@
+import 'package:flutter/widgets.dart' show StringCharacters;
+
 class Profile {
   final String id;
   final String name;
@@ -20,11 +22,15 @@ class Profile {
             : null,
       );
 
+  /// Deux premières initiales, en caractères complets (graphèmes) : un emoji
+  /// comme « 🐶 » n'est pas coupé en deux, et les espaces multiples sont
+  /// ignorés.
   String get initials {
-    final parts = name.trim().split(' ');
-    if (parts.length >= 2) {
-      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
-    }
-    return name.isNotEmpty ? name[0].toUpperCase() : '?';
+    final parts =
+        name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    if (parts.isEmpty) return '?';
+    final first = parts[0].characters.first;
+    if (parts.length == 1) return first.toUpperCase();
+    return (first + parts[1].characters.first).toUpperCase();
   }
 }

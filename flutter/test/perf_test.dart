@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sysiphe/models/perf.dart';
+import 'package:sysiphe/models/profile.dart';
 
 void main() {
   group('Perf.fromJson — lignes réelles de la table perfs', () {
@@ -117,6 +118,45 @@ void main() {
           variantes: {...kVariantes, 'Full': 12});
       expect(calibre, greaterThan(base));
     });
+  });
+
+  group('isBetterRecord', () {
+    Perf p(String ex, double perf, {int? effort, double charge = 0}) => Perf(
+        userId: 'u', date: DateTime(2026), exercice: ex,
+        performance: perf, effortPondere: effort, charge: charge);
+
+    test('planche : l\'effort prime sur le temps', () {
+      expect(isBetterRecord(p('Planche', 8, effort: 120),
+          p('Planche', 15, effort: 90)), isTrue);
+    });
+    test('planche : à effort égal, le temps départage', () {
+      expect(isBetterRecord(p('Planche', 12, effort: 90),
+          p('Planche', 10, effort: 90)), isTrue);
+    });
+    test('reps : la valeur prime, puis le lest', () {
+      expect(isBetterRecord(p('Traction', 10), p('Traction', 8, charge: 20)),
+          isTrue);
+      expect(isBetterRecord(p('Traction', 8, charge: 20), p('Traction', 8)),
+          isTrue);
+      expect(isBetterRecord(p('Traction', 8), p('Traction', 8)), isFalse);
+    });
+  });
+
+  test('mergeConfig : clés stockées prioritaires, défauts sinon', () {
+    final m = mergeConfig({'Full': 12, 'Bidon': 'x', 'Nouvelle': 4}, kVariantes);
+    expect(m['Full'], 12.0); // surchargé
+    expect(m['Tuck'], 2.0); // défaut conservé
+    expect(m['Nouvelle'], 4.0); // clé ajoutée par l'utilisateur
+    expect(m.containsKey('Bidon'), isFalse); // non numérique ignoré
+    expect(mergeConfig(null, kFormes), kFormes);
+  });
+
+  test('Profile.initials : emoji entier, espaces multiples, nom vide', () {
+    Profile p(String n) => Profile(id: 'x', name: n, hasPin: false);
+    expect(p('Dilbert 🐶').initials, 'D🐶'); // emoji non coupé
+    expect(p('Medhi').initials, 'M');
+    expect(p('jean  paul').initials, 'JP'); // double espace : plus de crash
+    expect(p('   ').initials, '?');
   });
 
   test('isPlancheName est insensible à la casse et aux espaces', () {
