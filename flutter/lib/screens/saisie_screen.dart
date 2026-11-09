@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../models/perf.dart';
 import '../models/session.dart';
 import '../models/stats.dart';
+import '../services/data_events.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
 
@@ -56,6 +57,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
   @override
   void initState() {
     super.initState();
+    dataVersion.addListener(_onDataChanged);
     _init();
   }
 
@@ -444,8 +446,17 @@ class _SaisieScreenState extends State<SaisieScreen> {
   int get _todayEffort =>
       _todayPerfs.fold(0, (sum, p) => sum + (p.effortPondere ?? 0));
 
+  void _onDataChanged() {
+    if (mounted) {
+      _loadWeight();
+      _loadHistory();
+      _loadTodayPerfs();
+    }
+  }
+
   @override
   void dispose() {
+    dataVersion.removeListener(_onDataChanged);
     _exerciceCtrl.dispose();
     _chargeCtrl.dispose();
     _lestCtrl.dispose();

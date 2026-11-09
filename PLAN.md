@@ -139,6 +139,11 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
       l'APK et ouvre l'installeur Android ; nouvelle version signalée au démarrage
 - [x] CI : build d'APK de test sur chaque PR (le code Android natif est validé avant fusion)
 - [x] Récupération (Calendrier) : filtre de période 30 j / 3 mois / 6 mois / Tout (v2.4.1)
+- [x] **Toi** : mise à jour intégrée testée sur le téléphone (v2.4.0 → v2.4.1) : ça marche
+- [x] Onglet **Modèle** (v2.5.0) — la « vision d'ensemble » de l'ancien Excel : coefficients modifiables, grille
+      variante × forme recalculée en direct, détail du calcul d'une case, impact sur l'historique (meilleur effort par
+      variante avant / après) ; « Appliquer partout » enregistre et recalcule toutes les séries, les autres onglets se
+      rafraîchissent
 
 ## Phase 5 — Qualité et robustesse
 

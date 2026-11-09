@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
+import '../services/data_events.dart';
 import '../services/supabase_service.dart';
 import '../models/stats.dart';
 import '../theme.dart';
@@ -22,9 +23,20 @@ class _CalendarScreenState extends State<CalendarScreen> {
   bool _loading = true;
   Object? _error;
 
+  void _onDataChanged() {
+    if (mounted) _load();
+  }
+
+  @override
+  void dispose() {
+    dataVersion.removeListener(_onDataChanged);
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
+    dataVersion.addListener(_onDataChanged);
     _load();
   }
 

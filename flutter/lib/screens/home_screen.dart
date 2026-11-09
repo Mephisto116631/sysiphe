@@ -8,6 +8,7 @@ import 'profile_screen.dart';
 import 'saisie_screen.dart';
 import 'stats_screen.dart';
 import 'calendar_screen.dart';
+import 'model_screen.dart';
 import 'records_screen.dart';
 import 'settings_screen.dart';
 
@@ -40,6 +41,7 @@ class _HomeScreenState extends State<HomeScreen> {
       StatsScreen(userId: uid),
       CalendarScreen(userId: uid),
       RecordsScreen(userId: uid),
+      ModelScreen(userId: uid),
       SettingsScreen(userId: uid, profile: widget.profile),
     ];
   }
@@ -77,6 +79,10 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       body: IndexedStack(index: _idx, children: _screens),
       bottomNavigationBar: BottomNavigationBar(
+        // 6 onglets : libellés toujours visibles, police un peu réduite
+        type: BottomNavigationBarType.fixed,
+        selectedFontSize: 11,
+        unselectedFontSize: 10,
         currentIndex: _idx,
         onTap: (i) => setState(() => _idx = i),
         items: const [
@@ -89,7 +95,9 @@ class _HomeScreenState extends State<HomeScreen> {
           BottomNavigationBarItem(
               icon: Icon(Icons.emoji_events), label: 'Records'),
           BottomNavigationBarItem(
-              icon: Icon(Icons.settings), label: 'Paramètres'),
+              icon: Icon(Icons.functions), label: 'Modèle'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.settings), label: 'Réglages'),
         ],
       ),
     );
