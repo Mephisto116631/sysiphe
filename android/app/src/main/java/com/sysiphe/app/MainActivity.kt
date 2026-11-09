@@ -20,8 +20,8 @@ class MainActivity : AppCompatActivity() {
         // Change targets.json sur GitHub pour changer la cible sans recompiler l'APK
         const val TARGETS_URL =
             "https://raw.githubusercontent.com/Mephisto116631/sysiphe/main/mobile/targets.json"
-        const val FALLBACK_URL =
-            "https://sysiphe-voseesdgwwcstfepbdepkh.streamlit.app"
+        // Page offline locale — affiché si aucune URL distante n'est joignable
+        const val FALLBACK_URL = "file:///android_asset/offline.html"
         const val TIMEOUT_MS = 4000
     }
 
@@ -45,13 +45,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Renvoie l'URL la plus disponible : NAS → cloud → fallback codé en dur. */
+    /** Renvoie l'URL disponible : NAS (Tailscale) → page offline locale. */
     private fun pickBestUrl(): String {
         val targets = fetchTargets() ?: return FALLBACK_URL
-        val nasUrl   = targets.optString("nas", "")
-        val cloudUrl = targets.optString("cloud", FALLBACK_URL)
+        val nasUrl = targets.optString("nas", "")
         if (nasUrl.isNotEmpty() && isHealthy(nasUrl)) return nasUrl
-        return cloudUrl
+        return FALLBACK_URL
     }
 
     private fun fetchTargets(): JSONObject? = try {
