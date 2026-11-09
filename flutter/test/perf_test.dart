@@ -151,6 +151,19 @@ void main() {
     expect(mergeConfig(null, kFormes), kFormes);
   });
 
+  test('Profile.fromJson : ligne de list_profiles (sans hash du PIN)', () {
+    final p = Profile.fromJson({
+      'id': '9250e548-1d5a-48d1-98c0-5c97089a77d8',
+      'name': 'Medhi',
+      'has_pin': true,
+      'is_member': false,
+      'last_login': '2026-11-09T10:35:45.260102+00:00',
+    });
+    expect(p.hasPin, isTrue);
+    expect(p.isMember, isFalse);
+    expect(p.lastLogin, isNotNull);
+  });
+
   test('Profile.initials : emoji entier, espaces multiples, nom vide', () {
     Profile p(String n) => Profile(id: 'x', name: n, hasPin: false);
     expect(p('Dilbert 🐶').initials, 'D🐶'); // emoji non coupé

@@ -1,5 +1,3 @@
-import 'dart:convert';
-import 'package:crypto/crypto.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import '../models/profile.dart';
@@ -12,41 +10,65 @@ class SupabaseService {
 
   final _db = Supabase.instance.client;
 
-  String _sha256(String input) => sha256.convert(utf8.encode(input)).toString();
+  // ─── Session ──────────────────────────────────────────────────────────────
+
+  Future<void>? _sessionReady;
+
+  /// Garantit une session Supabase (anonyme si besoin). Le SDK la conserve
+  /// sur le téléphone et la renouvelle seul : elle n'est créée qu'une fois.
+  /// Les appels suivants ne coûtent rien (pas de réseau).
+  Future<void> ensureSession() {
+    if (_db.auth.currentSession != null) return Future.value();
+    return _sessionReady ??= _db.auth.signInAnonymously().then((_) {}).whenComplete(
+          () => _sessionReady = null,
+        );
+  }
 
   // ─── Profils ──────────────────────────────────────────────────────────────
 
+  /// Profils pour l'écran de connexion (RPC : le hash du PIN n'est pas
+  /// exposé ; is_member indique si cet appareil est déjà rattaché).
   Future<List<Profile>> getProfiles() async {
-    final res = await _db
-        .from('profiles')
-        .select('id, name, pin_hash, last_login')
-        .order('last_login', ascending: false, nullsFirst: false)
-        .order('created_at', ascending: true); // même ordre que l'app web
-    return (res as List).map((j) => Profile.fromJson(j)).toList();
+    await ensureSession();
+    final res = await _db.rpc('list_profiles');
+    return (res as List)
+        .map((j) => Profile.fromJson(j as Map<String, dynamic>))
+        .toList();
   }
 
-  Future<bool> verifyPin(String profileId, String pin) async {
-    final hash = _sha256(pin.trim());
-    final res = await _db
-        .from('profiles')
-        .select('id')
-        .eq('id', profileId)
-        .eq('pin_hash', hash);
-    return (res as List).isNotEmpty;
+  /// Vérifie le PIN côté serveur et rattache cet appareil au profil.
+  /// [pin] null pour un profil sans PIN.
+  Future<ClaimResult> claimProfile(String profileId, {String? pin}) async {
+    await ensureSession();
+    final res = await _db.rpc('claim_profile',
+        params: {'p_profile': profileId, 'p_pin': pin?.trim()});
+    return switch (res as String?) {
+      'ok' => ClaimResult.ok,
+      'locked' => ClaimResult.locked,
+      _ => ClaimResult.badPin,
+    };
   }
 
-  /// Crée un profil (avec PIN facultatif) et le renvoie.
+  /// Cet appareil a-t-il déjà accès au profil ?
+  Future<bool> isMember(String profileId) async {
+    await ensureSession();
+    final res = await _db
+        .rpc('is_profile_member', params: {'p_profile': profileId});
+    return res == true;
+  }
+
+  /// Crée un profil (PIN facultatif) rattaché à cet appareil et le renvoie.
   Future<Profile> createProfile(String name, {String? pin}) async {
-    final row = await _db
-        .from('profiles')
-        .insert({
-          'name': name.trim(),
-          if (pin != null && pin.trim().isNotEmpty)
-            'pin_hash': _sha256(pin.trim()),
-        })
-        .select('id, name, pin_hash, last_login')
-        .single();
-    return Profile.fromJson(row);
+    await ensureSession();
+    final id = await _db.rpc('create_profile', params: {
+      'p_name': name.trim(),
+      'p_pin': (pin == null || pin.trim().isEmpty) ? null : pin.trim(),
+    }) as String;
+    return Profile(
+        id: id,
+        name: name.trim(),
+        hasPin: pin != null && pin.trim().isNotEmpty,
+        isMember: true);
   }
 
   Future<void> renameProfile(String profileId, String name) async {
@@ -254,7 +276,11 @@ class SupabaseService {
   }
 
   Future<void> setPin(String profileId, String pin) async {
-    final hash = _sha256(pin.trim());
-    await _db.from('profiles').update({'pin_hash': hash}).eq('id', profileId);
+    await ensureSession();
+    await _db.rpc('set_profile_pin',
+        params: {'p_profile': profileId, 'p_pin': pin.trim()});
   }
 }
+
+/// Réponse de la vérification du PIN par le serveur.
+enum ClaimResult { ok, badPin, locked }

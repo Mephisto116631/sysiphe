@@ -3,6 +3,7 @@ import '../models/profile.dart';
 import '../services/session_store.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
+import '../widgets/pin_dialog.dart';
 import 'home_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -43,9 +44,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _pick(Profile profile) async {
-    if (profile.hasPin) {
-      final ok = await _askPin(profile);
-      if (!ok) return;
+    // Appareil déjà rattaché : entrée directe. Sinon, le serveur vérifie le
+    // PIN (ou rattache directement un profil sans PIN).
+    if (!profile.isMember) {
+      if (profile.hasPin) {
+        if (!await askPinAndClaim(context, profile)) return;
+      } else {
+        try {
+          final r = await SupabaseService.instance.claimProfile(profile.id);
+          if (r != ClaimResult.ok) throw Exception(r.name);
+        } catch (e) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('Connexion impossible : $e'),
+              backgroundColor: Colors.red));
+          return;
+        }
+      }
     }
     unawaited(SupabaseService.instance.touchLogin(profile.id));
     await SessionStore.save(profile); // plus de PIN aux prochaines ouvertures
@@ -79,73 +94,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         backgroundColor: Colors.red,
       ));
     }
-  }
-
-  Future<bool> _askPin(Profile profile) async {
-    final ctrl = TextEditingController();
-    bool ok = false;
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) {
-        bool checking = false;
-        return StatefulBuilder(builder: (ctx2, setLocal) {
-          Future<void> submit() async {
-            setLocal(() => checking = true);
-            final valid =
-                await SupabaseService.instance.verifyPin(profile.id, ctrl.text);
-            setLocal(() => checking = false);
-            if (valid) {
-              ok = true;
-              if (ctx2.mounted) Navigator.of(ctx2).pop();
-            } else {
-              ctrl.clear();
-              if (ctx2.mounted) {
-                ScaffoldMessenger.of(ctx2).showSnackBar(
-                  const SnackBar(
-                    content: Text('PIN incorrect'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            }
-          }
-
-          return AlertDialog(
-            title: Text('PIN — ${profile.name}'),
-            content: TextField(
-              controller: ctrl,
-              autofocus: true,
-              obscureText: true,
-              keyboardType: TextInputType.number,
-              maxLength: 6,
-              decoration: const InputDecoration(
-                hintText: 'Entrez votre PIN',
-                counterText: '',
-              ),
-              onSubmitted: (_) => submit(),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx2).pop(),
-                child: const Text('Annuler'),
-              ),
-              FilledButton(
-                onPressed: checking ? null : submit,
-                child: checking
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white),
-                      )
-                    : const Text('OK'),
-              ),
-            ],
-          );
-        });
-      },
-    );
-    return ok;
   }
 
   @override
