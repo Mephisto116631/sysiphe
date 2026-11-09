@@ -57,16 +57,23 @@ class _SaisieScreenState extends State<SaisieScreen> {
     try {
       final perfs =
           await SupabaseService.instance.getPerfsForDate(widget.userId, _date);
+      if (!mounted) return;
       setState(() { _todayPerfs = perfs; _loadingPerfs = false; });
-    } catch (_) {
+    } catch (e) {
+      if (!mounted) return;
       setState(() => _loadingPerfs = false);
+      _snack('Chargement des séries impossible : $e', error: true);
     }
   }
 
   Future<void> _loadExerciceNames() async {
-    final names =
-        await SupabaseService.instance.getExerciceNames(widget.userId);
-    if (mounted) setState(() => _exerciceNames = names);
+    try {
+      final names =
+          await SupabaseService.instance.getExerciceNames(widget.userId);
+      if (mounted) setState(() => _exerciceNames = names);
+    } catch (_) {
+      // Non bloquant : l'autocomplétion reste simplement vide.
+    }
   }
 
   Future<void> _loadWeight() async {
@@ -165,7 +172,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
     }
   }
 
-  Future<void> _delete(String id) async {
+  Future<void> _delete(int id) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(

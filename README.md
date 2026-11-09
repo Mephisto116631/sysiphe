@@ -91,22 +91,24 @@ Projet Supabase hébergé sur `supabase.io`.
 
 | Colonne | Type | Description |
 |---------|------|-------------|
-| `id` | UUID (PK) | — |
-| `user_id` | UUID (FK → profiles) | — |
+| `id` | bigint identity (PK) | Croissant à l'insertion : sert d'ordre chronologique |
+| `user_id` | UUID | Id du profil (pas de clé étrangère déclarée) |
 | `date` | date | Date de la série |
 | `exercice` | text | Nom de l'exercice |
 | `variante` | text | Variante (planche : Full, Straddle…) |
 | `forme` | text | Forme (planche : Normal, High, Bas, Dead) |
 | `serie` | int | Numéro de série |
-| `performance` | float | **Valeur de la série** : secondes, reps ou kg selon `unite` |
+| `performance` | numeric | **Valeur de la série** : secondes, reps ou kg selon `unite` |
 | `charge` | numeric | Lest externe en kg (tractions/dips lestés), `0` sinon |
 | `unite` | text | `Sec` / `Reps` / `Kg` |
 | `categorie` | text | `Force Iso` (planche, holds) ou `Musculation` |
 | `elastique` | text | Élastique utilisé (planche) |
 | `tension` | text | Tension des mains (planche) |
-| `effort_pondere` | int | Score d'effort calculé (planche uniquement, `0` sinon) |
-| `created_at` | timestamptz | — |
+| `effort_pondere` | numeric | Score d'effort calculé (planche uniquement, `0` sinon) |
 
+> ⚠️ Il n'y a **pas** de colonne `created_at` dans `perfs` : trier dessus renvoie une erreur 400.
+> Pour l'ordre d'insertion, trier sur `id`. Une requête renvoie au plus 1 000 lignes : paginer avec `range()`.
+>
 > ⚠️ Ne pas confondre `performance` (la valeur mesurée) et `charge` (le lest ajouté).
 > Le volume d'une série lestée vaut `performance × charge`.
 > La planche est identifiée par son **nom** (`exercice` = « Planche », insensible à la casse).

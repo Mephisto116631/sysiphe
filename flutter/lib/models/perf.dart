@@ -2,7 +2,7 @@ import 'dart:math' as math;
 import 'package:intl/intl.dart';
 
 class Perf {
-  final String? id;
+  final int? id; // perfs.id est un bigint (identity), croissant à l'insertion
   final String userId;
   final DateTime date;
   final String exercice;
@@ -19,7 +19,6 @@ class Perf {
   final String elastique;
   final String tension;
   final int? effortPondere;
-  final DateTime? createdAt;
 
   const Perf({
     this.id,
@@ -36,11 +35,10 @@ class Perf {
     this.elastique = 'Aucun',
     this.tension = 'N/A',
     this.effortPondere,
-    this.createdAt,
   });
 
   factory Perf.fromJson(Map<String, dynamic> json) => Perf(
-        id: json['id'] as String?,
+        id: (json['id'] as num?)?.toInt(),
         userId: json['user_id'] as String,
         date: DateTime.parse(json['date'] as String),
         exercice: (json['exercice'] as String?)?.trim() ?? '',
@@ -54,9 +52,6 @@ class Perf {
         elastique: (json['elastique'] as String?)?.trim() ?? 'Aucun',
         tension: (json['tension'] as String?)?.trim() ?? 'N/A',
         effortPondere: (json['effort_pondere'] as num?)?.toInt(),
-        createdAt: json['created_at'] != null
-            ? DateTime.tryParse(json['created_at'] as String)
-            : null,
       );
 
   Map<String, dynamic> toJson() => {
