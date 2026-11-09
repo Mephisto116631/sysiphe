@@ -71,4 +71,48 @@ void main() {
     expect(find.text('Facteur de difficulté'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
+
+  testWidgets('générateur des formes : 34 × 1,4 retrouvé, régénération',
+      (t) async {
+    await pump(t);
+    await t.tap(find.text('Formes'));
+    await t.pumpAndSettle();
+    // Paramètres déduits des valeurs par défaut
+    expect(find.widgetWithText(TextField, '34'), findsWidgets);
+    expect(find.widgetWithText(TextField, '1.4'), findsOneWidget);
+    // Multiplicateur 1,5 → Normal = 51
+    await t.enterText(find.widgetWithText(TextField, '1.4'), '1.5');
+    await t.pumpAndSettle();
+    final gen = find.text('Générer les formes');
+    await t.ensureVisible(gen);
+    await t.pumpAndSettle();
+    await t.tap(gen);
+    await t.pumpAndSettle();
+    // Le bouton « Appliquer » (barre du bas, toujours construite) apparaît.
+    expect(find.textContaining('séries changent'), findsOneWidget);
+    expect(find.widgetWithText(TextField, '51'), findsOneWidget); // Normal
+    expect(t.takeException(), isNull);
+  });
+
+  testWidgets('modifier un coefficient garde la section ouverte (régression)',
+      (t) async {
+    await pump(t);
+    await t.tap(find.text('Variantes'));
+    await t.pumpAndSettle();
+    // Premier chiffre tapé : le brouillon apparaît…
+    await t.enterText(find.widgetWithText(TextField, 'Full'), '12');
+    await t.pumpAndSettle();
+    expect(find.textContaining('séries changent'), findsOneWidget);
+    // …et la section reste ouverte avec la saisie intacte.
+    expect(find.widgetWithText(TextField, 'Tuck'), findsOneWidget);
+    expect(find.widgetWithText(TextField, '12'), findsOneWidget);
+  });
+
+  testWidgets('les champs montrent la valeur exacte (66.64, pas 66.6)', (t) async {
+    await pump(t);
+    await t.tap(find.text('Formes'));
+    await t.pumpAndSettle();
+    expect(find.widgetWithText(TextField, '66.64'), findsOneWidget);
+    expect(find.widgetWithText(TextField, '93.296'), findsOneWidget);
+  });
 }

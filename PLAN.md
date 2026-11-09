@@ -144,6 +144,12 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
       variante × forme recalculée en direct, détail du calcul d'une case, impact sur l'historique (meilleur effort par
       variante avant / après) ; « Appliquer partout » enregistre et recalcule toutes les séries, les autres onglets se
       rafraîchissent
+- [x] Générateur des formes (v2.5.1) : base × multiplicateur^rang, comme l'ancien Excel (34 × 1,4 → 34 · 47,6 ·
+      66,64 · 93,296, retrouvé automatiquement à partir des valeurs actuelles)
+- [x] Contraste des puces « Récents » : texte blanc sur gris clair (1,1:1) → texte foncé (≥ 4,5:1), testé
+- [x] Onglet Modèle : la section ouverte se repliait (et le clavier se fermait) au premier chiffre tapé ; champs
+      arrondis à l'affichage (66,6 au lieu de 66,64)
+- [ ] Autres générateurs de l'ancien Excel (variantes, élastiques ?) — à confirmer avec toi
 
 ## Phase 5 — Qualité et robustesse
 

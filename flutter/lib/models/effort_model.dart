@@ -147,3 +147,33 @@ HistoryImpact impactOn(Iterable<Perf> history, EffortModel model) {
   ]..sort((a, b) => b.bestAfter.compareTo(a.bestAfter));
   return HistoryImpact(list, series, changed);
 }
+
+// ─── Générateur des formes (progression géométrique de l'ancien Excel) ─────
+//
+// Les facteurs de forme par défaut forment une progression :
+//   High = 34, Normal = 34 × 1,4, Bas = × 1,4², Dead = × 1,4³
+// (34 · 47,6 · 66,64 · 93,296). On les régénère à partir d'une base et
+// d'un multiplicateur, dans l'ordre croissant des valeurs actuelles.
+
+/// Clés triées de la plus petite à la plus grande valeur (ordre de la
+/// progression).
+List<String> ascendingKeys(Map<String, double> values) =>
+    values.keys.toList()..sort((a, b) => values[a]!.compareTo(values[b]!));
+
+/// Base (plus petite valeur) et multiplicateur moyen déduits des valeurs
+/// actuelles ; null s'il y a moins de deux valeurs ou une valeur ≤ 0.
+(double, double)? inferGeometric(Map<String, double> values) {
+  if (values.length < 2 || values.values.any((v) => v <= 0)) return null;
+  final keys = ascendingKeys(values);
+  final first = values[keys.first]!, last = values[keys.last]!;
+  final ratio = math.pow(last / first, 1 / (keys.length - 1)).toDouble();
+  return (first, ratio);
+}
+
+/// Valeurs régénérées : base × multiplicateur^rang, rang = ordre de [keys].
+Map<String, double> geometricSeries(
+        List<String> keys, double base, double ratio) =>
+    {
+      for (var i = 0; i < keys.length; i++)
+        keys[i]: double.parse((base * math.pow(ratio, i)).toStringAsFixed(4)),
+    };
