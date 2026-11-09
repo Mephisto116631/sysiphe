@@ -24,6 +24,14 @@ class SupabaseService {
         );
   }
 
+  /// Ferme la session (« Changer de profil »). Erreurs réseau ignorées : la
+  /// session locale est supprimée de toute façon.
+  Future<void> signOut() async {
+    try {
+      await _db.auth.signOut();
+    } catch (_) {}
+  }
+
   // ─── Profils ──────────────────────────────────────────────────────────────
 
   /// Profils pour l'écran de connexion (RPC : le hash du PIN n'est pas
