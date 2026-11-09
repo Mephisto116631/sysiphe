@@ -65,18 +65,19 @@ Pages et fonctions présentes sur le web, absentes ou simplifiées dans Flutter 
 - [ ] **Saisie** : panneau « stats du jour et prochaine séance » (KPI)
 - [x] **Stats** : une valeur par séance, choix de période (30 j / 3 mois / 6 mois / tout), badge progression / plateau / régression (port testé de `detect_plateau`)
 - [x] **Stats** : effort pondéré pour la planche, tonnage (`performance × charge`) ou volume pour les reps
-- [ ] **Repos** : nouvelle page d'analyse de la récupération
+- [x] **Repos** : analyse de la récupération dans l'écran Calendrier (repos moyen / habituel / plus long, prochaine séance conseillée, dernières reprises) — port testé de `suggest_next_session`
 - [x] **Records** : record planche basé sur l'effort pondéré, puis le temps ; autres exercices départagés par le lest
 - [x] **Paramètres** : écran « Calibration planche » (variantes, formes, élastiques, tensions), partagé avec le web, + recalcul des efforts
 - [x] **Paramètres** : gestion des profils (créer, renommer, supprimer sauf le profil actif)
 - [x] **Paramètres** : renommer un exercice dans tout l'historique (avec confirmation si fusion)
 - [x] Initiales des profils : l'emoji de « Dilbert 🐶 » n'est plus coupé en deux, un double espace ne fait plus planter
+- [x] **Calendrier** : tout l'historique est chargé (avant : 6 derniers mois seulement, les mois plus anciens paraissaient vides)
 - [ ] **Paramètres** : export CSV
 - [ ] Rappel d'inactivité (`inactivity_days`) en notification locale
 
 ## Phase 5 — Qualité et robustesse
 
-- [x] Tests Flutter : `calculerEffort` donne les mêmes résultats que `data.py`, et `Perf.fromJson` est testé sur des lignes réelles (`flutter/test/`, 26 tests)
+- [x] Tests Flutter : `calculerEffort` donne les mêmes résultats que `data.py`, et `Perf.fromJson` est testé sur des lignes réelles (`flutter/test/`, 30 tests)
 - [x] CI : `flutter analyze` + `flutter test` sur chaque PR, et pas seulement à la publication (`ci.yml`)
 - [x] CI : `pytest test_data.py` sur chaque PR (28 tests)
 - [ ] Mode hors ligne Flutter : cache local et saisie différée, synchronisée au retour du réseau

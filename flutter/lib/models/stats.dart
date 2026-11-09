@@ -125,3 +125,59 @@ PlateauResult detectPlateau(List<DayPoint> points,
           : Trend.plateau;
   return PlateauResult(status, slope, rel, n);
 }
+
+// ─── Récupération (onglet Repos du web) ─────────────────────────────────────
+
+/// Repos entre deux séances : [restDays] jours sans séance avant [resume].
+class RestGap {
+  final DateTime resume;
+  final int restDays;
+  const RestGap(this.resume, this.restDays);
+}
+
+class RestStats {
+  final List<RestGap> gaps; // chronologique
+  final double mean;
+  final int mode; // repos habituel
+  final int longest;
+  final DateTime nextSession;
+  final Map<int, int> distribution; // jours de repos → nombre d'occurrences
+
+  const RestStats(this.gaps, this.mean, this.mode, this.longest,
+      this.nextSession, this.distribution);
+}
+
+DateTime _day(DateTime d) => DateTime(d.year, d.month, d.day);
+
+/// Port de render_repos_tab + suggest_next_session (data.py) : repos entre
+/// séances distinctes, repos habituel = mode (le plus petit en cas
+/// d'égalité, comme pandas), prochaine séance = dernière + mode + 1 jour.
+/// null s'il y a moins de deux jours de séance.
+RestStats? computeRest(Iterable<DateTime> sessionDates) {
+  final days = {for (final d in sessionDates) _day(d)}.toList()..sort();
+  if (days.length < 2) return null;
+  final gaps = <RestGap>[
+    for (var i = 1; i < days.length; i++)
+      RestGap(
+        days[i],
+        DateTime.utc(days[i].year, days[i].month, days[i].day)
+                .difference(DateTime.utc(
+                    days[i - 1].year, days[i - 1].month, days[i - 1].day))
+                .inDays -
+            1,
+      ),
+  ];
+  final dist = <int, int>{};
+  for (final g in gaps) {
+    dist[g.restDays] = (dist[g.restDays] ?? 0) + 1;
+  }
+  final maxCount = dist.values.reduce((a, b) => a > b ? a : b);
+  final mode = (dist.entries.where((e) => e.value == maxCount).map((e) => e.key).toList()
+        ..sort())
+      .first;
+  final mean = gaps.map((g) => g.restDays).reduce((a, b) => a + b) / gaps.length;
+  final longest = gaps.map((g) => g.restDays).reduce((a, b) => a > b ? a : b);
+  final last = days.last;
+  final next = DateTime(last.year, last.month, last.day + mode + 1);
+  return RestStats(gaps, mean, mode, longest, next, dist);
+}

@@ -132,12 +132,15 @@ class SupabaseService {
 
   // ─── Calendrier : jours actifs ────────────────────────────────────────────
 
+  /// Nombre de séries par jour ; [months] null = tout l'historique.
   Future<Map<DateTime, int>> getActiveDays(String userId,
-      {int months = 3}) async {
+      {int? months}) async {
     final perfs = await _fetchPerfs(
       userId,
-      fromDate: DateFormat('yyyy-MM-dd')
-          .format(DateTime.now().subtract(Duration(days: months * 30))),
+      fromDate: months == null
+          ? null
+          : DateFormat('yyyy-MM-dd')
+              .format(DateTime.now().subtract(Duration(days: months * 30))),
     );
     final map = <DateTime, int>{};
     for (final p in perfs) {

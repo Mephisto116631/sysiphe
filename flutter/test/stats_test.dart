@@ -80,4 +80,35 @@ void main() {
       expect(dailySeries(perfs, StatMetric.best).single.value, 30);
     });
   });
+
+  group('computeRest — parité avec suggest_next_session', () {
+    test('égalité de fréquence : le plus petit repos l\'emporte', () {
+      final r = computeRest([
+        DateTime(2026, 7, 1), DateTime(2026, 7, 3), DateTime(2026, 7, 6),
+        DateTime(2026, 7, 8), DateTime(2026, 7, 11),
+      ])!;
+      expect(r.mode, 1); // data.py : mode_repos = 1
+      expect(r.nextSession, DateTime(2026, 7, 13)); // data.py : 2026-07-13
+      expect(r.longest, 2);
+      expect(r.mean, 1.5);
+      expect(r.distribution, {1: 2, 2: 2});
+    });
+    test('rythme régulier de 2 jours de repos', () {
+      final r = computeRest([
+        DateTime(2026, 7, 1), DateTime(2026, 7, 4),
+        DateTime(2026, 7, 7), DateTime(2026, 7, 10),
+      ])!;
+      expect(r.mode, 2);
+      expect(r.nextSession, DateTime(2026, 7, 13));
+    });
+    test('plusieurs séries le même jour = une séance', () {
+      final r = computeRest([
+        DateTime(2026, 7, 1, 9), DateTime(2026, 7, 1, 18), DateTime(2026, 7, 2),
+      ])!;
+      expect(r.gaps.single.restDays, 0);
+    });
+    test('moins de deux jours de séance', () {
+      expect(computeRest([DateTime(2026, 7, 1)]), isNull);
+    });
+  });
 }
