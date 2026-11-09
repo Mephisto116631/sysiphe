@@ -225,6 +225,19 @@ class SupabaseService {
     await _db.from('perfs').insert([for (final p in perfs) p.toJson()]);
   }
 
+  /// Remplace les séries d'un exercice pour un jour (petites cartes de
+  /// Saisie, comme les blocs du web) : réenregistrer ne crée pas de doublon.
+  Future<void> replaceExerciseOnDate(
+      String userId, DateTime date, String exercice, List<Perf> perfs) async {
+    await _db
+        .from('perfs')
+        .delete()
+        .eq('user_id', userId)
+        .eq('date', DateFormat('yyyy-MM-dd').format(date))
+        .eq('exercice', exercice);
+    await savePerfs(perfs);
+  }
+
   /// Supprime toutes les séries d'un jour (« Supprimer la séance »).
   Future<void> deleteSession(String userId, DateTime date) async {
     await _db

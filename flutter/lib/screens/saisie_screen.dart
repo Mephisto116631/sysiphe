@@ -7,6 +7,7 @@ import '../models/stats.dart';
 import '../services/data_events.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
+import '../widgets/quick_card.dart';
 
 class SaisieScreen extends StatefulWidget {
   final String userId;
@@ -83,6 +84,135 @@ class _SaisieScreenState extends State<SaisieScreen> {
 
   /// Exercices du plus récent au plus ancien (liste « Récents »,
   /// autocomplétion) ; ordre alphabétique tant que l'historique charge.
+  // ── Petites cartes d'exercices (sous la carte principale) ──────────────
+  final List<String> _addedCards = []; // ajoutés à la main pour la séance
+  final Map<String, (String, String)> _newCardMeta = {}; // nom → (unité, catégorie)
+
+  ExerciseTemplate? _lastFor(String ex) =>
+      _templateFor(ex) ?? lastTemplateFor(_history, ex, _date);
+
+  /// Enregistre les séries d'une carte : remplace celles du jour pour cet
+  /// exercice (pas de doublon si on réenregistre), comme les blocs du web.
+  Future<bool> _saveCard(String ex, List<double> vals) async {
+    final last = _lastFor(ex)?.series.first;
+    final meta = _newCardMeta[ex];
+    final unite = last?.unite ?? meta?.$1 ?? 'Reps';
+    final categorie = last?.categorie ?? meta?.$2 ?? 'Musculation';
+    final ins = _insight(ex);
+    final best = vals.reduce((a, b) => a > b ? a : b);
+    final newPr = ins != null && ins.prSerie > 0 && best > ins.prSerie;
+    try {
+      await SupabaseService.instance.replaceExerciseOnDate(
+        widget.userId,
+        _date,
+        ex,
+        [
+          for (var i = 0; i < vals.length; i++)
+            Perf(
+              userId: widget.userId,
+              date: _date,
+              exercice: ex,
+              serie: i + 1,
+              performance: vals[i],
+              unite: unite,
+              categorie: categorie,
+              effortPondere: 0,
+            ),
+        ],
+      );
+      await _loadTodayPerfs();
+      _loadHistory();
+      _snack(newPr
+          ? '🏆 $ex : nouveau record en série (${_num(best)})'
+          : '$ex : ${vals.length} série${vals.length > 1 ? 's' : ''} enregistrée${vals.length > 1 ? 's' : ''} ✓');
+      return true;
+    } catch (e) {
+      _snack('Erreur : $e', error: true);
+      return false;
+    }
+  }
+
+  /// « + Ajouter un exercice » : exercices récents, ou nouveau.
+  Future<void> _addCard(List<String> already) async {
+    final choices = _recentNames
+        .where((e) => !Perf.isPlancheName(e) && !already.contains(e))
+        .take(20)
+        .toList();
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.add_circle_outline,
+                  color: AppTheme.primaryBlue),
+              title: const Text('Nouvel exercice…'),
+              onTap: () => Navigator.pop(ctx, ''),
+            ),
+            for (final e in choices)
+              ListTile(
+                leading: const Icon(Icons.history),
+                title: Text(e, overflow: TextOverflow.ellipsis),
+                onTap: () => Navigator.pop(ctx, e),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    var name = picked;
+    if (name.isEmpty) {
+      final res = await showDialog<(String, String, String)>(
+        context: context,
+        builder: (_) => _NewExerciceDialog(existing: _exerciceNames),
+      );
+      if (res == null) return;
+      name = res.$1;
+      _newCardMeta[name] = (res.$2, res.$3);
+    }
+    setState(() => _addedCards.add(name));
+  }
+
+  List<Widget> _buildCards() {
+    final names = cardExercises(_previous, _todayPerfs, _addedCards);
+    return [
+      for (final ex in names)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: QuickCard(
+            key: ValueKey('card-$ex'),
+            exercice: ex,
+            unite: _lastFor(ex)?.unite ?? _newCardMeta[ex]?.$1 ?? 'Reps',
+            hint: switch (_lastFor(ex)) {
+              final t? => seriesHint(t),
+              null => null,
+            },
+            helper: _cardHelper(ex),
+            done: _doneToday(ex),
+            onSave: (vals) => _saveCard(ex, vals),
+          ),
+        ),
+      OutlinedButton.icon(
+        onPressed: () => _addCard(names),
+        icon: const Icon(Icons.add),
+        label: const Text('Ajouter un exercice'),
+      ),
+      const SizedBox(height: 20),
+    ];
+  }
+
+  /// Ligne grise sous le champ : date de la dernière fois et record.
+  String? _cardHelper(String ex) {
+    final t = _lastFor(ex);
+    if (t == null) return 'Nouvel exercice';
+    final ins = _insight(ex);
+    final date = DateFormat('d MMM', 'fr_FR').format(t.series.first.date);
+    return 'Dernière fois le $date'
+        '${ins == null ? '' : ' · record série ${_num(ins.prSerie)}'}';
+  }
+
   List<String> get _recentNames =>
       _history.isNotEmpty ? exercisesByRecency(_history) : _exerciceNames;
 
@@ -902,7 +1032,10 @@ class _SaisieScreenState extends State<SaisieScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
+
+            // ── Petites cartes : un exercice chacune, saisie rapide ───────
+            ..._buildCards(),
 
             // ── Perfs du jour ─────────────────────────────────────────────
             Text(

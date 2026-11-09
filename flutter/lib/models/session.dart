@@ -111,3 +111,36 @@ ExerciseTemplate? nextPending(
   }
   return null;
 }
+
+/// Exercices des petites cartes de Saisie, dans l'ordre : ceux de la
+/// séance reprise, puis ceux déjà faits aujourd'hui qui n'y étaient pas,
+/// puis ceux ajoutés à la main. Sans doublon ; la planche garde la carte
+/// principale (options variante / forme / élastique).
+List<String> cardExercises(List<ExerciseTemplate> templates,
+    Iterable<Perf> today, Iterable<String> added) {
+  final out = <String>[];
+  void add(String ex) {
+    final e = ex.trim();
+    if (e.isEmpty || Perf.isPlancheName(e) || out.contains(e)) return;
+    out.add(e);
+  }
+
+  for (final t in templates) {
+    add(t.exercice);
+  }
+  for (final p in today) {
+    add(p.exercice);
+  }
+  for (final e in added) {
+    add(e);
+  }
+  return out;
+}
+
+/// Valeurs de la dernière fois, au format de saisie rapide (« 30/25/20 »),
+/// affichées en gris dans le champ vide.
+String seriesHint(ExerciseTemplate t) => t.series
+    .map((p) => p.performance % 1 == 0
+        ? p.performance.toInt().toString()
+        : p.performance.toString())
+    .join('/');

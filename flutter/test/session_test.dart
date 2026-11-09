@@ -95,4 +95,24 @@ void main() {
       expect(nextPending(t, (_) => 5), isNull);
     });
   });
+
+  group('petites cartes', () {
+    Perf at(int id, String ex, double v) => Perf(
+        id: id, userId: 'u', date: DateTime(2026, 8, 1), exercice: ex,
+        performance: v, unite: 'Reps');
+    final t = templatesFrom([
+      at(1, 'Pompe', 30),
+      at(2, 'Planche', 23),
+      at(3, 'Abdos', 30),
+      at(4, 'Abdos', 40),
+    ]);
+    test('séance reprise, puis faits aujourd\'hui, puis ajoutés ; sans planche ni doublon', () {
+      final today = [at(10, 'Dips', 12), at(11, 'Pompe', 25)];
+      expect(cardExercises(t, today, ['Traction', 'Dips', ' planche ']),
+          ['Pompe', 'Abdos', 'Dips', 'Traction']);
+    });
+    test('indice gris au format de saisie rapide', () {
+      expect(seriesHint(t.firstWhere((e) => e.exercice == 'Abdos')), '30/40');
+    });
+  });
 }
