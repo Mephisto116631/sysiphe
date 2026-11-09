@@ -32,6 +32,7 @@ class _ModelScreenState extends State<ModelScreen> {
   bool _applying = false;
   Object? _error;
   int _formVersion = 0; // force la reconstruction des champs (reset)
+  int _fieldsVersion = 0; // valeurs remplacées en bloc (générateur)
 
   // Grille
   String _gridElastique = 'Aucun';
@@ -175,8 +176,14 @@ class _ModelScreenState extends State<ModelScreen> {
       key: ValueKey(_formVersion),
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
       children: [
-        if (_dirty)
+        // Emplacement TOUJOURS présent : insérer le bandeau en tête décalait
+        // les blocs suivants, la carte des coefficients était reconstruite,
+        // la section ouverte se repliait et le clavier se fermait.
+        if (!_dirty)
+          const SizedBox.shrink(key: ValueKey('banner'))
+        else
           Container(
+            key: const ValueKey('banner'),
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
@@ -188,8 +195,14 @@ class _ModelScreenState extends State<ModelScreen> {
                 '« Appliquer partout ».'),
           ),
         _CoefficientsCard(
+          key: const ValueKey('coefficients'),
           model: m,
+          fieldsVersion: _fieldsVersion,
           onChanged: (nm) => setState(() => _draft = nm),
+          onReplaced: (nm) => setState(() {
+            _draft = nm;
+            _fieldsVersion++; // les champs reprennent les nouvelles valeurs
+          }),
         ),
         const SizedBox(height: 12),
         _gridCard(theme, m),
@@ -444,6 +457,13 @@ class _ModelScreenState extends State<ModelScreen> {
       );
 }
 
+/// Valeur complète pour un champ éditable (66,64 et non 66,6) : jusqu'à
+/// 4 décimales, zéros inutiles retirés.
+String _exact(double v) {
+  final s = v.toStringAsFixed(4);
+  return s.contains('.') ? s.replaceFirst(RegExp(r'\.?0+$'), '') : s;
+}
+
 String _n(double v) =>
     v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(v < 1 ? 2 : 1);
 
@@ -458,20 +478,30 @@ Color _intensity(double ratio) {
 /// Tous les coefficients, modifiables ; chaque frappe recalcule le reste.
 class _CoefficientsCard extends StatelessWidget {
   final EffortModel model;
+  final int fieldsVersion;
   final ValueChanged<EffortModel> onChanged;
+  final ValueChanged<EffortModel> onReplaced; // valeurs remplacées en bloc
 
-  const _CoefficientsCard({required this.model, required this.onChanged});
+  const _CoefficientsCard({
+    super.key,
+    required this.model,
+    required this.fieldsVersion,
+    required this.onChanged,
+    required this.onReplaced,
+  });
 
   @override
   Widget build(BuildContext context) {
     final m = model;
     Widget section(String title, String help, Map<String, double> values,
-            Map<String, double> defaults, EffortModel Function(Map<String, double>) apply) =>
+            Map<String, double> defaults, EffortModel Function(Map<String, double>) apply,
+            {Widget? header}) =>
         ExpansionTile(
           title: Text(title),
           subtitle: Text(help, style: Theme.of(context).textTheme.bodySmall),
           childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
           children: [
+            if (header != null) header,
             Wrap(
               spacing: 10,
               runSpacing: 10,
@@ -480,6 +510,7 @@ class _CoefficientsCard extends StatelessWidget {
                   SizedBox(
                     width: 140,
                     child: _NumField(
+                      key: ValueKey('$title-${e.key}-$fieldsVersion'),
                       label: e.key,
                       initial: e.value,
                       helper: defaults.containsKey(e.key)
@@ -512,7 +543,12 @@ class _CoefficientsCard extends StatelessWidget {
           section('Variantes', 'Difficulté relative', m.variantes, kVariantes,
               (x) => m.copyWith(variantes: x)),
           section('Formes', 'Position des hanches', m.formes, kFormes,
-              (x) => m.copyWith(formes: x)),
+              (x) => m.copyWith(formes: x),
+              header: _FormeGenerator(
+                key: ValueKey('gen-$fieldsVersion'),
+                formes: m.formes,
+                onGenerate: (f) => onReplaced(m.copyWith(formes: f)),
+              )),
           section('Élastiques', 'Aide en kg', m.elastiques, kElastiques,
               (x) => m.copyWith(elastiques: x)),
           section('Tensions', 'Part de l\'aide transmise (0–1)', m.tensions,
@@ -532,7 +568,8 @@ class _NumField extends StatefulWidget {
   final ValueChanged<double> onChanged;
 
   const _NumField(
-      {required this.label,
+      {super.key,
+      required this.label,
       required this.initial,
       required this.onChanged,
       this.helper});
@@ -543,7 +580,7 @@ class _NumField extends StatefulWidget {
 
 class _NumFieldState extends State<_NumField> {
   late final TextEditingController _c =
-      TextEditingController(text: _n(widget.initial));
+      TextEditingController(text: _exact(widget.initial));
   bool _invalid = false;
 
   @override
@@ -598,6 +635,91 @@ class _Dropdown extends StatelessWidget {
           DropdownMenuItem(value: i, child: Text(i, overflow: TextOverflow.ellipsis)),
       ],
       onChanged: (v) => v == null ? null : onChanged(v),
+    );
+  }
+}
+
+/// Générateur des formes : base × multiplicateur^rang (comme l'ancien
+/// Excel : 34 × 1,4 → 34 · 47,6 · 66,64 · 93,296), dans l'ordre croissant
+/// des formes actuelles.
+class _FormeGenerator extends StatefulWidget {
+  final Map<String, double> formes;
+  final ValueChanged<Map<String, double>> onGenerate;
+
+  const _FormeGenerator({super.key, required this.formes, required this.onGenerate});
+
+  @override
+  State<_FormeGenerator> createState() => _FormeGeneratorState();
+}
+
+class _FormeGeneratorState extends State<_FormeGenerator> {
+  late double _base, _ratio;
+
+  @override
+  void initState() {
+    super.initState();
+    final g = inferGeometric(widget.formes) ?? (34.0, 1.4);
+    _base = g.$1;
+    _ratio = double.parse(g.$2.toStringAsFixed(4));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final keys = ascendingKeys(widget.formes);
+    final preview = geometricSeries(keys, _base, _ratio);
+    final theme = Theme.of(context);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Générateur', style: theme.textTheme.titleSmall),
+          Text('Chaque forme = base × multiplicateur à la puissance de son rang',
+              style: theme.textTheme.bodySmall),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _NumField(
+                  label: 'Base (${keys.first})',
+                  initial: _base,
+                  onChanged: (v) => setState(() => _base = v),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _NumField(
+                  label: 'Multiplicateur',
+                  initial: _ratio,
+                  onChanged: (v) => setState(() => _ratio = v),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            [for (final k in keys) '$k ${_n(preview[k]!)}'].join(' · '),
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: AppTheme.textPrimary, fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: _base > 0 && _ratio > 0
+                  ? () => widget.onGenerate(preview)
+                  : null,
+              icon: const Icon(Icons.auto_fix_high, size: 18),
+              label: const Text('Générer les formes'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

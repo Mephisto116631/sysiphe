@@ -45,4 +45,27 @@ void main() {
     expect(full.delta, full.bestAfter - 100);
     expect(i.parVariante.firstWhere((e) => e.variante == 'Tuck').series, 2);
   });
+
+  group('générateur des formes', () {
+    test('les formes par défaut sont une progression 34 × 1,4', () {
+      final (base, ratio) = inferGeometric(kFormes)!;
+      expect(base, 34);
+      expect(ratio, closeTo(1.4, 1e-9));
+      expect(ascendingKeys(kFormes), ['High', 'Normal', 'Bas', 'Dead']);
+    });
+    test('régénère exactement les valeurs par défaut', () {
+      final g = geometricSeries(ascendingKeys(kFormes), 34, 1.4);
+      for (final e in kFormes.entries) {
+        expect(g[e.key], closeTo(e.value, 1e-9), reason: e.key);
+      }
+    });
+    test('nouveau multiplicateur appliqué dans l\'ordre', () {
+      final g = geometricSeries(['High', 'Normal', 'Bas'], 30, 1.5);
+      expect(g, {'High': 30, 'Normal': 45, 'Bas': 67.5});
+    });
+    test('cas impossibles', () {
+      expect(inferGeometric({'A': 1}), isNull);
+      expect(inferGeometric({'A': 0, 'B': 2}), isNull);
+    });
+  });
 }

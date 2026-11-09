@@ -7,6 +7,7 @@ class AppTheme {
   static const Color textPrimary = Color(0xFF1A1A2E);
   static const Color textSecondary = Color(0xFF6B7280);
   static const Color borderColor = Color(0xFFE5E7EB);
+  static const Color selectedChipText = Color(0xFF0D47A1); // bleu foncé
 
   static ThemeData get light => ThemeData(
         useMaterial3: true,
@@ -89,10 +90,15 @@ class AppTheme {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         ),
+        // Couleurs de texte explicites : sans couleur, le libellé était peint
+        // en blanc par le moteur de rendu (illisible sur fond clair).
         chipTheme: ChipThemeData(
-          backgroundColor: bgGrey,
+          backgroundColor: cardWhite,
           selectedColor: primaryBlue.withOpacity(0.15),
-          labelStyle: const TextStyle(fontSize: 13),
+          checkmarkColor: selectedChipText,
+          labelStyle: const TextStyle(fontSize: 13, color: textPrimary),
+          secondaryLabelStyle: const TextStyle(
+              fontSize: 13, color: selectedChipText, fontWeight: FontWeight.w600),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           side: const BorderSide(color: borderColor),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

@@ -641,7 +641,15 @@ class _SaisieScreenState extends State<SaisieScreen> {
                                 separatorBuilder: (_, __) =>
                                     const SizedBox(width: 6),
                                 itemBuilder: (_, i) => ChoiceChip(
-                                  label: Text(names[i]),
+                                  // Noms longs coupés proprement
+                                  label: ConstrainedBox(
+                                    constraints:
+                                        const BoxConstraints(maxWidth: 180),
+                                    child: Text(names[i],
+                                        overflow: TextOverflow.ellipsis),
+                                  ),
+                                  showCheckmark: false,
+                                  tooltip: names[i],
                                   selected: names[i] == cur,
                                   visualDensity: VisualDensity.compact,
                                   onSelected: (_) => _pickExercise(names[i]),
