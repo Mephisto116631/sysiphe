@@ -43,12 +43,20 @@ répondent **400**, et l'app reste bloquée sur un chargement infini.
 
 ## Phase 3 — Base de données et sécurité 🔐
 
-- [ ] **RLS désactivée** sur `perfs`, `profiles` et `user_settings` (alerte *critique* de Supabase) :
-      n'importe qui possédant la clé `anon` (présente dans l'APK) peut lire et modifier toutes les données.
-      Des policies `auth.uid() = user_id` existent mais ne sont pas actives, et les activer telles quelles
-      **casserait les deux apps**, car la connexion par profil + PIN n'utilise pas l'authentification Supabase.
-      → Choisir une solution (proposition : connexion anonyme Supabase + fonction RPC de vérification du PIN qui
-      renvoie un jeton lié au profil), puis l'implémenter dans les deux apps
+- [ ] **Protéger les données (RLS)** — solution retenue le 9 novembre : session Supabase anonyme et
+      persistante par appareil, PIN vérifié **par le serveur** une seule fois, puis la base ne sert que les
+      profils rattachés à cette session. Aucune reconnexion, aucune latence ajoutée.
+  - [x] Réglages Supabase : connexions anonymes, association manuelle d'identités, URL de retour de l'app (toi)
+  - [x] Étape 1 (base, additive) : `profile_members`, anti force brute (5 essais → 15 min), RPC
+        `list_profiles` / `claim_profile` / `create_profile` / `set_profile_pin` — testée en transaction
+        annulée puis appliquée
+  - [x] Étape 1 (app Flutter v2.2.0) : session anonyme, PIN vérifié par le serveur, hash du PIN plus jamais
+        envoyé au téléphone
+  - [x] Étape 1 (site web) : même principe, session gardée dans le cookie d'un an ; une session anonyme n'est jamais prise pour un compte Google
+  - [ ] **Toi** : installer la v2.2.0 et confirmer ton PIN une dernière fois
+  - [ ] Étape 2 (base) : activer la RLS sur `perfs`, `profiles`, `user_settings` + retirer l'accès direct aux
+        hash de PIN — testée en transaction annulée d'abord
+  - [ ] Étape 3 : bouton « Associer mon compte Google » (app + web)
 - [ ] `user_settings.user_id` pointe sur `auth.users` : les profils « Dilbert 🐶 » et « Profil 3 » ne peuvent pas
       enregistrer de réglages (violation de clé étrangère). → Faire pointer la clé sur `profiles(id)`
 - [ ] Harmoniser les catégories en base (`Force isométrique `, `Gainage`, `Force Iso`) : migration SQL

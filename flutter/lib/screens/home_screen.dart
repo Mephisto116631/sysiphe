@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import '../models/profile.dart';
+import '../services/session_store.dart';
+import '../services/supabase_service.dart';
+import '../widgets/pin_dialog.dart';
+import 'profile_screen.dart';
 import 'saisie_screen.dart';
 import 'stats_screen.dart';
 import 'calendar_screen.dart';
@@ -23,6 +27,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    // Après le premier affichage : jamais de latence à l'ouverture.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkAccess());
     final uid = widget.profile.id;
     _screens = [
       SaisieScreen(userId: uid),
@@ -31,6 +37,34 @@ class _HomeScreenState extends State<HomeScreen> {
       RecordsScreen(userId: uid),
       SettingsScreen(userId: uid, profile: widget.profile),
     ];
+  }
+
+  /// Vérifie, en arrière-plan, que cet appareil est rattaché au profil
+  /// mémorisé (cas d'une installation antérieure à la v2.2). Si non, le PIN
+  /// est demandé une seule fois. Hors ligne : on ne bloque rien.
+  Future<void> _checkAccess() async {
+    final svc = SupabaseService.instance;
+    final p = widget.profile;
+    try {
+      if (await svc.isMember(p.id)) return;
+      if (!p.hasPin) {
+        await svc.claimProfile(p.id);
+        return;
+      }
+    } catch (_) {
+      return; // réseau indisponible : on réessaiera à la prochaine ouverture
+    }
+    if (!mounted) return;
+    final ok = await askPinAndClaim(context, p,
+        message: 'Mise à jour de sécurité : confirmez votre PIN une '
+            'dernière fois sur ce téléphone.');
+    if (ok || !mounted) return;
+    await SessionStore.clear();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const ProfileScreen()),
+      (_) => false,
+    );
   }
 
   @override

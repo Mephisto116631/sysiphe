@@ -6,17 +6,25 @@ class Profile {
   final bool hasPin;
   final DateTime? lastLogin;
 
+  /// Cet appareil est déjà rattaché au profil (PIN déjà vérifié par le
+  /// serveur) : pas besoin de redemander le PIN.
+  final bool isMember;
+
   const Profile({
     required this.id,
     required this.name,
     required this.hasPin,
     this.lastLogin,
+    this.isMember = false,
   });
 
+  /// Ligne de la RPC list_profiles (has_pin, is_member) — le hash du PIN
+  /// n'est jamais renvoyé au client.
   factory Profile.fromJson(Map<String, dynamic> json) => Profile(
         id: json['id'] as String,
         name: json['name'] as String? ?? 'Profil',
-        hasPin: (json['pin_hash'] as String?) != null,
+        hasPin: json['has_pin'] as bool? ?? (json['pin_hash'] != null),
+        isMember: json['is_member'] as bool? ?? false,
         lastLogin: json['last_login'] != null
             ? DateTime.tryParse(json['last_login'] as String)
             : null,

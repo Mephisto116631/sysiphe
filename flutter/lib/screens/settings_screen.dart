@@ -125,7 +125,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _logout() async {
-    await SessionStore.clear(); // le PIN sera redemandé
+    await SessionStore.clear();
+    // Fermer aussi la session Supabase : ce téléphone perd son rattachement
+    // aux profils, donc le PIN sera redemandé (sinon on pourrait revenir sur
+    // un profil protégé sans PIN). Une nouvelle session anonyme sera créée.
+    await SupabaseService.instance.signOut();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const ProfileScreen()),

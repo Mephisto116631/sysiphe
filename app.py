@@ -6,7 +6,9 @@ accessible depuis le menu latéral.
 from datetime import datetime, timedelta
 import streamlit as st
 
-from auth import get_pkce_store, check_oauth_callback, render_login_page, get_cookie_controller
+from auth import (get_pkce_store, check_oauth_callback, render_login_page,
+                  get_cookie_controller, persist_session_tokens)
+from supabase_io import _clear_profiles_cache
 from data import DEFAULT_VARIANTES, DEFAULT_FORMES, DEFAULT_ELASTIQUES, DEFAULT_TENSIONS
 from supabase_io import get_supabase_client, load_data, delete_perfs, load_user_settings
 from ui_saisie import render_planche_block, render_exercise_block, render_kpi_panel, render_save_all_button
@@ -75,6 +77,7 @@ for _k, _v in _DEFAULTS.items():
 supabase = get_supabase_client()
 pkce_store = get_pkce_store()
 check_oauth_callback(supabase, pkce_store)
+persist_session_tokens(supabase)  # jetons renouvelés → cookies à jour
 
 if st.session_state.user is None:
     render_login_page(supabase, pkce_store, APP_URL)
@@ -108,7 +111,15 @@ with st.sidebar:
             pass
         # Marque le logout volontaire pour bloquer le fallback Supabase
         st.session_state["_manual_logout"] = True
+        # Fermer la session : ce navigateur perd son rattachement aux profils,
+        # le PIN sera redemandé (une nouvelle session anonyme sera créée).
         supabase.auth.sign_out()
+        for c in ("sys_acc_token", "sys_ref_token"):
+            try:
+                get_cookie_controller().remove(c)
+            except Exception:
+                pass
+        _clear_profiles_cache()
         for k in ["user", "exos_du_jour", "last_seen_date", "oauth_intent", "config_loaded"]:
             st.session_state.pop(k, None)
         st.cache_data.clear()
