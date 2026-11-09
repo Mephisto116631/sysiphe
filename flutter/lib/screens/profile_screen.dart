@@ -1,0 +1,261 @@
+import 'package:flutter/material.dart';
+import '../models/profile.dart';
+import '../services/supabase_service.dart';
+import '../theme.dart';
+import 'home_screen.dart';
+
+class ProfileScreen extends StatefulWidget {
+  const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  List<Profile> _profiles = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final profiles = await SupabaseService.instance.getProfiles();
+      setState(() { _profiles = profiles; _loading = false; });
+    } catch (e) {
+      setState(() { _error = 'Connexion impossible : $e'; _loading = false; });
+    }
+  }
+
+  Future<void> _pick(Profile profile) async {
+    if (profile.hasPin) {
+      final ok = await _askPin(profile);
+      if (!ok) return;
+    }
+    unawaited(SupabaseService.instance.touchLogin(profile.id));
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => HomeScreen(profile: profile)),
+    );
+  }
+
+  Future<bool> _askPin(Profile profile) async {
+    final ctrl = TextEditingController();
+    bool ok = false;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        bool checking = false;
+        return StatefulBuilder(builder: (ctx2, setLocal) {
+          Future<void> submit() async {
+            setLocal(() => checking = true);
+            final valid = await SupabaseService.instance
+                .verifyPin(profile.id, ctrl.text);
+            setLocal(() => checking = false);
+            if (valid) {
+              ok = true;
+              if (ctx2.mounted) Navigator.of(ctx2).pop();
+            } else {
+              ctrl.clear();
+              if (ctx2.mounted) {
+                ScaffoldMessenger.of(ctx2).showSnackBar(
+                  const SnackBar(
+                    content: Text('PIN incorrect'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            }
+          }
+
+          return AlertDialog(
+            title: Text('PIN — ${profile.name}'),
+            content: TextField(
+              controller: ctrl,
+              autofocus: true,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              decoration: const InputDecoration(
+                hintText: 'Entrez votre PIN',
+                counterText: '',
+              ),
+              onSubmitted: (_) => submit(),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx2).pop(),
+                child: const Text('Annuler'),
+              ),
+              FilledButton(
+                onPressed: checking ? null : submit,
+                child: checking
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Text('OK'),
+              ),
+            ],
+          );
+        });
+      },
+    );
+    return ok;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryBlue,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.fitness_center,
+                        color: Colors.white, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  Text('Sysiphe',
+                      style: Theme.of(context).textTheme.headlineMedium),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Choisissez votre profil',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 40),
+              if (_loading)
+                const Expanded(
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (_error != null)
+                Expanded(
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.wifi_off, size: 48, color: Colors.grey),
+                        const SizedBox(height: 16),
+                        Text(
+                          _error!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.grey),
+                        ),
+                        const SizedBox(height: 24),
+                        SizedBox(
+                          width: 160,
+                          child: ElevatedButton.icon(
+                            onPressed: _load,
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Réessayer'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                Expanded(
+                  child: GridView.builder(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 14,
+                      mainAxisSpacing: 14,
+                      childAspectRatio: 1.15,
+                    ),
+                    itemCount: _profiles.length,
+                    itemBuilder: (ctx, i) => _ProfileCard(
+                      profile: _profiles[i],
+                      onTap: () => _pick(_profiles[i]),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileCard extends StatelessWidget {
+  final Profile profile;
+  final VoidCallback onTap;
+
+  const _ProfileCard({required this.profile, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: AppTheme.primaryBlue,
+                child: Text(
+                  profile.initials,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                profile.name,
+                style: Theme.of(context).textTheme.titleMedium,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (profile.hasPin) ...[
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    Icon(Icons.lock, size: 12, color: AppTheme.textSecondary),
+                    SizedBox(width: 3),
+                    Text('PIN',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: AppTheme.textSecondary)),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+void unawaited(Future<void> f) {}
