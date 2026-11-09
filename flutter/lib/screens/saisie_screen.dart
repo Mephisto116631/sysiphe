@@ -43,6 +43,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
   // Tout l'historique : panneau du jour, indicateurs par exercice, records.
   List<Perf> _history = [];
   int _nbDaysAvg = 5; // user_settings.nb_days_avg
+  bool _enableCharges = true; // user_settings.enable_charges
   // Séance précédente, pour la reprendre exercice par exercice.
   List<ExerciseTemplate> _previous = [];
   DateTime? _previousDate;
@@ -200,6 +201,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
       setState(() {
         _weight = (settings['weight'] as num?)?.toDouble() ?? 97.0;
         _nbDaysAvg = (settings['nb_days_avg'] as num?)?.toInt() ?? 5;
+        _enableCharges = settings['enable_charges'] as bool? ?? true;
         _variantesCfg = mergeConfig(settings['variantes_config'], kVariantes);
         _formesCfg = mergeConfig(settings['formes_config'], kFormes);
         _elastiquesCfg =
@@ -329,7 +331,9 @@ class _SaisieScreenState extends State<SaisieScreen> {
     final categorie = _categorie != null && _categorieExo == exercice
         ? _categorie!
         : (_unite == 'Sec' ? 'Force Iso' : 'Musculation');
-    final lest = _unite == 'Reps'
+    // Champ lest désactivé dans les Réglages : jamais de lest enregistré
+    // (même si la séance reprise en avait un).
+    final lest = _unite == 'Reps' && _enableCharges
         ? (double.tryParse(_lestCtrl.text.replaceAll(',', '.')) ?? 0)
         : 0.0;
 
@@ -774,7 +778,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
 
                       // Lest (tractions / dips lestés) — conservé d'une
                       // série à l'autre, vide = sans lest.
-                      if (_unite == 'Reps') ...[
+                      if (_unite == 'Reps' && _enableCharges) ...[
                         TextFormField(
                           controller: _lestCtrl,
                           keyboardType: const TextInputType.numberWithOptions(

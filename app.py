@@ -95,6 +95,7 @@ if "config_loaded" not in st.session_state:
     st.session_state.weight            = settings["weight"]
     st.session_state.nb_days_avg       = settings["nb_days_avg"]
     st.session_state.include_planche   = settings["include_planche"]
+    st.session_state.enable_charges    = settings["enable_charges"]  # champ lest (Réglages de l'app)
     st.session_state.config_loaded     = True
 
 # ─── Sidebar globale (déconnexion / changement de profil) ────────────────────

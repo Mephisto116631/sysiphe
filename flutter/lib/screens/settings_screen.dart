@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../models/profile.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
+import '../services/data_events.dart';
 import '../services/session_store.dart';
 import '../app_version.dart';
 import '../widgets/update_flow.dart';
@@ -26,6 +27,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final _weightCtrl = TextEditingController();
   bool _saving = false;
+  bool _enableCharges = true; // user_settings.enable_charges
   bool _loading = true;
 
   @override
@@ -40,8 +42,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     setState(() {
       _weightCtrl.text = ((s['weight'] as num?)?.toString() ?? '97');
+      _enableCharges = s['enable_charges'] as bool? ?? true;
       _loading = false;
     });
+  }
+
+  /// Afficher ou masquer le champ « Lest (kg) » dans la saisie (réglage
+  /// enable_charges, partagé avec le web). Les lests déjà enregistrés
+  /// restent en base et comptent toujours dans les stats.
+  Future<void> _setEnableCharges(bool v) async {
+    setState(() => _enableCharges = v);
+    try {
+      await SupabaseService.instance
+          .saveSettings(widget.userId, {'enable_charges': v});
+      notifyDataChanged(); // la Saisie relit le réglage
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _enableCharges = !v);
+      _snack('Erreur : $e', error: true);
+    }
   }
 
   Future<void> _saveWeight() async {
@@ -253,6 +272,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     onTap: () => Navigator.of(context).push(MaterialPageRoute(
                         builder: (_) =>
                             ManageScreen(current: widget.profile))),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Card(
+                  child: SwitchListTile(
+                    secondary: const Icon(Icons.fitness_center,
+                        color: AppTheme.primaryBlue),
+                    title: const Text('Champ « Lest (kg) »'),
+                    subtitle: const Text(
+                        'Désactivé : masqué dans la saisie, les lests déjà '
+                        'enregistrés sont conservés'),
+                    value: _enableCharges,
+                    onChanged: _setEnableCharges,
                   ),
                 ),
                 const SizedBox(height: 20),

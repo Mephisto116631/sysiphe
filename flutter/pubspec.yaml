@@ -1,6 +1,6 @@
 name: sysiphe
 description: Sysiphe — fitness tracker natif Flutter
-version: 2.5.1+1
+version: 2.5.2+1
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
