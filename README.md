@@ -12,11 +12,11 @@ Tracker de performance sportive personnel. Enregistrement des séances, calcul d
 - [Logique métier](#logique-métier)
 - [Application web — Streamlit](#application-web--streamlit)
 - [Application mobile — Flutter](#application-mobile--flutter)
-- [Application mobile — WebView (legacy)](#application-mobile--webview-legacy)
-- [Déploiement NAS](#déploiement-nas)
+- [Hébergement](#hébergement)
 - [CI/CD](#cicd)
 - [Secrets & sécurité](#secrets--sécurité)
 - [Développement local](#développement-local)
+- [Archives](#archives)
 
 ---
 
@@ -47,7 +47,6 @@ sysiphe/
 ├── ui_stats.py             # Onglets Stats, Calendrier, Records, Paramètres
 ├── ui_helpers.py           # Composants UI réutilisables
 ├── requirements.txt        # Dépendances Python
-├── Dockerfile              # Image pour déploiement NAS
 │
 ├── flutter/                # App native Flutter v2.0 (Android)
 │   ├── lib/
@@ -59,11 +58,7 @@ sysiphe/
 │   ├── pubspec.yaml
 │   └── android/
 │
-├── android/                # APK WebView legacy (wrapper Streamlit)
-│   └── app/src/main/java/com/sysiphe/app/MainActivity.kt
-│
-└── deploy/
-    └── nas/                # docker-compose.yml, serve.json, scripts
+└── archive/                # Anciennes briques, plus utilisées (voir § Archives)
 ```
 
 **Flux de données :**
@@ -71,10 +66,10 @@ sysiphe/
 ```
 Flutter app  ──────────────────────▶  Supabase Cloud
 Streamlit  ──[ supabase_io.py ]────▶  Supabase Cloud
-               (NAS ou Streamlit Cloud)
+            (Streamlit Cloud)
 ```
 
-La app Flutter communique **directement** avec Supabase (pas de passage par le NAS/Streamlit).
+Les deux apps partagent la même base. L'app Flutter communique **directement** avec Supabase, sans passer par Streamlit.
 
 ---
 
@@ -280,65 +275,19 @@ Le projet utilise la **nouvelle API déclarative Flutter Gradle** (Flutter 3.16+
 
 ---
 
-## Application mobile — WebView (legacy)
+## Hébergement
 
-Le dossier `android/` contient un APK WebView (v1.4) qui affiche l'app Streamlit du NAS. Il est maintenu en parallèle mais **non recommandé** : l'app Flutter est l'APK principal.
+L'app web tourne uniquement sur **Streamlit Cloud** : `https://sysiphe-voseesdgwwcstfepbdepkh.streamlit.app`. Elle est redéployée automatiquement à chaque push sur `main`.
 
-- Au démarrage, il lit `mobile/targets.json` sur GitHub (`raw.githubusercontent.com`, branche `main`) et ouvre l'URL `nas`. Changer d'URL = un commit, sans recompiler.
-- Si le NAS est injoignable, il affiche une **page hors ligne embarquée** (`assets/offline.html`). Il ne bascule plus vers Streamlit Cloud ; la clé `cloud` de `targets.json` n'est plus lue.
+`APP_URL` (optionnel, dans `secrets.toml`) remplace l'URL publique utilisée pour les redirections d'authentification, par exemple en local. Par défaut, c'est l'URL Streamlit Cloud (`app.py`).
 
-Workflow CI associé : `.github/workflows/build-apk.yml`
-
-Le dossier `mobile/` (wrapper Capacitor, workflow `android-apk.yml`) est l'ancêtre de cet APK. Il n'est plus maintenu, mais `mobile/targets.json` reste la source des URLs.
-
----
-
-## Déploiement NAS
-
-Sysiphe peut tourner sur un NAS maison (mini PC Lenovo, OpenMediaVault), exposé via **Tailscale Funnel** (HTTPS public sans port ouvert sur la box).
-
-### Structure sur le NAS
-
-```
-/compose_data/sysiphe/
-├── sysiphe.yml          # docker-compose (géré par plugin OMV)
-├── .env                 # TS_AUTHKEY=tskey-auth-...
-├── serve.json           # config Tailscale Serve → port 8501
-└── secrets.toml         # SUPABASE_URL, SUPABASE_KEY, APP_URL
-```
-
-### docker-compose
-
-Deux services :
-
-| Service | Image | Rôle |
-|---------|-------|------|
-| `tailscale` | `tailscale/tailscale:stable` | Tunnel HTTPS public |
-| `sysiphe` | `ghcr.io/mephisto116631/sysiphe:latest` | App Streamlit |
-
-Le service `sysiphe` est en `network_mode: service:tailscale` — il n'est accessible que via le tunnel Tailscale, jamais en direct.
-
-### Mise à jour manuelle
-
-```bash
-cd /compose_data/sysiphe
-docker compose pull sysiphe
-docker compose up -d sysiphe
-```
-
-Le script `deploy/nas/update.sh` automatise cette procédure.
-
-### Streamlit Cloud
-
-L'app web reste aussi déployée sur Streamlit Cloud : `https://sysiphe-voseesdgwwcstfepbdepkh.streamlit.app`.
-
-`APP_URL` (dans `secrets.toml`) est l'URL publique de l'instance qui tourne. Elle sert aux redirections d'authentification et vaut l'URL Funnel sur le NAS. Si elle est absente, l'app retombe sur l'URL Streamlit Cloud (`app.py`).
+L'app mobile est l'**APK Flutter**, publié dans les Releases GitHub.
 
 ---
 
 ## CI/CD
 
-### `build-flutter.yml` — APK Flutter (principal)
+Un seul workflow actif : `.github/workflows/build-flutter.yml`, qui produit l'APK Flutter.
 
 Déclenché sur push vers `main` touchant `flutter/**` (ou le workflow lui-même), ou manuellement (*Run workflow*).
 
@@ -352,20 +301,6 @@ Déclenché sur push vers `main` touchant `flutter/**` (ou le workflow lui-même
 | Signature `apksigner` | Keystore base64 depuis `SIGNING_KEY`, alias `sysiphe` |
 | GitHub Release | Tag `v{version}`, fichier `sysiphe.apk` |
 
-### `build-apk.yml` — APK WebView (legacy)
-
-Déclenché sur push dans `android/**`.
-
-Utilise Gradle wrapper (8.4), `gradle/actions/setup-gradle@v3`, build `assembleRelease`.
-
-### `android-apk.yml` — APK Capacitor (obsolète)
-
-Déclenché par un tag `v*` ou par un changement de `mobile/package.json` sur `main`. Il utilise ses propres secrets : `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`. Candidat à la suppression avec le dossier `mobile/` (en gardant `mobile/targets.json`).
-
-### `docker-image.yml` — Image Docker Streamlit
-
-Publie `ghcr.io/mephisto116631/sysiphe:latest` sur push dans `main`, sauf si seuls `mobile/**`, `deploy/**`, `android-apk.yml` ou des fichiers `.md` changent. Note : un push qui ne touche que `flutter/**` ou `android/**` reconstruit aussi l'image.
-
 ---
 
 ## Secrets & sécurité
@@ -376,15 +311,16 @@ Publie `ghcr.io/mephisto116631/sysiphe:latest` sur push dans `main`, sauf si seu
 |--------|-------|
 | `SUPABASE_URL` | URL du projet Supabase |
 | `SUPABASE_ANON_KEY` | Clé `anon` publique Supabase |
-| `SIGNING_KEY` | Keystore JKS encodé en base64 (`build-flutter.yml`, `build-apk.yml`) |
+| `SIGNING_KEY` | Keystore JKS encodé en base64 |
 | `KEYSTORE_PASSWORD` | Mot de passe du keystore (alias `sysiphe`) |
-| `KEYSTORE_BASE64`, `KEY_ALIAS` | Uniquement pour `android-apk.yml` (Capacitor, obsolète) |
+
+Les secrets `KEYSTORE_BASE64` et `KEY_ALIAS` ne servaient qu'au workflow Capacitor archivé : ils peuvent être supprimés des réglages GitHub.
 
 ### Règles
 
 - Les fichiers `secrets.toml`, `.env`, et tout CSV de données sont dans `.gitignore`
 - La clé `service_role` Supabase n'est **jamais** dans le code ni dans les secrets CI
-- Les credentials Supabase sont injectés **uniquement à la compilation** via `--dart-define` pour Flutter, et via `secrets.toml` monté en volume pour Streamlit
+- Les credentials Supabase sont injectés **uniquement à la compilation** via `--dart-define` pour Flutter, et via les *Secrets* de Streamlit Cloud (ou `.streamlit/secrets.toml` en local) pour Streamlit
 
 ---
 
@@ -430,6 +366,24 @@ python -m pytest test_data.py -v
 ```
 
 Les tests couvrent `calculer_effort`, `parse_reps`, `lisser_donnees`, `detect_plateau`.
+
+
+---
+
+## Archives
+
+Le dossier `archive/` conserve, pour mémoire, les briques abandonnées depuis l'abandon du NAS. Elles ne sont **plus construites ni déployées** : les workflows archivés sont hors de `.github/workflows/`, donc GitHub ne les exécute plus.
+
+| Dossier | Ancien rôle |
+|---------|-------------|
+| `archive/nas/` | Auto-hébergement sur NAS : `Dockerfile`, docker-compose OMV, Tailscale Funnel, `update.sh` |
+| `archive/android-webview/` | APK WebView v1.4 (ouvrait l'URL du NAS, sinon une page hors ligne) |
+| `archive/mobile-capacitor/` | Premier wrapper APK (Capacitor), `targets.json`, icône source |
+| `archive/workflows/` | `docker-image.yml` (image `ghcr.io`), `build-apk.yml`, `android-apk.yml` |
+
+Pour réactiver une brique : remettre son dossier à la racine et son workflow dans `.github/workflows/`. Les chemins internes n'ont pas été modifiés.
+
+Les APK WebView déjà installés lisent `mobile/targets.json` sur `main`. Ce fichier n'y est plus, donc ils affichent leur page hors ligne : il faut les désinstaller au profit de l'APK Flutter.
 
 ---
 

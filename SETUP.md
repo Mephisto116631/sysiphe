@@ -85,18 +85,6 @@ pytest test_data.py -v
 
 ## Application Android (APK)
 
-> ⚠️ **Section obsolète.** L'APK principal est désormais l'app Flutter (`flutter/`, workflow `build-flutter.yml`). L'APK WebView natif se trouve dans `android/` (workflow `build-apk.yml`). Voir le [README](README.md#cicd).
-> Ce qui suit décrit l'ancien wrapper Capacitor, conservé pour mémoire.
+L'APK est l'app **Flutter** (`flutter/`), construite et publiée dans les Releases par `.github/workflows/build-flutter.yml`. Voir le [README](README.md#application-mobile--flutter).
 
-L'APK est un wrapper Capacitor (dossier `mobile/`) qui ouvre l'app Streamlit Cloud. Il est compilé et signé par GitHub Actions (`.github/workflows/android-apk.yml`).
-
-- **Publier une version** : incrémenter `"version"` dans `mobile/package.json` et pousser sur `main` (faisable depuis l'éditeur web GitHub), ou `git tag v1.2.0 && git push origin v1.2.0` → l'APK apparaît dans les Releases du repo.
-- **Build de test** : onglet Actions → « Build APK Sysiphe » → Run workflow (APK en artefact).
-- **Secrets requis** : `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`. Le keystore ne doit jamais être commité.
-- L'icône est générée depuis `assets/icon.png`.
-
-## Auto-hébergement sur le NAS
-
-Voir [`deploy/nas/README.md`](deploy/nas/README.md). Chaque commit sur `main` publie l'image `ghcr.io/mephisto116631/sysiphe:latest`, que le NAS récupère automatiquement.
-
-L'app Android lit ses URLs dans [`mobile/targets.json`](mobile/targets.json) : elle essaie le NAS (`nas`) puis bascule sur Streamlit Cloud (`cloud`). Changer d'URL = un commit, sans recompiler l'APK.
+L'ancien hébergement NAS et les anciens APK (WebView, Capacitor) sont dans `archive/` : voir le [README](README.md#archives).
