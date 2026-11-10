@@ -40,6 +40,15 @@ class _QuickCardState extends State<QuickCard> {
     super.dispose();
   }
 
+  void _insertSeparator() {
+    final t = _ctrl.text;
+    if (t.isEmpty || t.endsWith(' ')) return;
+    _ctrl.value = TextEditingValue(
+      text: '$t ',
+      selection: TextSelection.collapsed(offset: t.length + 1),
+    );
+  }
+
   Future<void> _save() async {
     List<double> vals;
     try {
@@ -116,6 +125,13 @@ class _QuickCardState extends State<QuickCard> {
                       helperText: widget.helper,
                       helperStyle: const TextStyle(color: AppTheme.textSecondary),
                       errorText: _error,
+                      // Le pavé numérique Android n'a pas toujours de « / »
+                      // ni d'espace : ce bouton insère un séparateur.
+                      suffixIcon: IconButton(
+                        tooltip: 'Série suivante',
+                        icon: const Icon(Icons.add),
+                        onPressed: _insertSeparator,
+                      ),
                     ),
                     onSubmitted: (_) => _save(),
                   ),

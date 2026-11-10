@@ -95,24 +95,22 @@ class _SaisieScreenState extends State<SaisieScreen> {
     final best = vals.reduce((a, b) => a > b ? a : b);
     final newPr = ins != null && ins.prSerie > 0 && best > ins.prSerie;
     try {
-      await SupabaseService.instance.replaceExerciseOnDate(
-        widget.userId,
-        _date,
-        ex,
-        [
-          for (var i = 0; i < vals.length; i++)
-            Perf(
-              userId: widget.userId,
-              date: _date,
-              exercice: ex,
-              serie: i + 1,
-              performance: vals[i],
-              unite: unite,
-              categorie: categorie,
-              effortPondere: 0,
-            ),
-        ],
-      );
+      // Ajoute à la suite des séries déjà saisies : une valeur seule ne doit
+      // jamais écraser les séries précédentes.
+      final done = _doneToday(ex);
+      await SupabaseService.instance.savePerfs([
+        for (var i = 0; i < vals.length; i++)
+          Perf(
+            userId: widget.userId,
+            date: _date,
+            exercice: ex,
+            serie: done + i + 1,
+            performance: vals[i],
+            unite: unite,
+            categorie: categorie,
+            effortPondere: 0,
+          ),
+      ]);
       await _loadTodayPerfs();
       _loadHistory();
       _snack(newPr
