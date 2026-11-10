@@ -164,8 +164,10 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
 - [x] CI : `pytest test_data.py` sur chaque PR (28 tests)
 - [x] Script de sauvegarde quotidienne vers le NAS (`backup/`) : copie complète restaurable + CSV des perfs, 60 jours
       (testé sur une base locale : mot de passe à caractères spéciaux, rotation, restauration, échec)
-- [ ] Installer la sauvegarde sur le NAS (toi : chaîne de connexion Supabase + tâche planifiée OMV, `backup/README.md`)
-- [ ] Vérifier la 1re sauvegarde réelle (`/var/log/sysiphe-backup.log`)
+- [x] Script Google Apps Script : CSV quotidiens dans Drive « Sysiphe sauvegardes », 60 jours (`backup/google-drive`)
+- [ ] Installer la sauvegarde Drive (toi, sur ordi : clé `service_role` + script, `backup/README.md` option A)
+- [ ] (facultatif) Installer la sauvegarde NAS (`backup/README.md` option B)
+- [ ] Vérifier la 1re sauvegarde réelle (fichiers du jour dans Drive)
 - [ ] Mode hors ligne Flutter : cache local et saisie différée, synchronisée au retour du réseau
 - [x] Numéro de version affiché dans l'app (bas de l'écran Paramètres, ex. `2.1.0+7`)
 - [x] Version incrémentée à chaque build (`versionCode` = numéro du run CI) et notes de version générées depuis les PR → passage en **v2.1.0**
