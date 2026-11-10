@@ -162,8 +162,12 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
 - [x] Tests Flutter : `calculerEffort` donne les mêmes résultats que `data.py`, et `Perf.fromJson` est testé sur des lignes réelles (`flutter/test/`, 53 tests)
 - [x] CI : `flutter analyze` + `flutter test` sur chaque PR, et pas seulement à la publication (`ci.yml`)
 - [x] CI : `pytest test_data.py` sur chaque PR (28 tests)
-- [ ] Sauvegarde des données : offre Supabase gratuite = aucune sauvegarde téléchargeable → export depuis l'app
-      et/ou sauvegarde automatique chiffrée (à décider)
+- [x] Script de sauvegarde quotidienne vers le NAS (`backup/`) : copie complète restaurable + CSV des perfs, 60 jours
+      (testé sur une base locale : mot de passe à caractères spéciaux, rotation, restauration, échec)
+- [x] Script Google Apps Script : CSV quotidiens dans Drive « Sysiphe sauvegardes », 60 jours (`backup/google-drive`)
+- [ ] Installer la sauvegarde Drive (toi, sur ordi : clé `service_role` + script, `backup/README.md` option A)
+- [ ] (facultatif) Installer la sauvegarde NAS (`backup/README.md` option B)
+- [ ] Vérifier la 1re sauvegarde réelle (fichiers du jour dans Drive)
 - [ ] Mode hors ligne Flutter : cache local et saisie différée, synchronisée au retour du réseau
 - [x] Numéro de version affiché dans l'app (bas de l'écran Paramètres, ex. `2.1.0+7`)
 - [x] Version incrémentée à chaque build (`versionCode` = numéro du run CI) et notes de version générées depuis les PR → passage en **v2.1.0**
