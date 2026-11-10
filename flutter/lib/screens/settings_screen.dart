@@ -197,6 +197,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const SizedBox(height: 20),
 
+                _SectionLabel('Application'),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.system_update,
+                        color: AppTheme.primaryBlue),
+                    title: const Text('Mises à jour'),
+                    subtitle: Text('Version $kAppVersion · vérifier'),
+                    trailing: const Icon(Icons.chevron_right,
+                        color: AppTheme.textSecondary),
+                    onTap: () => checkAndOfferUpdate(context),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
                 _SectionLabel('Entraînement'),
                 Card(
                   child: Padding(
@@ -285,20 +299,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         'enregistrés sont conservés'),
                     value: _enableCharges,
                     onChanged: _setEnableCharges,
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                _SectionLabel('Application'),
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.system_update,
-                        color: AppTheme.primaryBlue),
-                    title: const Text('Mises à jour'),
-                    subtitle: Text('Version $kAppVersion · vérifier'),
-                    trailing: const Icon(Icons.chevron_right,
-                        color: AppTheme.textSecondary),
-                    onTap: () => checkAndOfferUpdate(context),
                   ),
                 ),
                 const SizedBox(height: 20),
