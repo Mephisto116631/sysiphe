@@ -10,6 +10,7 @@ class QuickCard extends StatefulWidget {
   final String unite;
   final String? hint; // dernière fois, ex. « 30/25/20 »
   final String? helper; // ligne grise sous le champ
+  final Widget? insight; // record, moyenne et % vs moyenne
   final int done; // séries déjà enregistrées aujourd'hui
   final Future<bool> Function(List<double>) onSave;
 
@@ -19,6 +20,7 @@ class QuickCard extends StatefulWidget {
     required this.unite,
     required this.hint,
     required this.helper,
+    this.insight,
     required this.done,
     required this.onSave,
   });
@@ -88,6 +90,10 @@ class _QuickCardState extends State<QuickCard> {
                   ),
               ],
             ),
+            if (widget.insight != null) ...[
+              const SizedBox(height: 6),
+              widget.insight!,
+            ],
             const SizedBox(height: 8),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
