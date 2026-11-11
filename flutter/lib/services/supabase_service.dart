@@ -227,7 +227,7 @@ class SupabaseService {
 
   /// Corrige la valeur d'une série déjà enregistrée (et son effort).
   Future<void> updatePerfValue(int id, double performance,
-      {double? effortPondere}) async {
+      {int? effortPondere}) async {
     await _db.from('perfs').update({
       'performance': performance,
       if (effortPondere != null) 'effort_pondere': effortPondere,
