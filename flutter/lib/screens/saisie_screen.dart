@@ -213,8 +213,9 @@ class _SaisieScreenState extends State<SaisieScreen> {
     final sets = _todayPerfs.where((p) => p.exercice == ex);
     return _InsightLine(
         insight: ins,
-        todayVolume: sets.fold(0.0, (s, p) => s + p.performance),
+        todayVolume: _todayVolume(sets, ex),
         todaySets: sets.length,
+        unit: Perf.isPlancheName(ex) ? ' pts' : '',
         nbDaysAvg: _nbDaysAvg);
   }
 
@@ -328,9 +329,22 @@ class _SaisieScreenState extends State<SaisieScreen> {
     }
   }
 
+  /// Planche : indicateurs en points d'effort ; sinon en reps / secondes.
   ExerciseInsight? _insight(String exercice) => insightFor(
       _history.where((p) => p.exercice == exercice).toList(), _date,
-      nbDaysAvg: _nbDaysAvg);
+      nbDaysAvg: _nbDaysAvg,
+      valueOf: Perf.isPlancheName(exercice)
+          ? (p) => (p.effortPondere ?? 0).toDouble()
+          : null);
+
+  /// Volume du jour d'un exercice, dans la même unité que [_insight].
+  double _todayVolume(Iterable<Perf> sets, String exercice) => sets.fold(
+      0.0,
+      (s, p) =>
+          s +
+          (Perf.isPlancheName(exercice)
+              ? (p.effortPondere ?? 0).toDouble()
+              : p.performance));
 
   Future<void> _loadWeight() async {
     final settings = await SupabaseService.instance.getSettings(widget.userId);
@@ -357,6 +371,16 @@ class _SaisieScreenState extends State<SaisieScreen> {
       setState(() {
         _showOptions = true;
         _unite = 'Sec';
+      });
+    } else if (!planche) {
+      // Plus la planche : options masquées et remises à zéro, pour qu'elles
+      // ne soient jamais enregistrées avec un autre exercice.
+      setState(() {
+        _showOptions = false;
+        _variante = 'Full';
+        _forme = 'Normal';
+        _elastique = 'Aucun';
+        _tension = 'N/A';
       });
     }
   }
@@ -503,15 +527,15 @@ class _SaisieScreenState extends State<SaisieScreen> {
           userId: widget.userId,
           date: _date,
           exercice: exercice,
-          variante: _variante,
-          forme: _forme,
+          variante: planche ? _variante : 'Full',
+          forme: planche ? _forme : 'Normal',
           serie: _serie + i,
           performance: valeurs[i],
           charge: lest,
           unite: _unite,
           categorie: categorie,
-          elastique: _elastique,
-          tension: _tension,
+          elastique: planche ? _elastique : 'Aucun',
+          tension: planche ? _tension : 'N/A',
           effortPondere: planche
               ? calculerEffort(
                   variante: _variante,
@@ -883,20 +907,20 @@ class _SaisieScreenState extends State<SaisieScreen> {
                         listenable: _exerciceCtrl,
                         builder: (context, _) {
                           final ex = _exerciceCtrl.text.trim();
-                          if (ex.isEmpty || Perf.isPlancheName(ex)) {
+                          if (ex.isEmpty) {
                             return const SizedBox.shrink();
                           }
                           final ins = _insight(ex);
                           final todaySets =
                               _todayPerfs.where((p) => p.exercice == ex);
-                          final today = todaySets.fold(
-                              0.0, (s, p) => s + p.performance);
+                          final today = _todayVolume(todaySets, ex);
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 12),
                             child: _InsightLine(
                                 insight: ins,
                                 todayVolume: today,
                                 todaySets: todaySets.length,
+                                unit: Perf.isPlancheName(ex) ? ' pts' : '',
                                 nbDaysAvg: _nbDaysAvg),
                           );
                         },
@@ -1018,7 +1042,8 @@ class _SaisieScreenState extends State<SaisieScreen> {
                         const SizedBox(height: 12),
                       ],
 
-                      // Options planche (repliables)
+                      // Options planche : uniquement pour la planche
+                      if (Perf.isPlancheName(_exerciceCtrl.text)) ...[
                       GestureDetector(
                         onTap: () =>
                             setState(() => _showOptions = !_showOptions),
@@ -1099,6 +1124,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
                             ),
                           ],
                         ),
+                      ],
                       ],
                       const SizedBox(height: 16),
 
@@ -1209,12 +1235,14 @@ class _InsightLine extends StatelessWidget {
   final double todayVolume;
   final int todaySets;
   final int nbDaysAvg;
+  final String unit; // ' pts' pour la planche
 
   const _InsightLine(
       {required this.insight,
       required this.todayVolume,
       required this.todaySets,
-      required this.nbDaysAvg});
+      required this.nbDaysAvg,
+      this.unit = ''});
 
   static String _n(double v) =>
       v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(1);
@@ -1238,12 +1266,12 @@ class _InsightLine extends StatelessWidget {
       spacing: 12,
       runSpacing: 4,
       children: [
-        Text('🏆 Record série : ${_n(ins.prSerie)}', style: style),
+        Text('🏆 Record série : ${_n(ins.prSerie)}$unit', style: style),
         Text('Moy. ${nbDaysAvg < ins.sessions ? nbDaysAvg : ins.sessions} '
-            'séances : ${_n(ins.avgVolume)}', style: style),
+            'séances : ${_n(ins.avgVolume)}$unit', style: style),
         if (todaySets > 0)
           Text(
-            "Aujourd'hui : ${_n(todayVolume)}"
+            "Aujourd'hui : ${_n(todayVolume)}$unit"
             '${delta == null ? '' : ' (${delta >= 0 ? '+' : ''}${delta.round()} % vs moy.)'}',
             style: style?.copyWith(
                 fontWeight: FontWeight.w600,
