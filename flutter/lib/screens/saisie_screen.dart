@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -35,6 +36,9 @@ class _SaisieScreenState extends State<SaisieScreen> {
   String _forme = 'Normal';
   String _elastique = 'Aucun';
   String _tension = 'N/A';
+  String _ecartement = 'Standard';
+  Set<String> _assistables = {}; // exercices assistables (user_settings)
+  Map<String, double>? _ecartementsCfg;
   String _unite = 'Sec';
   bool _showOptions = false;
 
@@ -166,8 +170,24 @@ class _SaisieScreenState extends State<SaisieScreen> {
     setState(() => _addedCards.add(name));
   }
 
+  /// Une carte par exercice (planche comprise). L'exercice ouvert dans la
+  /// carte principale n'est pas répété ; les exercices terminés descendent
+  /// en bas de la liste, les restants restent en haut (rotation logique).
   List<Widget> _buildCards() {
-    final names = cardExercises(_previous, _todayPerfs, _addedCards);
+    final all = cardExercises(_previous, _todayPerfs, _addedCards,
+        includePlanche: true);
+    final selected = _exerciceCtrl.text.trim();
+    bool finished(String ex) {
+      final t = _templateFor(ex);
+      final d = _doneToday(ex);
+      return t != null ? d >= t.series.length : d > 0;
+    }
+
+    final shown = all.where((e) => e != selected).toList();
+    final names = [
+      ...shown.where((e) => !finished(e)),
+      ...shown.where(finished),
+    ];
     return [
       for (final ex in names)
         Padding(
@@ -184,10 +204,12 @@ class _SaisieScreenState extends State<SaisieScreen> {
             insight: _cardInsight(ex),
             done: _doneToday(ex),
             onSave: (vals) => _saveCard(ex, vals),
+            // Planche et exercices assistables : options → carte principale.
+            onOpen: _usesPoints(ex) ? () => _pickExercise(ex) : null,
           ),
         ),
       OutlinedButton.icon(
-        onPressed: () => _addCard(names),
+        onPressed: () => _addCard(all),
         icon: const Icon(Icons.add),
         label: const Text('Ajouter un exercice'),
       ),
@@ -212,8 +234,9 @@ class _SaisieScreenState extends State<SaisieScreen> {
     final sets = _todayPerfs.where((p) => p.exercice == ex);
     return _InsightLine(
         insight: ins,
-        todayVolume: sets.fold(0.0, (s, p) => s + p.performance),
+        todayVolume: _todayVolume(sets, ex),
         todaySets: sets.length,
+        unit: _unitFor(ex),
         nbDaysAvg: _nbDaysAvg);
   }
 
@@ -222,7 +245,9 @@ class _SaisieScreenState extends State<SaisieScreen> {
 
   /// Choisir un exercice : reprend ce qui a été fait la dernière fois
   /// (séance précédente, sinon dernière séance où il apparaît).
-  void _pickExercise(String ex) {
+  Future<void> _pickExercise(String ex) async {
+    await _flushPending();
+    if (!mounted) return;
     final t = _templateFor(ex) ?? lastTemplateFor(_history, ex, _date);
     if (t != null) {
       _applyTemplate(t);
@@ -325,9 +350,38 @@ class _SaisieScreenState extends State<SaisieScreen> {
     }
   }
 
+  bool _isAssistable(String ex) =>
+      !Perf.isPlancheName(ex) && _assistables.contains(ex.trim());
+
+  /// Planche et exercices assistables : indicateurs en points d'effort.
+  bool _usesPoints(String ex) => Perf.isPlancheName(ex) || _isAssistable(ex);
+  String _unitFor(String ex) => _usesPoints(ex) ? ' pts' : '';
+
+  /// Effort d'une série, non arrondi (recalculé depuis ses paramètres pour
+  /// les exercices assistables : l'historique est donc toujours cohérent).
+  double _effortValue(Perf p) => Perf.isPlancheName(p.exercice)
+      ? (p.effortPondere ?? 0).toDouble()
+      : effortAssisteExact(
+          reps: p.performance,
+          lest: p.charge,
+          elastique: p.elastique,
+          tension: p.tension,
+          ecartement: p.ecartement,
+          weight: _weight,
+          elastiquesMap: _elastiquesCfg,
+          tensions: _tensionsCfg,
+          ecartements: _ecartementsCfg,
+        );
+
   ExerciseInsight? _insight(String exercice) => insightFor(
       _history.where((p) => p.exercice == exercice).toList(), _date,
-      nbDaysAvg: _nbDaysAvg);
+      nbDaysAvg: _nbDaysAvg,
+      valueOf: _usesPoints(exercice) ? _effortValue : null);
+
+  /// Volume du jour d'un exercice, dans la même unité que [_insight].
+  double _todayVolume(Iterable<Perf> sets, String exercice) => sets.fold(
+      0.0,
+      (s, p) => s + (_usesPoints(exercice) ? _effortValue(p) : p.performance));
 
   Future<void> _loadWeight() async {
     final settings = await SupabaseService.instance.getSettings(widget.userId);
@@ -341,6 +395,10 @@ class _SaisieScreenState extends State<SaisieScreen> {
         _elastiquesCfg =
             mergeConfig(settings['elastiques_config'], kElastiques);
         _tensionsCfg = mergeConfig(settings['tensions_config'], kTensions);
+        _ecartementsCfg =
+            mergeConfig(settings['ecartements_config'], kEcartements);
+        final a = settings['assistable_exercises'];
+        _assistables = a is List ? a.map((e) => '$e'.trim()).toSet() : {};
       });
     }
   }
@@ -355,12 +413,27 @@ class _SaisieScreenState extends State<SaisieScreen> {
         _showOptions = true;
         _unite = 'Sec';
       });
+    } else if (!planche) {
+      // Plus la planche : options masquées et remises à zéro, pour qu'elles
+      // ne soient jamais enregistrées avec un autre exercice.
+      setState(() {
+        _showOptions = false;
+        _variante = 'Full';
+        _forme = 'Normal';
+        if (!_isAssistable(text)) {
+          _elastique = 'Aucun';
+          _tension = 'N/A';
+          _ecartement = 'Standard';
+        }
+      });
     }
   }
 
-  void _setDate(DateTime d) {
+  Future<void> _setDate(DateTime d) async {
     final day = DateTime(d.year, d.month, d.day);
     if (day == DateTime(_date.year, _date.month, _date.day)) return;
+    await _flushPending();
+    if (!mounted) return;
     setState(() => _date = day);
     _loadTodayPerfs();
     _loadPrevious();
@@ -441,7 +514,28 @@ class _SaisieScreenState extends State<SaisieScreen> {
     }
   }
 
+  /// Enregistrement automatique : 3 s après la dernière frappe, ou dès
+  /// qu'on change d'exercice / de jour.
+  Timer? _autoTimer;
+
+  void _scheduleAutoSave(String _) {
+    _autoTimer?.cancel();
+    if (_chargeCtrl.text.trim().isEmpty) return;
+    _autoTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted && !_saving) _save();
+    });
+  }
+
+  /// Enregistre tout de suite une saisie en attente (avant un changement).
+  Future<void> _flushPending() async {
+    if (_autoTimer?.isActive ?? false) {
+      _autoTimer!.cancel();
+      if (!_saving && _chargeCtrl.text.trim().isNotEmpty) await _save();
+    }
+  }
+
   Future<void> _save() async {
+    _autoTimer?.cancel();
     if (!_fb.currentState!.validate()) return;
     if (_exerciceCtrl.text.trim().isEmpty) {
       _snack('Renseignez un exercice', error: true);
@@ -462,6 +556,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
 
     final exercice = _exerciceCtrl.text.trim();
     final planche = Perf.isPlancheName(exercice);
+    final assist = _isAssistable(exercice);
     final categorie = _categorie != null && _categorieExo == exercice
         ? _categorie!
         : (_unite == 'Sec' ? 'Force Iso' : 'Musculation');
@@ -477,16 +572,29 @@ class _SaisieScreenState extends State<SaisieScreen> {
           userId: widget.userId,
           date: _date,
           exercice: exercice,
-          variante: _variante,
-          forme: _forme,
+          variante: planche ? _variante : 'Full',
+          forme: planche ? _forme : 'Normal',
           serie: _serie + i,
           performance: valeurs[i],
           charge: lest,
           unite: _unite,
           categorie: categorie,
-          elastique: _elastique,
-          tension: _tension,
-          effortPondere: planche
+          elastique: (planche || assist) ? _elastique : 'Aucun',
+          tension: (planche || assist) ? _tension : 'N/A',
+          ecartement: assist ? _ecartement : 'N/A',
+          effortPondere: assist
+              ? calculerEffortAssiste(
+                  reps: valeurs[i],
+                  lest: lest,
+                  elastique: _elastique,
+                  tension: _tension,
+                  ecartement: _ecartement,
+                  weight: _weight,
+                  elastiquesMap: _elastiquesCfg,
+                  tensions: _tensionsCfg,
+                  ecartements: _ecartementsCfg,
+                )
+              : planche
               ? calculerEffort(
                   variante: _variante,
                   elastique: _elastique,
@@ -504,7 +612,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
     ];
 
     // Nouveau record en une série ? (hors planche : son record est l'effort)
-    final ins = planche ? null : _insight(exercice);
+    final ins = _usesPoints(exercice) ? null : _insight(exercice);
     final best = valeurs.reduce((a, b) => a > b ? a : b);
     final newPr = ins != null && ins.prSerie > 0 && best > ins.prSerie;
 
@@ -530,6 +638,73 @@ class _SaisieScreenState extends State<SaisieScreen> {
               : 'Enregistré ✓');
     } catch (e) {
       setState(() => _saving = false);
+      _snack('Erreur : $e', error: true);
+    }
+  }
+
+  /// Corrige une série déjà enregistrée (ex. rajouter des reps).
+  Future<void> _editPerf(Perf p) async {
+    if (p.id == null) return;
+    final ctrl = TextEditingController(text: _num(p.performance));
+    final v = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('${p.exercice} · S${p.serie}'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))],
+          decoration: InputDecoration(
+              labelText: p.unite == 'Sec' ? 'Temps (s)' : 'Valeur'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+          TextButton(
+            onPressed: () => Navigator.pop(
+                ctx, double.tryParse(ctrl.text.replaceAll(',', '.'))),
+            child: const Text('Valider'),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (v == null || v <= 0 || v == p.performance) return;
+    try {
+      await SupabaseService.instance.updatePerfValue(
+        p.id!,
+        v,
+        effortPondere: _isAssistable(p.exercice)
+            ? calculerEffortAssiste(
+                reps: v,
+                lest: p.charge,
+                elastique: p.elastique,
+                tension: p.tension,
+                ecartement: p.ecartement,
+                weight: _weight,
+                elastiquesMap: _elastiquesCfg,
+                tensions: _tensionsCfg,
+                ecartements: _ecartementsCfg,
+              )
+            : p.isPlanche
+            ? calculerEffort(
+                variante: p.variante,
+                elastique: p.elastique,
+                tension: p.tension,
+                forme: p.forme,
+                temps: v,
+                weight: _weight,
+                variantes: _variantesCfg,
+                formes: _formesCfg,
+                elastiquesMap: _elastiquesCfg,
+                tensions: _tensionsCfg,
+              )
+            : null,
+      );
+      await _loadTodayPerfs();
+      _loadHistory();
+    } catch (e) {
       _snack('Erreur : $e', error: true);
     }
   }
@@ -585,6 +760,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
 
   @override
   void dispose() {
+    _autoTimer?.cancel();
     dataVersion.removeListener(_onDataChanged);
     _exerciceCtrl.dispose();
     _chargeCtrl.dispose();
@@ -775,7 +951,13 @@ class _SaisieScreenState extends State<SaisieScreen> {
                                     constraints:
                                         const BoxConstraints(maxWidth: 180),
                                     child: Text(names[i],
-                                        overflow: TextOverflow.ellipsis),
+                                        overflow: TextOverflow.ellipsis,
+                                        // Bleu : déjà fait pendant la séance.
+                                        style: _doneToday(names[i]) > 0
+                                            ? const TextStyle(
+                                                color: AppTheme.primaryBlue,
+                                                fontWeight: FontWeight.w700)
+                                            : null),
                                   ),
                                   showCheckmark: false,
                                   tooltip: names[i],
@@ -795,20 +977,20 @@ class _SaisieScreenState extends State<SaisieScreen> {
                         listenable: _exerciceCtrl,
                         builder: (context, _) {
                           final ex = _exerciceCtrl.text.trim();
-                          if (ex.isEmpty || Perf.isPlancheName(ex)) {
+                          if (ex.isEmpty) {
                             return const SizedBox.shrink();
                           }
                           final ins = _insight(ex);
                           final todaySets =
                               _todayPerfs.where((p) => p.exercice == ex);
-                          final today = todaySets.fold(
-                              0.0, (s, p) => s + p.performance);
+                          final today = _todayVolume(todaySets, ex);
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 12),
                             child: _InsightLine(
                                 insight: ins,
                                 todayVolume: today,
                                 todaySets: todaySets.length,
+                                unit: _unitFor(ex),
                                 nbDaysAvg: _nbDaysAvg),
                           );
                         },
@@ -883,9 +1065,10 @@ class _SaisieScreenState extends State<SaisieScreen> {
                                         ? 'Répétitions'
                                         : 'Poids (kg)',
                                 hintText: 'ex. 12 10 8',
-                                helperText: 'Plusieurs séries : 12/10/8',
+                                helperText: 'Enregistré après 3 s',
                                 helperStyle: const TextStyle(fontSize: 10),
                               ),
+                              onChanged: _scheduleAutoSave,
                               validator: (v) {
                                 if (v == null || v.trim().isEmpty) {
                                   return 'Requis';
@@ -929,7 +1112,8 @@ class _SaisieScreenState extends State<SaisieScreen> {
                         const SizedBox(height: 12),
                       ],
 
-                      // Options planche (repliables)
+                      // Options planche : uniquement pour la planche
+                      if (Perf.isPlancheName(_exerciceCtrl.text)) ...[
                       GestureDetector(
                         onTap: () =>
                             setState(() => _showOptions = !_showOptions),
@@ -1011,6 +1195,47 @@ class _SaisieScreenState extends State<SaisieScreen> {
                           ],
                         ),
                       ],
+                      ],
+                      // Exercice assistable : élastique, tension, écartement
+                      if (_isAssistable(_exerciceCtrl.text)) ...[
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _DropdownField<String>(
+                                label: 'Élastique',
+                                value: _elastique,
+                                items: (_elastiquesCfg ?? kElastiques)
+                                    .keys
+                                    .toList(),
+                                onChanged: (v) =>
+                                    setState(() => _elastique = v ?? 'Aucun'),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _DropdownField<String>(
+                                label: 'Tension',
+                                value: _tension,
+                                items: (_tensionsCfg ?? kTensions)
+                                    .keys
+                                    .toList(),
+                                onChanged: (v) =>
+                                    setState(() => _tension = v ?? 'N/A'),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        _DropdownField<String>(
+                          label: 'Écartement des mains',
+                          value: _ecartement,
+                          items:
+                              (_ecartementsCfg ?? kEcartements).keys.toList(),
+                          onChanged: (v) =>
+                              setState(() => _ecartement = v ?? 'Standard'),
+                        ),
+                      ],
                       const SizedBox(height: 16),
 
                       // Bouton Enregistrer
@@ -1022,8 +1247,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
                                 child: CircularProgressIndicator(
                                     strokeWidth: 2, color: Colors.white))
                             : const Icon(Icons.save),
-                        label:
-                            Text(_saving ? 'Enregistrement…' : 'Enregistrer'),
+                        label: Text(_saving ? 'Enregistrement…' : 'Enregistrer maintenant'),
                       ),
                     ],
                   ),
@@ -1059,7 +1283,10 @@ class _SaisieScreenState extends State<SaisieScreen> {
                 separatorBuilder: (_, __) => const SizedBox(height: 8),
                 itemBuilder: (ctx, i) {
                   final p = _todayPerfs[i];
-                  return _PerfTile(perf: p, onDelete: () => _delete(p.id!));
+                  return _PerfTile(
+                      perf: p,
+                      onDelete: () => _delete(p.id!),
+                      onEdit: () => _editPerf(p));
                 },
               ),
             const SizedBox(height: 40),
@@ -1118,12 +1345,14 @@ class _InsightLine extends StatelessWidget {
   final double todayVolume;
   final int todaySets;
   final int nbDaysAvg;
+  final String unit; // ' pts' pour la planche
 
   const _InsightLine(
       {required this.insight,
       required this.todayVolume,
       required this.todaySets,
-      required this.nbDaysAvg});
+      required this.nbDaysAvg,
+      this.unit = ''});
 
   static String _n(double v) =>
       v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(1);
@@ -1147,12 +1376,12 @@ class _InsightLine extends StatelessWidget {
       spacing: 12,
       runSpacing: 4,
       children: [
-        Text('🏆 Record série : ${_n(ins.prSerie)}', style: style),
+        Text('🏆 Record série : ${_n(ins.prSerie)}$unit', style: style),
         Text('Moy. ${nbDaysAvg < ins.sessions ? nbDaysAvg : ins.sessions} '
-            'séances : ${_n(ins.avgVolume)}', style: style),
+            'séances : ${_n(ins.avgVolume)}$unit', style: style),
         if (todaySets > 0)
           Text(
-            "Aujourd'hui : ${_n(todayVolume)}"
+            "Aujourd'hui : ${_n(todayVolume)}$unit"
             '${delta == null ? '' : ' (${delta >= 0 ? '+' : ''}${delta.round()} % vs moy.)'}',
             style: style?.copyWith(
                 fontWeight: FontWeight.w600,
@@ -1196,13 +1425,17 @@ class _Kpi extends StatelessWidget {
 class _PerfTile extends StatelessWidget {
   final Perf perf;
   final VoidCallback onDelete;
+  final VoidCallback onEdit;
 
-  const _PerfTile({required this.perf, required this.onDelete});
+  const _PerfTile(
+      {required this.perf, required this.onDelete, required this.onEdit});
 
   @override
   Widget build(BuildContext context) {
+    // Un appui permet de corriger la série.
     return Card(
       child: ListTile(
+        onTap: perf.id != null ? onEdit : null,
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         leading: CircleAvatar(
           radius: 18,

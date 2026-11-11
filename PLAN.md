@@ -176,3 +176,23 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
 
 - [ ] Garder Streamlit à long terme, ou tout migrer dans Flutter une fois la phase 4 terminée ?
 - [ ] Icône définitive de l'app Flutter
+
+## Phase 7 — Retours de saisie (novembre 2026)
+
+- [x] % de progression vs moyenne des 5 dernières séances, **à série égale** (planche : en points d'effort)
+- [x] Plus de changement d'exercice automatique ; séries ajoutées à la suite depuis les cartes
+- [x] Séries enregistrées corrigeables d'un appui ; autosave 3 s ; exercices faits en bleu dans le slider
+- [x] Cartes : une par exercice, exercice ouvert non répété, terminés en bas ; options planche masquées hors planche
+- [x] Exercices **assistables** (réglage dans « Profils et exercices ») : élastique, tension, écartement des mains
+      (catégories : serré / standard / large / très large). Effort = `reps × (poids effectif / 100)² × coef_écartement^1,2`
+      avec `poids effectif = poids + lest − force élastique × ratio de tension` (même logique que la planche).
+      Colonnes ajoutées : `perfs.ecartement`, `user_settings.assistable_exercises`, `user_settings.ecartements_config`.
+- [ ] Rôles admin / user, validation avant modification de l'algo, export de la base, pop-up de mise à jour + maj auto
+- [ ] Passkey ; module course GPS (à décider)
+
+### Idée gardée pour plus tard — formule « reps équivalentes » (non retenue)
+
+Alternative étudiée pour les exercices assistables, plus simple à comparer aux reps brutes :
+`effort = reps × (poids effectif / poids du corps)^k × coef_écartement`, avec k = 1 par défaut (réglable).
+Sans élastique ni lest, l'effort vaut exactement les reps → l'historique reste directement comparable.
+Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec le reste de l'app.

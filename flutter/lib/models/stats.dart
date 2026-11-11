@@ -273,17 +273,18 @@ class ExerciseInsight {
 /// de la moyenne pour que la comparaison « aujourd'hui vs moyenne » ait un
 /// sens (le web l'incluait).
 ExerciseInsight? insightFor(List<Perf> history, DateTime today,
-    {int nbDaysAvg = 5}) {
+    {int nbDaysAvg = 5, double Function(Perf p)? valueOf}) {
+  final val = valueOf ?? (Perf p) => p.performance;
   final past = history.where((p) => _day(p.date).isBefore(_day(today)));
   if (past.isEmpty) return null;
-  final pr = past.map((p) => p.performance).reduce((a, b) => a > b ? a : b);
+  final pr = past.map(val).reduce((a, b) => a > b ? a : b);
   final byDay = <DateTime, double>{};
   final setsByDay = <DateTime, List<(int, int, double)>>{};
   var order = 0;
   for (final p in past) {
     final d = _day(p.date);
-    byDay[d] = (byDay[d] ?? 0) + p.performance;
-    (setsByDay[d] ??= []).add((p.serie, order++, p.performance));
+    byDay[d] = (byDay[d] ?? 0) + val(p);
+    (setsByDay[d] ??= []).add((p.serie, order++, val(p)));
   }
   final days = byDay.keys.toList()..sort((a, b) => b.compareTo(a));
   final recentDays = days.take(nbDaysAvg).toList();

@@ -225,6 +225,15 @@ class SupabaseService {
     await _db.from('perfs').insert([for (final p in perfs) p.toJson()]);
   }
 
+  /// Corrige la valeur d'une série déjà enregistrée (et son effort).
+  Future<void> updatePerfValue(int id, double performance,
+      {int? effortPondere}) async {
+    await _db.from('perfs').update({
+      'performance': performance,
+      if (effortPondere != null) 'effort_pondere': effortPondere,
+    }).eq('id', id);
+  }
+
   /// Remplace les séries d'un exercice pour un jour (petites cartes de
   /// Saisie, comme les blocs du web) : réenregistrer ne crée pas de doublon.
   Future<void> replaceExerciseOnDate(

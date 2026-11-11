@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import '../models/perf.dart';
 import '../models/profile.dart';
+import '../services/data_events.dart';
 import '../services/session_store.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
@@ -20,6 +22,7 @@ class _ManageScreenState extends State<ManageScreen> {
   final _svc = SupabaseService.instance;
   List<Profile> _profiles = [];
   List<String> _exercices = [];
+  Set<String> _assistables = {};
   bool _loading = true;
   Object? _error;
 
@@ -35,11 +38,14 @@ class _ManageScreenState extends State<ManageScreen> {
       final res = await Future.wait([
         _svc.getProfiles(),
         _svc.getExerciceNames(widget.current.id),
+        _svc.getSettings(widget.current.id),
       ]);
       if (!mounted) return;
       setState(() {
         _profiles = res[0] as List<Profile>;
         _exercices = res[1] as List<String>;
+        final a = (res[2] as Map<String, dynamic>)['assistable_exercises'];
+        _assistables = a is List ? a.map((e) => '$e'.trim()).toSet() : {};
         _loading = false;
       });
     } catch (e) {
@@ -156,9 +162,24 @@ class _ManageScreenState extends State<ManageScreen> {
             'Les séries de « $ex » seront fusionnées dans « $name ».')) {
       return;
     }
-    await _run(() => _svc.renameExercice(widget.current.id, ex, name),
-        '« $ex » → « $name » dans tout l\'historique');
+    await _run(() async {
+      await _svc.renameExercice(widget.current.id, ex, name);
+      if (_assistables.contains(ex)) {
+        await _saveAssistables({..._assistables.where((e) => e != ex), name});
+      }
+    }, '« $ex » → « $name » dans tout l\'historique');
   }
+
+  Future<void> _saveAssistables(Set<String> next) async {
+    await _svc.saveSettings(
+        widget.current.id, {'assistable_exercises': next.toList()..sort()});
+    notifyDataChanged();
+  }
+
+  Future<void> _toggleAssistable(String ex, bool on) => _run(
+      () => _saveAssistables(
+          on ? {..._assistables, ex} : _assistables.where((e) => e != ex).toSet()),
+      on ? '« $ex » : élastique et écartement activés' : '« $ex » : options retirées');
 
   @override
   Widget build(BuildContext context) {
@@ -234,6 +255,27 @@ class _ManageScreenState extends State<ManageScreen> {
                                         size: 20),
                                     onTap: () => _renameExercice(ex),
                                   ),
+                              ],
+                            ),
+                    ),
+                    const SizedBox(height: 24),
+                    Text('Exercices assistables', style: theme.textTheme.titleMedium),
+                    Text('Tractions avec élastique… : ajoute l\'élastique, sa '
+                        'tension et l\'écartement des mains, et pondère l\'effort.',
+                        style: theme.textTheme.bodySmall),
+                    const SizedBox(height: 8),
+                    Card(
+                      child: _exercices.isEmpty
+                          ? const ListTile(title: Text('Aucun exercice'))
+                          : Column(
+                              children: [
+                                for (final ex in _exercices)
+                                  if (!Perf.isPlancheName(ex))
+                                    SwitchListTile(
+                                      title: Text(ex),
+                                      value: _assistables.contains(ex),
+                                      onChanged: (v) => _toggleAssistable(ex, v),
+                                    ),
                               ],
                             ),
                     ),
