@@ -71,15 +71,8 @@ class _SaisieScreenState extends State<SaisieScreen> {
       _loadWeight(),
       _loadHistory(),
     ]);
-    _autoResume();
-  }
-
-  /// La séance précédente est remise directement : le formulaire est
-  /// pré-rempli avec le premier exercice pas encore fait aujourd'hui.
-  void _autoResume() {
-    if (!mounted || _exerciceCtrl.text.trim().isNotEmpty) return;
-    final next = nextPending(_previous, _doneToday);
-    if (next != null) _applyTemplate(next);
+    // Pas de reprise automatique : l'exercice est toujours choisi par
+    // l'utilisateur.
   }
 
   /// Exercices du plus récent au plus ancien (liste « Récents »,
@@ -102,24 +95,22 @@ class _SaisieScreenState extends State<SaisieScreen> {
     final best = vals.reduce((a, b) => a > b ? a : b);
     final newPr = ins != null && ins.prSerie > 0 && best > ins.prSerie;
     try {
-      await SupabaseService.instance.replaceExerciseOnDate(
-        widget.userId,
-        _date,
-        ex,
-        [
-          for (var i = 0; i < vals.length; i++)
-            Perf(
-              userId: widget.userId,
-              date: _date,
-              exercice: ex,
-              serie: i + 1,
-              performance: vals[i],
-              unite: unite,
-              categorie: categorie,
-              effortPondere: 0,
-            ),
-        ],
-      );
+      // Ajoute à la suite des séries déjà saisies : une valeur seule ne doit
+      // jamais écraser les séries précédentes.
+      final done = _doneToday(ex);
+      await SupabaseService.instance.savePerfs([
+        for (var i = 0; i < vals.length; i++)
+          Perf(
+            userId: widget.userId,
+            date: _date,
+            exercice: ex,
+            serie: done + i + 1,
+            performance: vals[i],
+            unite: unite,
+            categorie: categorie,
+            effortPondere: 0,
+          ),
+      ]);
       await _loadTodayPerfs();
       _loadHistory();
       _snack(newPr
@@ -190,6 +181,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
               null => null,
             },
             helper: _cardHelper(ex),
+            insight: _cardInsight(ex),
             done: _doneToday(ex),
             onSave: (vals) => _saveCard(ex, vals),
           ),
@@ -211,6 +203,18 @@ class _SaisieScreenState extends State<SaisieScreen> {
     final date = DateFormat('d MMM', 'fr_FR').format(t.series.first.date);
     return 'Dernière fois le $date'
         '${ins == null ? '' : ' · record série ${_num(ins.prSerie)}'}';
+  }
+
+  /// % vs moyenne des dernières séances, à série égale, sur chaque carte.
+  Widget? _cardInsight(String ex) {
+    final ins = _insight(ex);
+    if (ins == null) return null;
+    final sets = _todayPerfs.where((p) => p.exercice == ex);
+    return _InsightLine(
+        insight: ins,
+        todayVolume: sets.fold(0.0, (s, p) => s + p.performance),
+        todaySets: sets.length,
+        nbDaysAvg: _nbDaysAvg);
   }
 
   List<String> get _recentNames =>
@@ -510,26 +514,17 @@ class _SaisieScreenState extends State<SaisieScreen> {
       _chargeCtrl.clear();
       setState(() => _saving = false);
       await _loadTodayPerfs();
-      // Enchaîner : série suivante du même exercice, pré-remplie si
-      // l'exercice figurait à la séance précédente.
-      // Enchaînement : séries restantes de cet exercice, puis exercice
-      // suivant de la séance précédente.
-      String? suivant;
+      // Série suivante du même exercice, pré-remplie si l'exercice figurait
+      // à la séance précédente. Jamais de changement d'exercice automatique.
       final t = _templateFor(exercice);
       if (t != null && _doneToday(exercice) < t.series.length) {
         _applyTemplate(t);
-      } else if (t != null && nextPending(_previous, _doneToday) != null) {
-        final next = nextPending(_previous, _doneToday)!;
-        _applyTemplate(next);
-        suivant = next.exercice;
       } else if (mounted) {
         setState(() => _serie = _doneToday(exercice) + 1);
       }
       _loadHistory();
       _snack(newPr
           ? '🏆 Nouveau record en série : ${_num(best)} (ancien : ${_num(ins.prSerie)})'
-          : suivant != null
-              ? 'Enregistré ✓ — exercice suivant : $suivant'
           : perfs.length > 1
               ? '${perfs.length} séries enregistrées ✓'
               : 'Enregistré ✓');
@@ -804,13 +799,16 @@ class _SaisieScreenState extends State<SaisieScreen> {
                             return const SizedBox.shrink();
                           }
                           final ins = _insight(ex);
-                          final today = _todayPerfs
-                              .where((p) => p.exercice == ex)
-                              .fold(0.0, (s, p) => s + p.performance);
+                          final todaySets =
+                              _todayPerfs.where((p) => p.exercice == ex);
+                          final today = todaySets.fold(
+                              0.0, (s, p) => s + p.performance);
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 12),
                             child: _InsightLine(
-                                insight: ins, todayVolume: today,
+                                insight: ins,
+                                todayVolume: today,
+                                todaySets: todaySets.length,
                                 nbDaysAvg: _nbDaysAvg),
                           );
                         },
@@ -1118,10 +1116,14 @@ class _KpiRow extends StatelessWidget {
 class _InsightLine extends StatelessWidget {
   final ExerciseInsight? insight;
   final double todayVolume;
+  final int todaySets;
   final int nbDaysAvg;
 
   const _InsightLine(
-      {required this.insight, required this.todayVolume, required this.nbDaysAvg});
+      {required this.insight,
+      required this.todayVolume,
+      required this.todaySets,
+      required this.nbDaysAvg});
 
   static String _n(double v) =>
       v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(1);
@@ -1137,7 +1139,10 @@ class _InsightLine extends StatelessWidget {
         Text('Nouvel exercice', style: style),
       ]);
     }
-    final delta = todayVolume > 0 ? ins.deltaPct(todayVolume) : null;
+    // À série égale : « 3 séries aujourd'hui » vs « 3 premières séries » des
+    // dernières séances (moyenne), pas vs une séance complète.
+    final delta =
+        todaySets > 0 ? ins.deltaPctAtSets(todayVolume, todaySets) : null;
     return Wrap(
       spacing: 12,
       runSpacing: 4,
@@ -1145,10 +1150,10 @@ class _InsightLine extends StatelessWidget {
         Text('🏆 Record série : ${_n(ins.prSerie)}', style: style),
         Text('Moy. ${nbDaysAvg < ins.sessions ? nbDaysAvg : ins.sessions} '
             'séances : ${_n(ins.avgVolume)}', style: style),
-        if (todayVolume > 0)
+        if (todaySets > 0)
           Text(
             "Aujourd'hui : ${_n(todayVolume)}"
-            '${delta == null ? '' : ' (${delta >= 0 ? '+' : ''}${delta.round()} %)'}',
+            '${delta == null ? '' : ' (${delta >= 0 ? '+' : ''}${delta.round()} % vs moy.)'}',
             style: style?.copyWith(
                 fontWeight: FontWeight.w600,
                 color: (delta ?? 0) >= 0

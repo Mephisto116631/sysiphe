@@ -239,11 +239,34 @@ class ExerciseInsight {
   final double prSerie;
   final double avgVolume; // 0 si pas d'historique
   final int sessions;
-  const ExerciseInsight(this.prSerie, this.avgVolume, this.sessions);
+
+  /// Séries (dans l'ordre) des [nbDaysAvg] dernières séances : sert à comparer
+  /// « à série égale » pendant la séance.
+  final List<List<double>> recent;
+  const ExerciseInsight(this.prSerie, this.avgVolume, this.sessions,
+      {this.recent = const []});
 
   /// Écart en % d'un volume par rapport à la moyenne (null sans moyenne).
   double? deltaPct(double volume) =>
       avgVolume > 0 ? (volume / avgVolume - 1) * 100 : null;
+
+  /// Volume moyen cumulé après [nSets] séries sur les dernières séances
+  /// (une séance plus courte compte pour son total). 0 sans historique.
+  double avgVolumeAt(int nSets) {
+    if (recent.isEmpty || nSets <= 0) return 0;
+    final sums = recent
+        .map((s) => s.take(nSets).fold(0.0, (a, b) => a + b))
+        .toList();
+    return sums.reduce((a, b) => a + b) / sums.length;
+  }
+
+  /// Écart en % du cumul du jour ([volume] après [nSets] séries) par rapport
+  /// à la moyenne cumulée au même nombre de séries. Pas de faux négatif en
+  /// cours de séance. Null sans référence.
+  double? deltaPctAtSets(double volume, int nSets) {
+    final ref = avgVolumeAt(nSets);
+    return ref > 0 ? (volume / ref - 1) * 100 : null;
+  }
 }
 
 /// [history] : séries passées de l'exercice. La séance du jour est exclue
@@ -255,13 +278,27 @@ ExerciseInsight? insightFor(List<Perf> history, DateTime today,
   if (past.isEmpty) return null;
   final pr = past.map((p) => p.performance).reduce((a, b) => a > b ? a : b);
   final byDay = <DateTime, double>{};
+  final setsByDay = <DateTime, List<(int, int, double)>>{};
+  var order = 0;
   for (final p in past) {
-    byDay[_day(p.date)] = (byDay[_day(p.date)] ?? 0) + p.performance;
+    final d = _day(p.date);
+    byDay[d] = (byDay[d] ?? 0) + p.performance;
+    (setsByDay[d] ??= []).add((p.serie, order++, p.performance));
   }
   final days = byDay.keys.toList()..sort((a, b) => b.compareTo(a));
-  final recent = days.take(nbDaysAvg).map((d) => byDay[d]!).toList();
+  final recentDays = days.take(nbDaysAvg).toList();
+  final recent = recentDays.map((d) => byDay[d]!).toList();
   final avg = recent.reduce((a, b) => a + b) / recent.length;
-  return ExerciseInsight(pr, avg, byDay.length);
+  final recentSets = [
+    for (final d in recentDays)
+      [
+        for (final t in (setsByDay[d]!
+          ..sort((a, b) =>
+              a.$1 != b.$1 ? a.$1.compareTo(b.$1) : a.$2.compareTo(b.$2))))
+          t.$3
+      ]
+  ];
+  return ExerciseInsight(pr, avg, byDay.length, recent: recentSets);
 }
 
 // ─── Records (onglet Records du web) ───────────────────────────────────────

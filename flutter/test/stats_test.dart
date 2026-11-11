@@ -160,6 +160,15 @@ void main() {
     test('fenêtre des N dernières séances', () {
       expect(insightFor(h, DateTime(2026, 7, 5), nbDaysAvg: 1)!.avgVolume, 22);
     });
+    test('% à série égale (cumul des N premières séries)', () {
+      final i = insightFor(h, DateTime(2026, 7, 5))!;
+      // Après 1 série : moyenne (10 + 12) / 2 = 11 ; après 2 : (18 + 22) / 2 = 20.
+      expect(i.avgVolumeAt(1), 11);
+      expect(i.avgVolumeAt(2), 20);
+      expect(i.avgVolumeAt(5), 20); // séances plus courtes : total
+      expect(i.deltaPctAtSets(22, 1), closeTo(100, 1e-9));
+      expect(i.deltaPctAtSets(11, 1), closeTo(0, 1e-9));
+    });
     test('pas d\'historique', () => expect(insightFor(h, DateTime(2026, 7, 1)), isNull));
     test('séances du mois', () => expect(sessionsInMonth(h, DateTime(2026, 7, 20)), 3));
   });
