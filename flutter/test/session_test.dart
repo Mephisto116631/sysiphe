@@ -111,6 +111,13 @@ void main() {
       expect(cardExercises(t, today, ['Traction', 'Dips', ' planche ']),
           ['Pompe', 'Abdos', 'Dips', 'Traction']);
     });
+    test('avec includePlanche : une seule carte planche, à sa place', () {
+      final today = [at(10, 'Dips', 12), at(11, 'Pompe', 25)];
+      expect(
+          cardExercises(t, today, ['Traction', 'Dips', ' planche '],
+              includePlanche: true),
+          ['Pompe', 'Planche', 'Abdos', 'Dips', 'Traction']);
+    });
     test('indice gris au format de saisie rapide', () {
       expect(seriesHint(t.firstWhere((e) => e.exercice == 'Abdos')), '30/40');
     });

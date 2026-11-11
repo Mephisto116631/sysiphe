@@ -167,8 +167,24 @@ class _SaisieScreenState extends State<SaisieScreen> {
     setState(() => _addedCards.add(name));
   }
 
+  /// Une carte par exercice (planche comprise). L'exercice ouvert dans la
+  /// carte principale n'est pas répété ; les exercices terminés descendent
+  /// en bas de la liste, les restants restent en haut (rotation logique).
   List<Widget> _buildCards() {
-    final names = cardExercises(_previous, _todayPerfs, _addedCards);
+    final all = cardExercises(_previous, _todayPerfs, _addedCards,
+        includePlanche: true);
+    final selected = _exerciceCtrl.text.trim();
+    bool finished(String ex) {
+      final t = _templateFor(ex);
+      final d = _doneToday(ex);
+      return t != null ? d >= t.series.length : d > 0;
+    }
+
+    final shown = all.where((e) => e != selected).toList();
+    final names = [
+      ...shown.where((e) => !finished(e)),
+      ...shown.where(finished),
+    ];
     return [
       for (final ex in names)
         Padding(
@@ -185,10 +201,12 @@ class _SaisieScreenState extends State<SaisieScreen> {
             insight: _cardInsight(ex),
             done: _doneToday(ex),
             onSave: (vals) => _saveCard(ex, vals),
+            // Planche : options variante / forme / élastique → carte principale.
+            onOpen: Perf.isPlancheName(ex) ? () => _pickExercise(ex) : null,
           ),
         ),
       OutlinedButton.icon(
-        onPressed: () => _addCard(names),
+        onPressed: () => _addCard(all),
         icon: const Icon(Icons.add),
         label: const Text('Ajouter un exercice'),
       ),

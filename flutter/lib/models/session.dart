@@ -114,14 +114,19 @@ ExerciseTemplate? nextPending(
 
 /// Exercices des petites cartes de Saisie, dans l'ordre : ceux de la
 /// séance reprise, puis ceux déjà faits aujourd'hui qui n'y étaient pas,
-/// puis ceux ajoutés à la main. Sans doublon ; la planche garde la carte
-/// principale (options variante / forme / élastique).
+/// puis ceux ajoutés à la main. Sans doublon. La planche (options variante /
+/// forme / élastique, saisie dans la carte principale) n'est incluse que
+/// avec [includePlanche] : sa carte sert alors à l'ouvrir dans la principale.
 List<String> cardExercises(List<ExerciseTemplate> templates,
-    Iterable<Perf> today, Iterable<String> added) {
+    Iterable<Perf> today, Iterable<String> added,
+    {bool includePlanche = false}) {
   final out = <String>[];
   void add(String ex) {
     final e = ex.trim();
-    if (e.isEmpty || Perf.isPlancheName(e) || out.contains(e)) return;
+    if (e.isEmpty || out.contains(e)) return;
+    if (Perf.isPlancheName(e) && (!includePlanche || out.any(Perf.isPlancheName))) {
+      return;
+    }
     out.add(e);
   }
 

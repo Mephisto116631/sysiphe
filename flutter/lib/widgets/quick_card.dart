@@ -15,6 +15,10 @@ class QuickCard extends StatefulWidget {
   final int done; // séries déjà enregistrées aujourd'hui
   final Future<bool> Function(List<double>) onSave;
 
+  /// Non nul : carte « à ouvrir » (ex. la planche, qui se saisit dans la
+  /// carte principale) — pas de champ de saisie, un bouton Ouvrir.
+  final VoidCallback? onOpen;
+
   const QuickCard({
     super.key,
     required this.exercice,
@@ -24,6 +28,7 @@ class QuickCard extends StatefulWidget {
     this.insight,
     required this.done,
     required this.onSave,
+    this.onOpen,
   });
 
   @override
@@ -108,6 +113,23 @@ class _QuickCardState extends State<QuickCard> {
               const SizedBox(height: 6),
               widget.insight!,
             ],
+            if (widget.onOpen != null) ...[
+              if (widget.helper != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(widget.helper!,
+                      style: const TextStyle(
+                          color: AppTheme.textSecondary, fontSize: 12)),
+                ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: widget.onOpen,
+                  icon: const Icon(Icons.open_in_new, size: 18),
+                  label: const Text('Ouvrir'),
+                ),
+              ),
+            ] else ...[
             const SizedBox(height: 8),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -165,6 +187,7 @@ class _QuickCardState extends State<QuickCard> {
                 ),
               ],
             ),
+            ],
           ],
         ),
       ),
