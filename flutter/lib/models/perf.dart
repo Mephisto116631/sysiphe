@@ -18,6 +18,7 @@ class Perf {
   final String categorie; // "Force Iso" | "Musculation"
   final String elastique;
   final String tension;
+  final String ecartement; // écart des mains (exercices assistables)
   final int? effortPondere;
 
   const Perf({
@@ -34,6 +35,7 @@ class Perf {
     this.categorie = 'Musculation',
     this.elastique = 'Aucun',
     this.tension = 'N/A',
+    this.ecartement = 'N/A',
     this.effortPondere,
   });
 
@@ -51,6 +53,7 @@ class Perf {
         categorie: (json['categorie'] as String?)?.trim() ?? 'Musculation',
         elastique: (json['elastique'] as String?)?.trim() ?? 'Aucun',
         tension: (json['tension'] as String?)?.trim() ?? 'N/A',
+        ecartement: (json['ecartement'] as String?)?.trim() ?? 'N/A',
         effortPondere: (json['effort_pondere'] as num?)?.toInt(),
       );
 
@@ -67,6 +70,7 @@ class Perf {
         'categorie': categorie,
         'elastique': elastique,
         'tension': tension,
+        'ecartement': ecartement,
         'effort_pondere': effortPondere ?? 0,
       };
 
@@ -119,6 +123,64 @@ const kTensions = {
   'Normal': 0.70,
   'Serré': 0.60,
 };
+
+/// Écartement des mains (catégories) → coefficient de difficulté. Réglable
+/// via user_settings.ecartements_config.
+const kEcartements = {
+  'Serré': 1.0,
+  'Standard': 1.0,
+  'Large': 1.15,
+  'Très large': 1.3,
+};
+
+/// Effort d'un exercice assistable (tractions avec élastique…), non arrondi :
+/// même logique que la planche, adaptée aux répétitions —
+///   poids effectif = poids + lest − force élastique × ratio de tension
+///   effort = reps × (poids effectif / 100)² × coefficient d'écartement^1,2
+double effortAssisteExact({
+  required double reps,
+  required String elastique,
+  required String tension,
+  required String ecartement,
+  required double weight,
+  double lest = 0,
+  Map<String, double>? elastiquesMap,
+  Map<String, double>? tensions,
+  Map<String, double>? ecartements,
+}) {
+  if (reps <= 0) return 0;
+  final forceE = (elastiquesMap ?? kElastiques)[elastique] ?? 0.0;
+  final ratioT = (tensions ?? kTensions)[tension] ?? 0.70;
+  final coef = (ecartements ?? kEcartements)[ecartement] ?? 1.0;
+  final poidsEff = weight + lest - forceE * ratioT;
+  if (poidsEff <= 0) return 0;
+  return reps *
+      math.pow(poidsEff / 100, 2).toDouble() *
+      math.pow(coef, 1.2).toDouble();
+}
+
+int calculerEffortAssiste({
+  required double reps,
+  required String elastique,
+  required String tension,
+  required String ecartement,
+  required double weight,
+  double lest = 0,
+  Map<String, double>? elastiquesMap,
+  Map<String, double>? tensions,
+  Map<String, double>? ecartements,
+}) =>
+    effortAssisteExact(
+      reps: reps,
+      elastique: elastique,
+      tension: tension,
+      ecartement: ecartement,
+      weight: weight,
+      lest: lest,
+      elastiquesMap: elastiquesMap,
+      tensions: tensions,
+      ecartements: ecartements,
+    ).round();
 
 /// Fusionne une config JSONB stockée (user_settings) avec les valeurs par
 /// défaut, comme load_user_settings() côté Python : les clés absentes ou non

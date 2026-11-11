@@ -36,6 +36,9 @@ class _SaisieScreenState extends State<SaisieScreen> {
   String _forme = 'Normal';
   String _elastique = 'Aucun';
   String _tension = 'N/A';
+  String _ecartement = 'Standard';
+  Set<String> _assistables = {}; // exercices assistables (user_settings)
+  Map<String, double>? _ecartementsCfg;
   String _unite = 'Sec';
   bool _showOptions = false;
 
@@ -201,8 +204,8 @@ class _SaisieScreenState extends State<SaisieScreen> {
             insight: _cardInsight(ex),
             done: _doneToday(ex),
             onSave: (vals) => _saveCard(ex, vals),
-            // Planche : options variante / forme / élastique → carte principale.
-            onOpen: Perf.isPlancheName(ex) ? () => _pickExercise(ex) : null,
+            // Planche et exercices assistables : options → carte principale.
+            onOpen: _usesPoints(ex) ? () => _pickExercise(ex) : null,
           ),
         ),
       OutlinedButton.icon(
@@ -233,7 +236,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
         insight: ins,
         todayVolume: _todayVolume(sets, ex),
         todaySets: sets.length,
-        unit: Perf.isPlancheName(ex) ? ' pts' : '',
+        unit: _unitFor(ex),
         nbDaysAvg: _nbDaysAvg);
   }
 
@@ -347,22 +350,38 @@ class _SaisieScreenState extends State<SaisieScreen> {
     }
   }
 
-  /// Planche : indicateurs en points d'effort ; sinon en reps / secondes.
+  bool _isAssistable(String ex) =>
+      !Perf.isPlancheName(ex) && _assistables.contains(ex.trim());
+
+  /// Planche et exercices assistables : indicateurs en points d'effort.
+  bool _usesPoints(String ex) => Perf.isPlancheName(ex) || _isAssistable(ex);
+  String _unitFor(String ex) => _usesPoints(ex) ? ' pts' : '';
+
+  /// Effort d'une série, non arrondi (recalculé depuis ses paramètres pour
+  /// les exercices assistables : l'historique est donc toujours cohérent).
+  double _effortValue(Perf p) => Perf.isPlancheName(p.exercice)
+      ? (p.effortPondere ?? 0).toDouble()
+      : effortAssisteExact(
+          reps: p.performance,
+          lest: p.charge,
+          elastique: p.elastique,
+          tension: p.tension,
+          ecartement: p.ecartement,
+          weight: _weight,
+          elastiquesMap: _elastiquesCfg,
+          tensions: _tensionsCfg,
+          ecartements: _ecartementsCfg,
+        );
+
   ExerciseInsight? _insight(String exercice) => insightFor(
       _history.where((p) => p.exercice == exercice).toList(), _date,
       nbDaysAvg: _nbDaysAvg,
-      valueOf: Perf.isPlancheName(exercice)
-          ? (p) => (p.effortPondere ?? 0).toDouble()
-          : null);
+      valueOf: _usesPoints(exercice) ? _effortValue : null);
 
   /// Volume du jour d'un exercice, dans la même unité que [_insight].
   double _todayVolume(Iterable<Perf> sets, String exercice) => sets.fold(
       0.0,
-      (s, p) =>
-          s +
-          (Perf.isPlancheName(exercice)
-              ? (p.effortPondere ?? 0).toDouble()
-              : p.performance));
+      (s, p) => s + (_usesPoints(exercice) ? _effortValue(p) : p.performance));
 
   Future<void> _loadWeight() async {
     final settings = await SupabaseService.instance.getSettings(widget.userId);
@@ -376,6 +395,10 @@ class _SaisieScreenState extends State<SaisieScreen> {
         _elastiquesCfg =
             mergeConfig(settings['elastiques_config'], kElastiques);
         _tensionsCfg = mergeConfig(settings['tensions_config'], kTensions);
+        _ecartementsCfg =
+            mergeConfig(settings['ecartements_config'], kEcartements);
+        final a = settings['assistable_exercises'];
+        _assistables = a is List ? a.map((e) => '$e'.trim()).toSet() : {};
       });
     }
   }
@@ -397,8 +420,11 @@ class _SaisieScreenState extends State<SaisieScreen> {
         _showOptions = false;
         _variante = 'Full';
         _forme = 'Normal';
-        _elastique = 'Aucun';
-        _tension = 'N/A';
+        if (!_isAssistable(text)) {
+          _elastique = 'Aucun';
+          _tension = 'N/A';
+          _ecartement = 'Standard';
+        }
       });
     }
   }
@@ -530,6 +556,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
 
     final exercice = _exerciceCtrl.text.trim();
     final planche = Perf.isPlancheName(exercice);
+    final assist = _isAssistable(exercice);
     final categorie = _categorie != null && _categorieExo == exercice
         ? _categorie!
         : (_unite == 'Sec' ? 'Force Iso' : 'Musculation');
@@ -552,9 +579,22 @@ class _SaisieScreenState extends State<SaisieScreen> {
           charge: lest,
           unite: _unite,
           categorie: categorie,
-          elastique: planche ? _elastique : 'Aucun',
-          tension: planche ? _tension : 'N/A',
-          effortPondere: planche
+          elastique: (planche || assist) ? _elastique : 'Aucun',
+          tension: (planche || assist) ? _tension : 'N/A',
+          ecartement: assist ? _ecartement : 'N/A',
+          effortPondere: assist
+              ? calculerEffortAssiste(
+                  reps: valeurs[i],
+                  lest: lest,
+                  elastique: _elastique,
+                  tension: _tension,
+                  ecartement: _ecartement,
+                  weight: _weight,
+                  elastiquesMap: _elastiquesCfg,
+                  tensions: _tensionsCfg,
+                  ecartements: _ecartementsCfg,
+                )
+              : planche
               ? calculerEffort(
                   variante: _variante,
                   elastique: _elastique,
@@ -572,7 +612,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
     ];
 
     // Nouveau record en une série ? (hors planche : son record est l'effort)
-    final ins = planche ? null : _insight(exercice);
+    final ins = _usesPoints(exercice) ? null : _insight(exercice);
     final best = valeurs.reduce((a, b) => a > b ? a : b);
     final newPr = ins != null && ins.prSerie > 0 && best > ins.prSerie;
 
@@ -635,7 +675,19 @@ class _SaisieScreenState extends State<SaisieScreen> {
       await SupabaseService.instance.updatePerfValue(
         p.id!,
         v,
-        effortPondere: p.isPlanche
+        effortPondere: _isAssistable(p.exercice)
+            ? calculerEffortAssiste(
+                reps: v,
+                lest: p.charge,
+                elastique: p.elastique,
+                tension: p.tension,
+                ecartement: p.ecartement,
+                weight: _weight,
+                elastiquesMap: _elastiquesCfg,
+                tensions: _tensionsCfg,
+                ecartements: _ecartementsCfg,
+              )
+            : p.isPlanche
             ? calculerEffort(
                 variante: p.variante,
                 elastique: p.elastique,
@@ -938,7 +990,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
                                 insight: ins,
                                 todayVolume: today,
                                 todaySets: todaySets.length,
-                                unit: Perf.isPlancheName(ex) ? ' pts' : '',
+                                unit: _unitFor(ex),
                                 nbDaysAvg: _nbDaysAvg),
                           );
                         },
@@ -1143,6 +1195,46 @@ class _SaisieScreenState extends State<SaisieScreen> {
                           ],
                         ),
                       ],
+                      ],
+                      // Exercice assistable : élastique, tension, écartement
+                      if (_isAssistable(_exerciceCtrl.text)) ...[
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _DropdownField<String>(
+                                label: 'Élastique',
+                                value: _elastique,
+                                items: (_elastiquesCfg ?? kElastiques)
+                                    .keys
+                                    .toList(),
+                                onChanged: (v) =>
+                                    setState(() => _elastique = v ?? 'Aucun'),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _DropdownField<String>(
+                                label: 'Tension',
+                                value: _tension,
+                                items: (_tensionsCfg ?? kTensions)
+                                    .keys
+                                    .toList(),
+                                onChanged: (v) =>
+                                    setState(() => _tension = v ?? 'N/A'),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        _DropdownField<String>(
+                          label: 'Écartement des mains',
+                          value: _ecartement,
+                          items:
+                              (_ecartementsCfg ?? kEcartements).keys.toList(),
+                          onChanged: (v) =>
+                              setState(() => _ecartement = v ?? 'Standard'),
+                        ),
                       ],
                       const SizedBox(height: 16),
 
