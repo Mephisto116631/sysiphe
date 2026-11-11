@@ -32,7 +32,7 @@ class QuickCard extends StatefulWidget {
 
 class _QuickCardState extends State<QuickCard> {
   final _ctrl = TextEditingController();
-  Timer? _auto; // enregistrement auto 10 s après la dernière frappe
+  Timer? _auto; // enregistrement auto 3 s après la dernière frappe
   bool _saving = false;
   String? _error;
 
@@ -141,7 +141,7 @@ class _QuickCardState extends State<QuickCard> {
                     onChanged: (_) {
                       _auto?.cancel();
                       if (_ctrl.text.trim().isEmpty) return;
-                      _auto = Timer(const Duration(seconds: 10), () {
+                      _auto = Timer(const Duration(seconds: 3), () {
                         if (mounted) _save();
                       });
                     },

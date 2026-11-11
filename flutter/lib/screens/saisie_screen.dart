@@ -446,14 +446,14 @@ class _SaisieScreenState extends State<SaisieScreen> {
     }
   }
 
-  /// Enregistrement automatique : 10 s après la dernière frappe, ou dès
+  /// Enregistrement automatique : 3 s après la dernière frappe, ou dès
   /// qu'on change d'exercice / de jour.
   Timer? _autoTimer;
 
   void _scheduleAutoSave(String _) {
     _autoTimer?.cancel();
     if (_chargeCtrl.text.trim().isEmpty) return;
-    _autoTimer = Timer(const Duration(seconds: 10), () {
+    _autoTimer = Timer(const Duration(seconds: 3), () {
       if (mounted && !_saving) _save();
     });
   }
@@ -857,7 +857,13 @@ class _SaisieScreenState extends State<SaisieScreen> {
                                     constraints:
                                         const BoxConstraints(maxWidth: 180),
                                     child: Text(names[i],
-                                        overflow: TextOverflow.ellipsis),
+                                        overflow: TextOverflow.ellipsis,
+                                        // Bleu : déjà fait pendant la séance.
+                                        style: _doneToday(names[i]) > 0
+                                            ? const TextStyle(
+                                                color: AppTheme.primaryBlue,
+                                                fontWeight: FontWeight.w700)
+                                            : null),
                                   ),
                                   showCheckmark: false,
                                   tooltip: names[i],
@@ -965,7 +971,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
                                         ? 'Répétitions'
                                         : 'Poids (kg)',
                                 hintText: 'ex. 12 10 8',
-                                helperText: 'Enregistré après 10 s',
+                                helperText: 'Enregistré après 3 s',
                                 helperStyle: const TextStyle(fontSize: 10),
                               ),
                               onChanged: _scheduleAutoSave,
@@ -1288,9 +1294,8 @@ class _PerfTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Série validée : grisée, mais un appui permet de la corriger.
+    // Un appui permet de corriger la série.
     return Card(
-      color: Colors.grey.shade100,
       child: ListTile(
         onTap: perf.id != null ? onEdit : null,
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
