@@ -84,7 +84,31 @@ class _ModelScreenState extends State<ModelScreen> {
         !same(a.tensions, b.tensions);
   }
 
+  /// Toucher à l'algo recalcule tout l'historique de planche : on demande
+  /// toujours une confirmation explicite.
+  Future<bool> _confirmApply() async =>
+      await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Modifier l\'algo d\'effort ?'),
+          content: const Text(
+              'Le modèle sera enregistré et toutes tes séries de planche '
+              'seront recalculées. Cette action change tes efforts, records '
+              'et statistiques.'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Annuler')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Appliquer')),
+          ],
+        ),
+      ) ??
+      false;
+
   Future<void> _apply() async {
+    if (!await _confirmApply() || !mounted) return;
     final m = _draft!;
     setState(() => _applying = true);
     try {

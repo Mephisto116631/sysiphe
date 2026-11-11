@@ -4,6 +4,7 @@ import '../models/profile.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
 import '../services/data_events.dart';
+import '../services/role.dart';
 import '../services/session_store.dart';
 import '../app_version.dart';
 import '../widgets/update_flow.dart';
@@ -171,6 +172,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
+  /// Export admin : copie dans le presse-papiers le CSV de toutes les séries
+  /// de tous les profils (rôle vérifié côté serveur).
+  Future<void> _exportAll() async {
+    try {
+      final (csv, n) = await SupabaseService.instance.exportAllPerfsCsv();
+      await Clipboard.setData(ClipboardData(text: csv));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('$n séries copiées : colle-les dans un fichier .csv'),
+        behavior: SnackBarBehavior.floating,
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Export impossible : $e'),
+        backgroundColor: Colors.red.shade700,
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -260,20 +282,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.tune,
-                        color: AppTheme.primaryBlue),
-                    title: const Text('Calibration planche'),
-                    subtitle: const Text(
-                        'Coefficients, grille des efforts, recalcul'),
-                    trailing: const Icon(Icons.chevron_right,
-                        color: AppTheme.textSecondary),
-                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => ModelScreen(userId: widget.userId))),
-                  ),
+                // Options d'administration : visibles seulement pour un admin.
+                ValueListenableBuilder<bool>(
+                  valueListenable: isAdminNotifier,
+                  builder: (_, admin, __) => !admin
+                      ? const SizedBox.shrink()
+                      : Column(
+                          children: [
+                            Card(
+                              child: ListTile(
+                                leading: const Icon(Icons.tune,
+                                    color: AppTheme.primaryBlue),
+                                title: const Text('Calibration planche'),
+                                subtitle: const Text(
+                                    'Coefficients, grille des efforts, recalcul'),
+                                trailing: const Icon(Icons.chevron_right,
+                                    color: AppTheme.textSecondary),
+                                onTap: () => Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                        builder: (_) => ModelScreen(
+                                            userId: widget.userId))),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Card(
+                              child: ListTile(
+                                leading: const Icon(Icons.download_outlined,
+                                    color: AppTheme.primaryBlue),
+                                title: const Text('Exporter la base (admin)'),
+                                subtitle: const Text(
+                                    'Toutes les séries de tous les profils, en CSV copié'),
+                                onTap: _exportAll,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+                        ),
                 ),
-                const SizedBox(height: 8),
                 Card(
                   child: ListTile(
                     leading: const Icon(Icons.manage_accounts_outlined,
