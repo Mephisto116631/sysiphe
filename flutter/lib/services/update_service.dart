@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../app_version.dart';
 
 /// Version complète « 2.3.0+12 » → (nom, numéro de build).
@@ -44,6 +45,34 @@ class UpdateService {
   static const _latestUrl =
       'https://api.github.com/repos/Mephisto116631/sysiphe/releases/latest';
   static const _channel = MethodChannel('sysiphe/update');
+  static const _autoKey = 'auto_update_download';
+  static const _skipKey = 'skipped_update_build';
+
+  /// Réglage : télécharger la mise à jour dès qu'elle est détectée (au
+  /// lancement), pour l'installer ensuite en un appui.
+  static Future<bool> autoDownload() async =>
+      (await SharedPreferences.getInstance()).getBool(_autoKey) ?? false;
+  static Future<void> setAutoDownload(bool v) async =>
+      (await SharedPreferences.getInstance()).setBool(_autoKey, v);
+
+  /// Dernière version que l'utilisateur a choisi d'ignorer (numéro de build).
+  static Future<int> skippedBuild() async =>
+      (await SharedPreferences.getInstance()).getInt(_skipKey) ?? 0;
+  static Future<void> skipBuild(int build) async =>
+      (await SharedPreferences.getInstance()).setInt(_skipKey, build);
+
+  /// APK déjà téléchargé en entier (taille conforme), sinon null.
+  static Future<File?> cachedApk(UpdateInfo info) async {
+    try {
+      final dir = await _channel.invokeMethod<String>('updatesDir');
+      final f = File('$dir/sysiphe-${info.label}.apk');
+      return await f.exists() && (info.size == 0 || await f.length() == info.size)
+          ? f
+          : null;
+    } catch (_) {
+      return null;
+    }
+  }
 
   /// Dernière Release si elle est plus récente que l'app, sinon null.
   static Future<UpdateInfo?> checkForUpdate() async {
@@ -70,6 +99,7 @@ class UpdateService {
       {void Function(double)? onProgress}) async {
     final dir = await _channel.invokeMethod<String>('updatesDir');
     final file = File('$dir/sysiphe-${info.label}.apk');
+    final part = File('${file.path}.part'); // jamais d'APK à moitié écrit
     final client = HttpClient();
     try {
       final res = await (await client.getUrl(Uri.parse(info.apkUrl))).close();
@@ -77,7 +107,7 @@ class UpdateService {
         throw HttpException('Téléchargement : HTTP ${res.statusCode}');
       }
       final total = res.contentLength > 0 ? res.contentLength : info.size;
-      final sink = file.openWrite();
+      final sink = part.openWrite();
       var received = 0;
       await for (final chunk in res) {
         sink.add(chunk);
@@ -85,6 +115,7 @@ class UpdateService {
         if (total > 0) onProgress?.call(received / total);
       }
       await sink.close();
+      await part.rename(file.path);
       return file;
     } finally {
       client.close();

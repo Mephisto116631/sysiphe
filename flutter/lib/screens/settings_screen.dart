@@ -7,6 +7,7 @@ import '../services/data_events.dart';
 import '../services/role.dart';
 import '../services/session_store.dart';
 import '../app_version.dart';
+import '../services/update_service.dart';
 import '../widgets/update_flow.dart';
 import 'model_screen.dart';
 import 'manage_screen.dart';
@@ -30,11 +31,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _saving = false;
   bool _enableCharges = true; // user_settings.enable_charges
   bool _loading = true;
+  bool _autoUpdate = false; // préférence de l'appareil (pas du profil)
 
   @override
   void initState() {
     super.initState();
     _load();
+    UpdateService.autoDownload().then((v) {
+      if (mounted) setState(() => _autoUpdate = v);
+    });
   }
 
   Future<void> _load() async {
@@ -221,14 +226,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                 _SectionLabel('Application'),
                 Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.system_update,
-                        color: AppTheme.primaryBlue),
-                    title: const Text('Mises à jour'),
-                    subtitle: Text('Version $kAppVersion · vérifier'),
-                    trailing: const Icon(Icons.chevron_right,
-                        color: AppTheme.textSecondary),
-                    onTap: () => checkAndOfferUpdate(context),
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.system_update,
+                            color: AppTheme.primaryBlue),
+                        title: const Text('Mises à jour'),
+                        subtitle: Text('Version $kAppVersion · vérifier'),
+                        trailing: const Icon(Icons.chevron_right,
+                            color: AppTheme.textSecondary),
+                        onTap: () => checkAndOfferUpdate(context),
+                      ),
+                      SwitchListTile(
+                        secondary: const Icon(Icons.download_for_offline_outlined,
+                            color: AppTheme.primaryBlue),
+                        title: const Text('Télécharger automatiquement'),
+                        subtitle: const Text(
+                            'Récupère la mise à jour au lancement ; il ne reste '
+                            'qu\'à confirmer l\'installation. Réglage de '
+                            'l\'appareil, commun à tous les profils.'),
+                        value: _autoUpdate,
+                        onChanged: (v) {
+                          setState(() => _autoUpdate = v);
+                          UpdateService.setAutoDownload(v);
+                        },
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 20),
