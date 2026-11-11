@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/session.dart';
@@ -31,11 +32,13 @@ class QuickCard extends StatefulWidget {
 
 class _QuickCardState extends State<QuickCard> {
   final _ctrl = TextEditingController();
+  Timer? _auto; // enregistrement auto 10 s après la dernière frappe
   bool _saving = false;
   String? _error;
 
   @override
   void dispose() {
+    _auto?.cancel();
     _ctrl.dispose();
     super.dispose();
   }
@@ -50,6 +53,8 @@ class _QuickCardState extends State<QuickCard> {
   }
 
   Future<void> _save() async {
+    _auto?.cancel();
+    if (_saving) return;
     List<double> vals;
     try {
       vals = parseSeries(_ctrl.text);
@@ -133,6 +138,13 @@ class _QuickCardState extends State<QuickCard> {
                         onPressed: _insertSeparator,
                       ),
                     ),
+                    onChanged: (_) {
+                      _auto?.cancel();
+                      if (_ctrl.text.trim().isEmpty) return;
+                      _auto = Timer(const Duration(seconds: 10), () {
+                        if (mounted) _save();
+                      });
+                    },
                     onSubmitted: (_) => _save(),
                   ),
                 ),

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -222,7 +223,9 @@ class _SaisieScreenState extends State<SaisieScreen> {
 
   /// Choisir un exercice : reprend ce qui a été fait la dernière fois
   /// (séance précédente, sinon dernière séance où il apparaît).
-  void _pickExercise(String ex) {
+  Future<void> _pickExercise(String ex) async {
+    await _flushPending();
+    if (!mounted) return;
     final t = _templateFor(ex) ?? lastTemplateFor(_history, ex, _date);
     if (t != null) {
       _applyTemplate(t);
@@ -358,9 +361,11 @@ class _SaisieScreenState extends State<SaisieScreen> {
     }
   }
 
-  void _setDate(DateTime d) {
+  Future<void> _setDate(DateTime d) async {
     final day = DateTime(d.year, d.month, d.day);
     if (day == DateTime(_date.year, _date.month, _date.day)) return;
+    await _flushPending();
+    if (!mounted) return;
     setState(() => _date = day);
     _loadTodayPerfs();
     _loadPrevious();
@@ -441,7 +446,28 @@ class _SaisieScreenState extends State<SaisieScreen> {
     }
   }
 
+  /// Enregistrement automatique : 10 s après la dernière frappe, ou dès
+  /// qu'on change d'exercice / de jour.
+  Timer? _autoTimer;
+
+  void _scheduleAutoSave(String _) {
+    _autoTimer?.cancel();
+    if (_chargeCtrl.text.trim().isEmpty) return;
+    _autoTimer = Timer(const Duration(seconds: 10), () {
+      if (mounted && !_saving) _save();
+    });
+  }
+
+  /// Enregistre tout de suite une saisie en attente (avant un changement).
+  Future<void> _flushPending() async {
+    if (_autoTimer?.isActive ?? false) {
+      _autoTimer!.cancel();
+      if (!_saving && _chargeCtrl.text.trim().isNotEmpty) await _save();
+    }
+  }
+
   Future<void> _save() async {
+    _autoTimer?.cancel();
     if (!_fb.currentState!.validate()) return;
     if (_exerciceCtrl.text.trim().isEmpty) {
       _snack('Renseignez un exercice', error: true);
@@ -534,6 +560,61 @@ class _SaisieScreenState extends State<SaisieScreen> {
     }
   }
 
+  /// Corrige une série déjà enregistrée (ex. rajouter des reps).
+  Future<void> _editPerf(Perf p) async {
+    if (p.id == null) return;
+    final ctrl = TextEditingController(text: _num(p.performance));
+    final v = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('${p.exercice} · S${p.serie}'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))],
+          decoration: InputDecoration(
+              labelText: p.unite == 'Sec' ? 'Temps (s)' : 'Valeur'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+          TextButton(
+            onPressed: () => Navigator.pop(
+                ctx, double.tryParse(ctrl.text.replaceAll(',', '.'))),
+            child: const Text('Valider'),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (v == null || v <= 0 || v == p.performance) return;
+    try {
+      await SupabaseService.instance.updatePerfValue(
+        p.id!,
+        v,
+        effortPondere: p.isPlanche
+            ? calculerEffort(
+                variante: p.variante,
+                elastique: p.elastique,
+                tension: p.tension,
+                forme: p.forme,
+                temps: v,
+                weight: _weight,
+                variantes: _variantesCfg,
+                formes: _formesCfg,
+                elastiquesMap: _elastiquesCfg,
+                tensions: _tensionsCfg,
+              )
+            : null,
+      );
+      await _loadTodayPerfs();
+      _loadHistory();
+    } catch (e) {
+      _snack('Erreur : $e', error: true);
+    }
+  }
+
   Future<void> _delete(int id) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -585,6 +666,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
 
   @override
   void dispose() {
+    _autoTimer?.cancel();
     dataVersion.removeListener(_onDataChanged);
     _exerciceCtrl.dispose();
     _chargeCtrl.dispose();
@@ -883,9 +965,10 @@ class _SaisieScreenState extends State<SaisieScreen> {
                                         ? 'Répétitions'
                                         : 'Poids (kg)',
                                 hintText: 'ex. 12 10 8',
-                                helperText: 'Plusieurs séries : 12/10/8',
+                                helperText: 'Enregistré après 10 s',
                                 helperStyle: const TextStyle(fontSize: 10),
                               ),
+                              onChanged: _scheduleAutoSave,
                               validator: (v) {
                                 if (v == null || v.trim().isEmpty) {
                                   return 'Requis';
@@ -1022,8 +1105,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
                                 child: CircularProgressIndicator(
                                     strokeWidth: 2, color: Colors.white))
                             : const Icon(Icons.save),
-                        label:
-                            Text(_saving ? 'Enregistrement…' : 'Enregistrer'),
+                        label: Text(_saving ? 'Enregistrement…' : 'Enregistrer maintenant'),
                       ),
                     ],
                   ),
@@ -1059,7 +1141,10 @@ class _SaisieScreenState extends State<SaisieScreen> {
                 separatorBuilder: (_, __) => const SizedBox(height: 8),
                 itemBuilder: (ctx, i) {
                   final p = _todayPerfs[i];
-                  return _PerfTile(perf: p, onDelete: () => _delete(p.id!));
+                  return _PerfTile(
+                      perf: p,
+                      onDelete: () => _delete(p.id!),
+                      onEdit: () => _editPerf(p));
                 },
               ),
             const SizedBox(height: 40),
@@ -1196,13 +1281,18 @@ class _Kpi extends StatelessWidget {
 class _PerfTile extends StatelessWidget {
   final Perf perf;
   final VoidCallback onDelete;
+  final VoidCallback onEdit;
 
-  const _PerfTile({required this.perf, required this.onDelete});
+  const _PerfTile(
+      {required this.perf, required this.onDelete, required this.onEdit});
 
   @override
   Widget build(BuildContext context) {
+    // Série validée : grisée, mais un appui permet de la corriger.
     return Card(
+      color: Colors.grey.shade100,
       child: ListTile(
+        onTap: perf.id != null ? onEdit : null,
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         leading: CircleAvatar(
           radius: 18,
