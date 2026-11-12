@@ -8,7 +8,7 @@ import '../models/stats.dart';
 import '../services/data_events.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
-import '../widgets/quick_card.dart';
+import '../widgets/exercise_card.dart';
 
 class SaisieScreen extends StatefulWidget {
   final String userId;
@@ -90,39 +90,98 @@ class _SaisieScreenState extends State<SaisieScreen> {
 
   /// Enregistre les séries d'une carte : remplace celles du jour pour cet
   /// exercice (pas de doublon si on réenregistre), comme les blocs du web.
-  Future<bool> _saveCard(String ex, List<double> vals) async {
+  /// Construit une série (effort pondéré inclus pour planche / assistables).
+  Perf _makePerf({
+    required String exercice,
+    required int serie,
+    required double valeur,
+    required String unite,
+    required String categorie,
+    required double lest,
+    required String variante,
+    required String forme,
+    required String elastique,
+    required String tension,
+    required String ecartement,
+  }) {
+    final planche = Perf.isPlancheName(exercice);
+    final assist = _isAssistable(exercice);
+    return Perf(
+      userId: widget.userId,
+      date: _date,
+      exercice: exercice,
+      variante: planche ? variante : 'Full',
+      forme: planche ? forme : 'Normal',
+      serie: serie,
+      performance: valeur,
+      charge: lest,
+      unite: unite,
+      categorie: categorie,
+      elastique: (planche || assist) ? elastique : 'Aucun',
+      tension: (planche || assist) ? tension : 'N/A',
+      ecartement: assist ? ecartement : 'N/A',
+      effortPondere: assist
+          ? calculerEffortAssiste(
+              reps: valeur,
+              lest: lest,
+              elastique: elastique,
+              tension: tension,
+              ecartement: ecartement,
+              weight: _weight,
+              elastiquesMap: _elastiquesCfg,
+              tensions: _tensionsCfg,
+              ecartements: _ecartementsCfg,
+            )
+          : planche
+              ? calculerEffort(
+                  variante: variante,
+                  elastique: elastique,
+                  tension: tension,
+                  forme: forme,
+                  temps: valeur,
+                  weight: _weight,
+                  variantes: _variantesCfg,
+                  formes: _formesCfg,
+                  elastiquesMap: _elastiquesCfg,
+                  tensions: _tensionsCfg,
+                )
+              : 0,
+    );
+  }
+
+  /// Enregistre une série saisie dans une carte d'exercice.
+  Future<bool> _saveEntry(String ex, CardEntry e) async {
     final last = _lastFor(ex)?.series.first;
     final meta = _newCardMeta[ex];
-    final unite = last?.unite ?? meta?.$1 ?? 'Reps';
-    final categorie = last?.categorie ?? meta?.$2 ?? 'Musculation';
-    final ins = _insight(ex);
-    final best = vals.reduce((a, b) => a > b ? a : b);
-    final newPr = ins != null && ins.prSerie > 0 && best > ins.prSerie;
+    final categorie = last?.categorie ??
+        meta?.$2 ??
+        (e.unite == 'Sec' ? 'Force Iso' : 'Musculation');
+    final ins = _usesPoints(ex) ? null : _insight(ex);
+    final newPr = ins != null && ins.prSerie > 0 && e.value > ins.prSerie;
     try {
-      // Ajoute à la suite des séries déjà saisies : une valeur seule ne doit
-      // jamais écraser les séries précédentes.
-      final done = _doneToday(ex);
       await SupabaseService.instance.savePerfs([
-        for (var i = 0; i < vals.length; i++)
-          Perf(
-            userId: widget.userId,
-            date: _date,
-            exercice: ex,
-            serie: done + i + 1,
-            performance: vals[i],
-            unite: unite,
-            categorie: categorie,
-            effortPondere: 0,
-          ),
+        _makePerf(
+          exercice: ex,
+          serie: e.serie,
+          valeur: e.value,
+          unite: e.unite,
+          categorie: categorie,
+          lest: e.lest,
+          variante: e.variante,
+          forme: e.forme,
+          elastique: e.elastique,
+          tension: e.tension,
+          ecartement: e.ecartement,
+        ),
       ]);
       await _loadTodayPerfs();
       _loadHistory();
       _snack(newPr
-          ? '🏆 $ex : nouveau record en série (${_num(best)})'
-          : '$ex : ${vals.length} série${vals.length > 1 ? 's' : ''} enregistrée${vals.length > 1 ? 's' : ''} ✓');
+          ? '🏆 $ex : nouveau record en série (${_num(e.value)})'
+          : '$ex · série ${e.serie} enregistrée ✓');
       return true;
-    } catch (e) {
-      _snack('Erreur : $e', error: true);
+    } catch (err) {
+      _snack('Erreur : $err', error: true);
       return false;
     }
   }
@@ -192,20 +251,28 @@ class _SaisieScreenState extends State<SaisieScreen> {
       for (final ex in names)
         Padding(
           padding: const EdgeInsets.only(bottom: 10),
-          child: QuickCard(
+          child: ExerciseCard(
             key: ValueKey('card-$ex'),
             exercice: ex,
-            unite: _lastFor(ex)?.unite ?? _newCardMeta[ex]?.$1 ?? 'Reps',
-            hint: switch (_lastFor(ex)) {
-              final t? => seriesHint(t),
-              null => null,
-            },
+            unite: _lastFor(ex)?.unite ??
+                _newCardMeta[ex]?.$1 ??
+                (Perf.isPlancheName(ex) ? 'Sec' : 'Reps'),
+            kind: Perf.isPlancheName(ex)
+                ? CardKind.planche
+                : _isAssistable(ex)
+                    ? CardKind.assist
+                    : CardKind.plain,
+            last: _lastFor(ex),
             helper: _cardHelper(ex),
             insight: _cardInsight(ex),
             done: _doneToday(ex),
-            onSave: (vals) => _saveCard(ex, vals),
-            // Planche et exercices assistables : options → carte principale.
-            onOpen: _usesPoints(ex) ? () => _pickExercise(ex) : null,
+            enableCharges: _enableCharges,
+            variantes: (_variantesCfg ?? kVariantes).keys.toList(),
+            formes: (_formesCfg ?? kFormes).keys.toList(),
+            elastiques: (_elastiquesCfg ?? kElastiques).keys.toList(),
+            tensions: (_tensionsCfg ?? kTensions).keys.toList(),
+            ecartements: (_ecartementsCfg ?? kEcartements).keys.toList(),
+            onSave: (e) => _saveEntry(ex, e),
           ),
         ),
       OutlinedButton.icon(
@@ -555,8 +622,6 @@ class _SaisieScreenState extends State<SaisieScreen> {
     }
 
     final exercice = _exerciceCtrl.text.trim();
-    final planche = Perf.isPlancheName(exercice);
-    final assist = _isAssistable(exercice);
     final categorie = _categorie != null && _categorieExo == exercice
         ? _categorie!
         : (_unite == 'Sec' ? 'Force Iso' : 'Musculation');
@@ -568,46 +633,18 @@ class _SaisieScreenState extends State<SaisieScreen> {
 
     final perfs = [
       for (var i = 0; i < valeurs.length; i++)
-        Perf(
-          userId: widget.userId,
-          date: _date,
+        _makePerf(
           exercice: exercice,
-          variante: planche ? _variante : 'Full',
-          forme: planche ? _forme : 'Normal',
           serie: _serie + i,
-          performance: valeurs[i],
-          charge: lest,
+          valeur: valeurs[i],
           unite: _unite,
           categorie: categorie,
-          elastique: (planche || assist) ? _elastique : 'Aucun',
-          tension: (planche || assist) ? _tension : 'N/A',
-          ecartement: assist ? _ecartement : 'N/A',
-          effortPondere: assist
-              ? calculerEffortAssiste(
-                  reps: valeurs[i],
-                  lest: lest,
-                  elastique: _elastique,
-                  tension: _tension,
-                  ecartement: _ecartement,
-                  weight: _weight,
-                  elastiquesMap: _elastiquesCfg,
-                  tensions: _tensionsCfg,
-                  ecartements: _ecartementsCfg,
-                )
-              : planche
-              ? calculerEffort(
-                  variante: _variante,
-                  elastique: _elastique,
-                  tension: _tension,
-                  forme: _forme,
-                  temps: valeurs[i],
-                  weight: _weight,
-                  variantes: _variantesCfg,
-                  formes: _formesCfg,
-                  elastiquesMap: _elastiquesCfg,
-                  tensions: _tensionsCfg,
-                )
-              : 0,
+          lest: lest,
+          variante: _variante,
+          forme: _forme,
+          elastique: _elastique,
+          tension: _tension,
+          ecartement: _ecartement,
         ),
     ];
 

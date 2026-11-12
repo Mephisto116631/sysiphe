@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import '../models/profile.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
@@ -177,17 +179,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
-  /// Export admin : copie dans le presse-papiers le CSV de toutes les séries
-  /// de tous les profils (rôle vérifié côté serveur).
+  /// Export admin : crée un vrai fichier .csv (toutes les séries de tous les
+  /// profils, rôle vérifié côté serveur) et ouvre le partage Android
+  /// (Drive, Fichiers, e-mail…).
   Future<void> _exportAll() async {
     try {
       final (csv, n) = await SupabaseService.instance.exportAllPerfsCsv();
-      await Clipboard.setData(ClipboardData(text: csv));
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('$n séries copiées : colle-les dans un fichier .csv'),
-        behavior: SnackBarBehavior.floating,
-      ));
+      final d = DateTime.now();
+      final name = 'sysiphe-export-${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}.csv';
+      final file = File('${Directory.systemTemp.path}/$name');
+      // BOM UTF-8 : Excel affiche correctement les accents.
+      await file.writeAsString('\uFEFF$csv', flush: true);
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'text/csv', name: name)],
+        subject: 'Export Sysiphe ($n séries)',
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
