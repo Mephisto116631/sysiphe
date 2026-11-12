@@ -4,8 +4,10 @@ import '../models/profile.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
 import '../services/data_events.dart';
+import '../services/role.dart';
 import '../services/session_store.dart';
 import '../app_version.dart';
+import '../services/update_service.dart';
 import '../widgets/update_flow.dart';
 import 'model_screen.dart';
 import 'manage_screen.dart';
@@ -29,11 +31,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _saving = false;
   bool _enableCharges = true; // user_settings.enable_charges
   bool _loading = true;
+  bool _autoUpdate = false; // préférence de l'appareil (pas du profil)
 
   @override
   void initState() {
     super.initState();
     _load();
+    UpdateService.autoDownload().then((v) {
+      if (mounted) setState(() => _autoUpdate = v);
+    });
   }
 
   Future<void> _load() async {
@@ -171,6 +177,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
+  /// Export admin : copie dans le presse-papiers le CSV de toutes les séries
+  /// de tous les profils (rôle vérifié côté serveur).
+  Future<void> _exportAll() async {
+    try {
+      final (csv, n) = await SupabaseService.instance.exportAllPerfsCsv();
+      await Clipboard.setData(ClipboardData(text: csv));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('$n séries copiées : colle-les dans un fichier .csv'),
+        behavior: SnackBarBehavior.floating,
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Export impossible : $e'),
+        backgroundColor: Colors.red.shade700,
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -199,14 +226,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                 _SectionLabel('Application'),
                 Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.system_update,
-                        color: AppTheme.primaryBlue),
-                    title: const Text('Mises à jour'),
-                    subtitle: Text('Version $kAppVersion · vérifier'),
-                    trailing: const Icon(Icons.chevron_right,
-                        color: AppTheme.textSecondary),
-                    onTap: () => checkAndOfferUpdate(context),
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.system_update,
+                            color: AppTheme.primaryBlue),
+                        title: const Text('Mises à jour'),
+                        subtitle: Text('Version $kAppVersion · vérifier'),
+                        trailing: const Icon(Icons.chevron_right,
+                            color: AppTheme.textSecondary),
+                        onTap: () => checkAndOfferUpdate(context),
+                      ),
+                      SwitchListTile(
+                        secondary: const Icon(Icons.download_for_offline_outlined,
+                            color: AppTheme.primaryBlue),
+                        title: const Text('Télécharger automatiquement'),
+                        subtitle: const Text(
+                            'Récupère la mise à jour au lancement ; il ne reste '
+                            'qu\'à confirmer l\'installation. Réglage de '
+                            'l\'appareil, commun à tous les profils.'),
+                        value: _autoUpdate,
+                        onChanged: (v) {
+                          setState(() => _autoUpdate = v);
+                          UpdateService.setAutoDownload(v);
+                        },
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -260,20 +305,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.tune,
-                        color: AppTheme.primaryBlue),
-                    title: const Text('Calibration planche'),
-                    subtitle: const Text(
-                        'Coefficients, grille des efforts, recalcul'),
-                    trailing: const Icon(Icons.chevron_right,
-                        color: AppTheme.textSecondary),
-                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => ModelScreen(userId: widget.userId))),
-                  ),
+                // Options d'administration : visibles seulement pour un admin.
+                ValueListenableBuilder<bool>(
+                  valueListenable: isAdminNotifier,
+                  builder: (_, admin, __) => !admin
+                      ? const SizedBox.shrink()
+                      : Column(
+                          children: [
+                            Card(
+                              child: ListTile(
+                                leading: const Icon(Icons.tune,
+                                    color: AppTheme.primaryBlue),
+                                title: const Text('Calibration planche'),
+                                subtitle: const Text(
+                                    'Coefficients, grille des efforts, recalcul'),
+                                trailing: const Icon(Icons.chevron_right,
+                                    color: AppTheme.textSecondary),
+                                onTap: () => Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                        builder: (_) => ModelScreen(
+                                            userId: widget.userId))),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Card(
+                              child: ListTile(
+                                leading: const Icon(Icons.download_outlined,
+                                    color: AppTheme.primaryBlue),
+                                title: const Text('Exporter la base (admin)'),
+                                subtitle: const Text(
+                                    'Toutes les séries de tous les profils, en CSV copié'),
+                                onTap: _exportAll,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+                        ),
                 ),
-                const SizedBox(height: 8),
                 Card(
                   child: ListTile(
                     leading: const Icon(Icons.manage_accounts_outlined,

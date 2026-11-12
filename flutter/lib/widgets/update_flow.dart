@@ -32,45 +32,64 @@ Future<void> checkAndOfferUpdate(BuildContext context, {bool silent = false}) as
   }
   final update = info;
   if (silent) {
-    messenger.showSnackBar(SnackBar(
-      content: Text('Nouvelle version ${update.label} disponible'),
-      duration: const Duration(seconds: 8),
-      behavior: SnackBarBehavior.floating,
-      action: SnackBarAction(
-          label: 'Installer',
-          onPressed: () => _confirmAndInstall(context, update)),
-    ));
+    // Au lancement : pop-up directement (une seule fois par lancement).
+    if (update.build == await UpdateService.skippedBuild()) return;
+    // Téléchargement automatique activé : on récupère l'APK avant de
+    // proposer, l'installation se fait alors en un appui.
+    if (await UpdateService.autoDownload() &&
+        await UpdateService.cachedApk(update) == null) {
+      try {
+        await UpdateService.download(update);
+      } catch (_) {/* on proposera le téléchargement manuel */}
+    }
+    if (!context.mounted) return;
+    await _confirmAndInstall(context, update, offerSkip: true);
     return;
   }
   await _confirmAndInstall(context, update);
 }
 
-Future<void> _confirmAndInstall(BuildContext context, UpdateInfo info) async {
+Future<void> _confirmAndInstall(BuildContext context, UpdateInfo info,
+    {bool offerSkip = false}) async {
   if (!context.mounted) return;
-  final ok = await showDialog<bool>(
+  final cached = await UpdateService.cachedApk(info);
+  if (!context.mounted) return;
+  // 1 = installer, 0 = plus tard, -1 = ignorer cette version
+  // (un appui hors de la fenêtre = plus tard, jamais « ignorer »)
+  final choice = await showDialog<int>(
     context: context,
     builder: (ctx) => AlertDialog(
       title: const Text('Mise à jour disponible'),
       content: Text('Version ${info.label} '
           '(${(info.size / 1048576).toStringAsFixed(0)} Mo).\n'
           'Installée : $kAppVersion.\n\n'
+          '${cached != null ? 'Déjà téléchargée : prête à installer.\n\n' : ''}'
           'Tes données ne sont pas touchées : elles sont sur le serveur.'),
       actions: [
+        if (offerSkip)
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, -1),
+              child: const Text('Ignorer cette version')),
         TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
+            onPressed: () => Navigator.pop(ctx, 0),
             child: const Text('Plus tard')),
         FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Télécharger et installer')),
+            onPressed: () => Navigator.pop(ctx, 1),
+            child: Text(cached != null ? 'Installer' : 'Télécharger et installer')),
       ],
     ),
   );
-  if (ok != true || !context.mounted) return;
-  final apk = await showDialog<File?>(
-    context: context,
-    barrierDismissible: false,
-    builder: (_) => _DownloadDialog(info: info),
-  );
+  if (choice == -1) {
+    await UpdateService.skipBuild(info.build);
+    return;
+  }
+  if (choice != 1 || !context.mounted) return;
+  final apk = cached ??
+      await showDialog<File?>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _DownloadDialog(info: info),
+      );
   if (apk == null || !context.mounted) return;
   final started = await UpdateService.install(apk);
   if (!started && context.mounted) {

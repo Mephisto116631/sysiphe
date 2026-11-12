@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/profile.dart';
+import '../services/role.dart';
 import '../services/session_store.dart';
 import '../services/supabase_service.dart';
 import '../widgets/pin_dialog.dart';
@@ -24,16 +25,25 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _idx = 0;
 
+  /// La recherche de mise à jour se fait une fois par lancement de l'app, pas
+  /// à chaque changement de profil (la version est celle de l'app, pas du profil).
+  static bool _updateChecked = false;
+
   late final List<Widget> _screens;
 
   @override
   void initState() {
     super.initState();
     // Après le premier affichage : jamais de latence à l'ouverture.
+    isAdminNotifier.value = false;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _checkAccess();
+      _loadRole();
       // Nouvelle version ? Signalée discrètement (rien si à jour ou hors ligne).
-      if (mounted) checkAndOfferUpdate(context, silent: true);
+      if (mounted && !_updateChecked) {
+        _updateChecked = true;
+        checkAndOfferUpdate(context, silent: true);
+      }
     });
     final uid = widget.profile.id;
     _screens = [
@@ -44,6 +54,18 @@ class _HomeScreenState extends State<HomeScreen> {
       ModelScreen(userId: uid),
       SettingsScreen(userId: uid, profile: widget.profile),
     ];
+  }
+
+  /// Rôle du profil (admin / user) lu côté serveur : l'onglet Modèle et les
+  /// options d'administration n'apparaissent qu'aux admins.
+  Future<void> _loadRole() async {
+    final admin = await SupabaseService.instance.isAdmin(widget.profile.id);
+    if (!mounted || admin == isAdminNotifier.value) return;
+    setState(() {
+      // L'onglet Modèle s'insère avant Réglages : on garde l'onglet affiché.
+      if (admin && _idx >= 4) _idx++;
+      isAdminNotifier.value = admin;
+    });
   }
 
   /// Vérifie, en arrière-plan, que cet appareil est rattaché au profil
@@ -76,27 +98,35 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final admin = isAdminNotifier.value;
+    final screens = [
+      ..._screens.sublist(0, 4),
+      if (admin) _screens[4],
+      _screens[5],
+    ];
+    final idx = _idx.clamp(0, screens.length - 1).toInt();
     return Scaffold(
-      body: IndexedStack(index: _idx, children: _screens),
+      body: IndexedStack(index: idx, children: screens),
       bottomNavigationBar: BottomNavigationBar(
-        // 6 onglets : libellés toujours visibles, police un peu réduite
+        // Jusqu'à 6 onglets : libellés toujours visibles, police réduite
         type: BottomNavigationBarType.fixed,
         selectedFontSize: 11,
         unselectedFontSize: 10,
-        currentIndex: _idx,
+        currentIndex: idx,
         onTap: (i) => setState(() => _idx = i),
-        items: const [
-          BottomNavigationBarItem(
+        items: [
+          const BottomNavigationBarItem(
               icon: Icon(Icons.fitness_center), label: 'Saisie'),
-          BottomNavigationBarItem(
+          const BottomNavigationBarItem(
               icon: Icon(Icons.bar_chart), label: 'Stats'),
-          BottomNavigationBarItem(
+          const BottomNavigationBarItem(
               icon: Icon(Icons.calendar_month), label: 'Calendrier'),
-          BottomNavigationBarItem(
+          const BottomNavigationBarItem(
               icon: Icon(Icons.emoji_events), label: 'Records'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.functions), label: 'Modèle'),
-          BottomNavigationBarItem(
+          if (admin)
+            const BottomNavigationBarItem(
+                icon: Icon(Icons.functions), label: 'Modèle'),
+          const BottomNavigationBarItem(
               icon: Icon(Icons.settings), label: 'Réglages'),
         ],
       ),

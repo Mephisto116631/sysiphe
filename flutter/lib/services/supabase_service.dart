@@ -102,6 +102,44 @@ class SupabaseService {
     return res == true;
   }
 
+  /// Rôle du profil, lu par le serveur (« admin » seulement si cet appareil
+  /// est rattaché à un profil admin). Faux hors ligne ou en cas d'erreur.
+  Future<bool> isAdmin(String profileId) async {
+    if (!await _hasSession()) return false;
+    try {
+      final res =
+          await _db.rpc('profile_role', params: {'p_profile': profileId});
+      return res == 'admin';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Export admin : toutes les séries de tous les profils, au format CSV.
+  /// La vérification du rôle est faite par le serveur (RPC admin_export_perfs).
+  Future<(String csv, int rows)> exportAllPerfsCsv() async {
+    final data = await _db.rpc('admin_export_perfs') as List;
+    final names = {for (final p in await getProfiles()) p.id: p.name};
+    const cols = [
+      'date', 'exercice', 'serie', 'performance', 'unite', 'charge',
+      'categorie', 'variante', 'forme', 'elastique', 'tension', 'ecartement',
+      'effort_pondere'
+    ];
+    String q(Object? v) {
+      final t = v?.toString() ?? '';
+      return t.contains(RegExp(r'[",;\n]')) ? '"${t.replaceAll('"', '""')}"' : t;
+    }
+
+    final sb = StringBuffer('profil,${cols.join(',')}\n');
+    for (final r in data.cast<Map<String, dynamic>>()) {
+      sb.writeln([
+        q(names[r['user_id']] ?? r['user_id']),
+        for (final c in cols) q(r[c]),
+      ].join(','));
+    }
+    return (sb.toString(), data.length);
+  }
+
   /// Crée un profil (PIN facultatif) rattaché à cet appareil et le renvoie.
   Future<Profile> createProfile(String name, {String? pin}) async {
     if (!await _hasSession()) {
