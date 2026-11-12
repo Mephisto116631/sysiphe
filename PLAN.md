@@ -54,8 +54,10 @@ répondent **400**, et l'app reste bloquée sur un chargement infini.
         envoyé au téléphone
   - [x] Étape 1 (site web) : même principe, session gardée dans le cookie d'un an ; une session anonyme n'est jamais prise pour un compte Google
   - [ ] **Toi** : installer la v2.2.0 et confirmer ton PIN une dernière fois
-  - [ ] Étape 2 (base) : activer la RLS sur `perfs`, `profiles`, `user_settings` + retirer l'accès direct aux
-        hash de PIN — testée en transaction annulée d'abord
+  - [x] Étape 2 (base, 12/11/2026) : RLS activée sur `perfs`, `profiles`, `user_settings` (accès seulement aux profils
+        rattachés à l'appareil), `pin_hash` et `role` illisibles/non modifiables en direct, plus aucun accès sans session ;
+        testée en transaction annulée (accès, refus, admin) puis appliquée
+        ⚠ les anciennes versions de l'app (sans session anonyme, < v2.2.0) ne fonctionnent plus : mettre à jour
   - [ ] Étape 3 : bouton « Associer mon compte Google » (app + web)
 - [ ] `user_settings.user_id` pointe sur `auth.users` : les profils « Dilbert 🐶 » et « Profil 3 » ne peuvent pas
       enregistrer de réglages (violation de clé étrangère). → Faire pointer la clé sur `profiles(id)`
