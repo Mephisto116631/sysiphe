@@ -12,6 +12,7 @@ import '../app_version.dart';
 import '../services/update_service.dart';
 import '../widgets/update_flow.dart';
 import 'model_screen.dart';
+import 'assistables_screen.dart';
 import 'manage_screen.dart';
 import 'profile_screen.dart' show ProfileScreen;
 
@@ -340,7 +341,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     color: AppTheme.primaryBlue),
                                 title: const Text('Exporter la base (admin)'),
                                 subtitle: const Text(
-                                    'Toutes les séries de tous les profils, en CSV copié'),
+                                    'Toutes les séries de tous les profils, en fichier CSV'),
                                 onTap: _exportAll,
                               ),
                             ),
@@ -360,6 +361,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     onTap: () => Navigator.of(context).push(MaterialPageRoute(
                         builder: (_) =>
                             ManageScreen(current: widget.profile))),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.fitness_center_outlined,
+                        color: AppTheme.primaryBlue),
+                    title: const Text('Exercices assistables'),
+                    subtitle: const Text(
+                        'Élastique, tension et écartement (tractions…)'),
+                    trailing: const Icon(Icons.chevron_right,
+                        color: AppTheme.textSecondary),
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) =>
+                            AssistablesScreen(profile: widget.profile))),
                   ),
                 ),
                 const SizedBox(height: 8),
