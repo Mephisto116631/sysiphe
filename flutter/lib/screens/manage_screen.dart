@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../models/perf.dart';
 import '../models/profile.dart';
 import '../services/data_events.dart';
 import '../services/session_store.dart';
@@ -176,11 +175,6 @@ class _ManageScreenState extends State<ManageScreen> {
     notifyDataChanged();
   }
 
-  Future<void> _toggleAssistable(String ex, bool on) => _run(
-      () => _saveAssistables(
-          on ? {..._assistables, ex} : _assistables.where((e) => e != ex).toSet()),
-      on ? '« $ex » : élastique et écartement activés' : '« $ex » : options retirées');
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -258,25 +252,7 @@ class _ManageScreenState extends State<ManageScreen> {
                               ],
                             ),
                     ),
-                    const SizedBox(height: 24),
-                    Text('Exercices assistables', style: theme.textTheme.titleMedium),
-                    Text('Tractions avec élastique… : ajoute l\'élastique, sa '
-                        'tension et l\'écartement des mains, et pondère l\'effort.',
-                        style: theme.textTheme.bodySmall),
-                    const SizedBox(height: 8),
-                    Card(
-                      child: _exercices.isEmpty
-                          ? const ListTile(title: Text('Aucun exercice'))
-                          : Column(
-                              children: [
-                                for (final ex in _exercices)
-                                  if (!Perf.isPlancheName(ex))
-                                    SwitchListTile(
-                                      title: Text(ex),
-                                      value: _assistables.contains(ex),
-                                      onChanged: (v) => _toggleAssistable(ex, v),
-                                    ),
-                              ],
+                  ],
                             ),
                     ),
                   ],
