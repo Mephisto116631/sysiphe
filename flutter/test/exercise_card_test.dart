@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sysiphe/models/perf.dart';
+import 'package:sysiphe/models/session.dart';
 import 'package:sysiphe/theme.dart';
 import 'package:sysiphe/widgets/exercise_card.dart';
 
@@ -81,5 +83,50 @@ void main() {
     await pump(t, kind: CardKind.assist);
     expect(find.text('Écartement des mains'), findsOneWidget);
     expect(find.text('Élastique'), findsOneWidget);
+  });
+
+  testWidgets('la dernière séance est un exemple en sous-texte, pas une saisie',
+      (t) async {
+    final tpl = templatesFrom([
+      Perf(
+          id: 1,
+          userId: 'u',
+          date: DateTime(2026, 11, 10),
+          exercice: 'Traction',
+          performance: 30,
+          unite: 'Reps',
+          charge: 10),
+    ]).first;
+    t.view.physicalSize = const Size(360 * 3, 900 * 3);
+    t.view.devicePixelRatio = 3;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: ExerciseCard(
+            exercice: 'Traction',
+            unite: 'Reps',
+            kind: CardKind.plain,
+            done: 0,
+            last: tpl,
+            helper: null,
+            insight: null,
+            enableCharges: true,
+            variantes: const ['Full'],
+            formes: const ['Normal'],
+            elastiques: const ['Aucun'],
+            tensions: const ['N/A'],
+            ecartements: const ['Standard'],
+            onSave: (e) async => true,
+          ),
+        ),
+      ),
+    ));
+    final fields = t.widgetList<TextField>(find.byType(TextField)).toList();
+    expect(fields[0].controller!.text, isEmpty);
+    expect(fields[0].decoration!.hintText, 'ex. 30');
+    expect(fields[1].controller!.text, isEmpty);
+    expect(fields[1].decoration!.hintText, 'ex. 10');
   });
 }

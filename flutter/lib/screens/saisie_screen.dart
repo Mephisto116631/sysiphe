@@ -25,6 +25,8 @@ class _SaisieScreenState extends State<SaisieScreen> {
   final _chargeCtrl =
       TextEditingController(); // valeur de la série (performance)
   final _lestCtrl = TextEditingController(); // lest externe en kg (charge)
+  // Exemples tirés de la dernière séance : affichés en sous-texte, jamais saisis.
+  String? _exFor, _exValue, _exLest;
   TextEditingController? _acCtrl; // contrôleur interne de l'Autocomplete
   DateTime _date = DateTime.now();
   int _serie = 1;
@@ -376,8 +378,11 @@ class _SaisieScreenState extends State<SaisieScreen> {
     final model = t.seriesFor(serie);
     _acCtrl?.text = t.exercice; // déclenche _onExerciceChanged
     _exerciceCtrl.text = t.exercice;
-    _chargeCtrl.text = _num(model.performance);
-    _lestCtrl.text = model.charge > 0 ? _num(model.charge) : '';
+    // La dernière séance sert d'exemple (sous-texte), pas de valeur saisie.
+    _chargeCtrl.clear();
+    _exFor = t.exercice;
+    _exValue = _num(model.performance);
+    _exLest = model.charge > 0 ? _num(model.charge) : null;
     setState(() {
       _serie = serie;
       _categorie = model.categorie;
@@ -665,7 +670,10 @@ class _SaisieScreenState extends State<SaisieScreen> {
       if (t != null && _doneToday(exercice) < t.series.length) {
         _applyTemplate(t);
       } else if (mounted) {
-        setState(() => _serie = _doneToday(exercice) + 1);
+        setState(() {
+          _serie = _doneToday(exercice) + 1;
+          _exValue = null;
+        });
       }
       _loadHistory();
       _snack(newPr
@@ -1101,7 +1109,10 @@ class _SaisieScreenState extends State<SaisieScreen> {
                                     : _unite == 'Reps'
                                         ? 'Répétitions'
                                         : 'Poids (kg)',
-                                hintText: 'ex. 12 10 8',
+                                hintText: _exFor == _exerciceCtrl.text.trim() &&
+                                        _exValue != null
+                                    ? 'ex. $_exValue'
+                                    : 'ex. 12',
                                 helperText: 'Enregistré après 3 s',
                                 helperStyle: const TextStyle(fontSize: 10),
                               ),
@@ -1135,10 +1146,14 @@ class _SaisieScreenState extends State<SaisieScreen> {
                             FilteringTextInputFormatter.allow(
                                 RegExp(r'[\d.,]')),
                           ],
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             labelText: 'Lest (kg) — optionnel',
-                            hintText: '0',
-                            prefixIcon: Icon(Icons.fitness_center, size: 18),
+                            hintText: _exFor == _exerciceCtrl.text.trim() &&
+                                    _exLest != null
+                                ? 'ex. $_exLest'
+                                : '0',
+                            prefixIcon:
+                                const Icon(Icons.fitness_center, size: 18),
                           ),
                           validator: (v) {
                             if (v == null || v.trim().isEmpty) return null;
