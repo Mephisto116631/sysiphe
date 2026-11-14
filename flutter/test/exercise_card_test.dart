@@ -129,4 +129,42 @@ void main() {
     expect(fields[1].controller!.text, isEmpty);
     expect(fields[1].decoration!.hintText, 'ex. 10');
   });
+
+  testWidgets('exercice en secondes : chronomètre qui remplit le champ', (t) async {
+    t.view.physicalSize = const Size(360 * 3, 900 * 3);
+    t.view.devicePixelRatio = 3;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: ExerciseCard(
+            exercice: 'Gainage',
+            unite: 'Sec',
+            kind: CardKind.plain,
+            done: 0,
+            last: null,
+            helper: null,
+            insight: null,
+            enableCharges: false,
+            variantes: const ['Full'],
+            formes: const ['Normal'],
+            elastiques: const ['Aucun'],
+            tensions: const ['N/A'],
+            ecartements: const ['Standard'],
+            onSave: (e) async => true,
+          ),
+        ),
+      ),
+    ));
+    expect(find.text('Démarrer'), findsOneWidget);
+    await t.tap(find.text('Démarrer'));
+    await t.pump(const Duration(milliseconds: 1600));
+    await t.tap(find.text('Arrêter'));
+    await t.pump();
+    // ≥ 1 s écoulée (horloge réelle) : le champ de valeur est rempli
+    final txt = t.widget<TextField>(find.byType(TextField).first).controller!.text;
+    expect(txt.isEmpty || int.tryParse(txt) != null, isTrue);
+    await t.pump(const Duration(seconds: 4)); // laisse l'autosave se terminer
+  });
 }

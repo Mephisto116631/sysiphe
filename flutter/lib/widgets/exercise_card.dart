@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/session.dart';
 import '../theme.dart';
+import 'chrono.dart';
 
 /// Type d'exercice : détermine les options affichées dans la carte.
 enum CardKind { plain, planche, assist }
@@ -278,6 +279,16 @@ class _ExerciseCardState extends State<ExerciseCard> {
                 ],
               ],
             ),
+            if (_unite == 'Sec') ...[
+              const SizedBox(height: 10),
+              Chrono(onStop: (sec) {
+                _value.text = '$sec';
+                _auto?.cancel();
+                _auto = Timer(const Duration(seconds: 3), () {
+                  if (mounted) _save();
+                });
+              }),
+            ],
             if (k == CardKind.planche) ...[
               InkWell(
                 onTap: () => setState(() => _showOptions = !_showOptions),
