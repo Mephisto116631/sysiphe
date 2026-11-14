@@ -66,17 +66,26 @@ class _ChronoState extends State<Chrono> {
       children: [
         const Icon(Icons.timer_outlined, color: AppTheme.textSecondary),
         const SizedBox(width: 8),
-        Text(
-          _label,
-          key: const ValueKey('chrono-time'),
-          style: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.w700,
-            fontFeatures: const [FontFeature.tabularFigures()],
-            color: _running ? AppTheme.primaryBlue : null,
+        // Le temps rétrécit au besoin : la ligne ne déborde jamais, même dans
+        // une carte étroite avec le bouton « remettre à zéro » affiché.
+        Expanded(
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                _label,
+                key: const ValueKey('chrono-time'),
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w700,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                  color: _running ? AppTheme.primaryBlue : null,
+                ),
+              ),
+            ),
           ),
         ),
-        const Spacer(),
         if (!_running && _elapsed > Duration.zero)
           IconButton(
             tooltip: 'Remettre à zéro',
