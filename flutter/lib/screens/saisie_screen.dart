@@ -8,6 +8,7 @@ import '../models/stats.dart';
 import '../services/data_events.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
+import '../widgets/chrono.dart';
 import '../widgets/exercise_card.dart';
 
 class SaisieScreen extends StatefulWidget {
@@ -25,8 +26,14 @@ class _SaisieScreenState extends State<SaisieScreen> {
   final _chargeCtrl =
       TextEditingController(); // valeur de la série (performance)
   final _lestCtrl = TextEditingController(); // lest externe en kg (charge)
-  // Exemples tirés de la dernière séance : affichés en sous-texte, jamais saisis.
-  String? _exFor, _exValue, _exLest;
+  /// Exemples tirés de la dernière fois, en sous-texte (jamais saisis) :
+  /// la série N de l'exercice affiche la série N de la dernière séance.
+  /// Suit le sélecteur de série (− / +).
+  Perf? get _exemple {
+    final ex = _exerciceCtrl.text.trim();
+    if (ex.isEmpty) return null;
+    return _lastFor(ex)?.seriesFor(_serie);
+  }
   TextEditingController? _acCtrl; // contrôleur interne de l'Autocomplete
   DateTime _date = DateTime.now();
   int _serie = 1;
@@ -380,9 +387,6 @@ class _SaisieScreenState extends State<SaisieScreen> {
     _exerciceCtrl.text = t.exercice;
     // La dernière séance sert d'exemple (sous-texte), pas de valeur saisie.
     _chargeCtrl.clear();
-    _exFor = t.exercice;
-    _exValue = _num(model.performance);
-    _exLest = model.charge > 0 ? _num(model.charge) : null;
     setState(() {
       _serie = serie;
       _categorie = model.categorie;
@@ -670,10 +674,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
       if (t != null && _doneToday(exercice) < t.series.length) {
         _applyTemplate(t);
       } else if (mounted) {
-        setState(() {
-          _serie = _doneToday(exercice) + 1;
-          _exValue = null;
-        });
+        setState(() => _serie = _doneToday(exercice) + 1);
       }
       _loadHistory();
       _snack(newPr
@@ -1109,10 +1110,9 @@ class _SaisieScreenState extends State<SaisieScreen> {
                                     : _unite == 'Reps'
                                         ? 'Répétitions'
                                         : 'Poids (kg)',
-                                hintText: _exFor == _exerciceCtrl.text.trim() &&
-                                        _exValue != null
-                                    ? 'ex. $_exValue'
-                                    : 'ex. 12',
+                                hintText: _exemple == null
+                                    ? 'ex. 12'
+                                    : 'ex. ${_num(_exemple!.performance)}',
                                 helperText: 'Enregistré après 3 s',
                                 helperStyle: const TextStyle(fontSize: 10),
                               ),
@@ -1135,6 +1135,15 @@ class _SaisieScreenState extends State<SaisieScreen> {
                       ),
                       const SizedBox(height: 12),
 
+                      // Chronomètre pour les exercices en secondes
+                      if (_unite == 'Sec') ...[
+                        Chrono(onStop: (sec) {
+                          _chargeCtrl.text = '$sec';
+                          _scheduleAutoSave(_chargeCtrl.text);
+                        }),
+                        const SizedBox(height: 12),
+                      ],
+
                       // Lest (tractions / dips lestés) — conservé d'une
                       // série à l'autre, vide = sans lest.
                       if (_unite == 'Reps' && _enableCharges) ...[
@@ -1148,9 +1157,8 @@ class _SaisieScreenState extends State<SaisieScreen> {
                           ],
                           decoration: InputDecoration(
                             labelText: 'Lest (kg) — optionnel',
-                            hintText: _exFor == _exerciceCtrl.text.trim() &&
-                                    _exLest != null
-                                ? 'ex. $_exLest'
+                            hintText: (_exemple?.charge ?? 0) > 0
+                                ? 'ex. ${_num(_exemple!.charge)}'
                                 : '0',
                             prefixIcon:
                                 const Icon(Icons.fitness_center, size: 18),
