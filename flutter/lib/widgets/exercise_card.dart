@@ -75,6 +75,7 @@ class _ExerciseCardState extends State<ExerciseCard> {
   late String _unite;
   String _variante = 'Full', _forme = 'Normal';
   String _elastique = 'Aucun', _tension = 'N/A', _ecartement = 'Standard';
+  String? _lestHint;
   bool _showOptions = false;
   bool _saving = false;
   String? _error;
@@ -93,7 +94,7 @@ class _ExerciseCardState extends State<ExerciseCard> {
       if (widget.ecartements.contains(p.ecartement)) {
         _ecartement = p.ecartement;
       }
-      if (p.charge > 0) _lest.text = _fmt(p.charge);
+      if (p.charge > 0) _lestHint = _fmt(p.charge); // exemple, pas une saisie
     }
     _showOptions = widget.kind == CardKind.assist;
   }
@@ -116,7 +117,7 @@ class _ExerciseCardState extends State<ExerciseCard> {
   String? get _hint {
     final t = widget.last;
     if (t == null) return null;
-    return _fmt(t.seriesFor(_serie).performance);
+    return 'ex. ${_fmt(t.seriesFor(_serie).performance)}';
   }
 
   Future<void> _save() async {
@@ -269,7 +270,9 @@ class _ExerciseCardState extends State<ExerciseCard> {
                       inputFormatters: [
                         FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))
                       ],
-                      decoration: const InputDecoration(labelText: 'Lest (kg)'),
+                      decoration: InputDecoration(
+                          labelText: 'Lest (kg)',
+                          hintText: _lestHint == null ? null : 'ex. $_lestHint'),
                     ),
                   ),
                 ],
