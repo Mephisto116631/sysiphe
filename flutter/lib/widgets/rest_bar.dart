@@ -39,36 +39,50 @@ class RestBar extends StatelessWidget {
           return Card(
             color: Colors.blue.shade700,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
-              child: Row(
+              padding: const EdgeInsets.fromLTRB(16, 10, 8, 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.hourglass_bottom, color: Colors.white),
-                  const SizedBox(width: 8),
-                  const Text('Repos',
-                      style: TextStyle(color: Colors.white70, fontSize: 14)),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(clock(d),
-                          key: const ValueKey('rest-time'),
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 30,
-                              fontWeight: FontWeight.w700)),
+                  Row(
+                    children: [
+                      const Icon(Icons.hourglass_bottom, color: Colors.white),
+                      const SizedBox(width: 8),
+                      const Text('Repos',
+                          style: TextStyle(color: Colors.white70, fontSize: 14)),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(clock(d),
+                              key: const ValueKey('rest-time'),
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 34,
+                                  fontWeight: FontWeight.w700)),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Wrap(
+                      spacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        TextButton(
+                            onPressed: () => onAdjust(-15),
+                            child: const Text('−15',
+                                style: TextStyle(color: Colors.white))),
+                        TextButton(
+                            onPressed: () => onAdjust(15),
+                            child: const Text('+15',
+                                style: TextStyle(color: Colors.white))),
+                        FilledButton.tonal(
+                            onPressed: onSkip, child: const Text('Passer')),
+                      ],
                     ),
                   ),
-                  TextButton(
-                      onPressed: () => onAdjust(-15),
-                      child: const Text('−15',
-                          style: TextStyle(color: Colors.white))),
-                  TextButton(
-                      onPressed: () => onAdjust(15),
-                      child: const Text('+15',
-                          style: TextStyle(color: Colors.white))),
-                  FilledButton.tonal(
-                      onPressed: onSkip, child: const Text('Passer')),
                 ],
               ),
             ),
