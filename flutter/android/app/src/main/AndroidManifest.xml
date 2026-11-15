@@ -4,6 +4,12 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Mise à jour intégrée : installer l'APK téléchargé depuis GitHub -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <!-- Minuteur : notifications de changement de phase, vibration, écran allumé -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32"/>
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
 
     <application
         android:label="Sysiphe"
@@ -33,6 +39,11 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2"/>
+
+        <!-- Notifications programmées du minuteur -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
+            android:exported="false"/>
 
         <!-- Partage de l'APK téléchargé avec l'installeur Android -->
         <provider

@@ -10,6 +10,7 @@ import '../services/supabase_service.dart';
 import '../theme.dart';
 import '../widgets/chrono.dart';
 import '../widgets/exercise_card.dart';
+import 'minuteur_screen.dart';
 
 class SaisieScreen extends StatefulWidget {
   final String userId;
@@ -820,6 +821,12 @@ class _SaisieScreenState extends State<SaisieScreen> {
       appBar: AppBar(
         title: const Text('Saisie'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.timer_outlined),
+            onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const MinuteurScreen())),
+            tooltip: 'Minuteur (préparation, exercice, repos)',
+          ),
           if (_todayPerfs.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.delete_sweep_outlined),
