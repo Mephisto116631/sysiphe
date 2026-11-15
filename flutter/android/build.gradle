@@ -16,16 +16,3 @@ subprojects {
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }
-
-// TEMP-DIAG : remonte l'erreur Gradle dans les annotations de la CI.
-gradle.buildFinished { result ->
-    if (result.failure != null) {
-        def msgs = []
-        def t = result.failure
-        while (t != null) { msgs << String.valueOf(t.message); t = t.cause }
-        def line = msgs.join(' || ').replaceAll('[\r\n]+', ' ')
-        if (line.length() > 1800) line = line.substring(0, 1800)
-        System.out.println('::error title=GRADLE::' + line)
-        System.err.println('::error title=GRADLE::' + line)
-    }
-}
