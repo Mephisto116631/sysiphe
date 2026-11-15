@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sysiphe/widgets/chrono.dart';
 import 'package:sysiphe/models/perf.dart';
 import 'package:sysiphe/models/session.dart';
 import 'package:sysiphe/theme.dart';
@@ -131,6 +133,7 @@ void main() {
   });
 
   testWidgets('exercice en secondes : chronomètre qui remplit le champ', (t) async {
+    SharedPreferences.setMockInitialValues({kChronoPreKey: 0});
     t.view.physicalSize = const Size(360 * 3, 900 * 3);
     t.view.devicePixelRatio = 3;
     addTearDown(t.view.reset);
@@ -157,6 +160,7 @@ void main() {
         ),
       ),
     ));
+    await t.pumpAndSettle(); // réglage du chrono chargé (sans préparation)
     expect(find.text('Démarrer'), findsOneWidget);
     await t.tap(find.text('Démarrer'));
     await t.pump(const Duration(milliseconds: 1600));
