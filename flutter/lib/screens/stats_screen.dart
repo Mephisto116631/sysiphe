@@ -5,6 +5,7 @@ import '../models/perf.dart';
 import '../models/stats.dart';
 import '../services/data_events.dart';
 import '../services/supabase_service.dart';
+import '../services/ui_prefs.dart';
 import '../theme.dart';
 import '../widgets/load_error.dart';
 
@@ -52,7 +53,22 @@ class _StatsScreenState extends State<StatsScreen> {
   void initState() {
     super.initState();
     dataVersion.addListener(_onDataChanged);
+    _restorePrefs();
     _load();
+  }
+
+  /// Filtres mémorisés sur l'appareil : période et mode de la planche
+  /// (l'exercice est restauré au chargement, par profil).
+  Future<void> _restorePrefs() async {
+    final p = await UiPrefs.getString('stats_period');
+    final t = await UiPrefs.getBool('stats_planche_time');
+    if (!mounted) return;
+    setState(() {
+      for (final e in _Period.values) {
+        if (e.name == p) _period = e;
+      }
+      _plancheTime = t ?? _plancheTime;
+    });
   }
 
   Future<void> _load() async {
@@ -68,9 +84,14 @@ class _StatsScreenState extends State<StatsScreen> {
           if (p.exercice.isNotEmpty) p.exercice
       }.toList()
         ..sort();
+      final saved = await UiPrefs.getString('stats_exercice_${widget.userId}');
+      if (!mounted) return;
       setState(() {
         _all = all;
         _exercices = names;
+        if (_selected == null && saved != null && names.contains(saved)) {
+          _selected = saved; // dernier exercice regardé
+        }
         if (_selected == null || !names.contains(_selected)) {
           // Par défaut : la planche si elle existe, sinon l'exercice le
           // plus récent.
@@ -145,7 +166,12 @@ class _StatsScreenState extends State<StatsScreen> {
                 .map((e) => DropdownMenuItem(
                     value: e, child: Text(e, overflow: TextOverflow.ellipsis)))
                 .toList(),
-            onChanged: (v) => setState(() => _selected = v),
+            onChanged: (v) {
+              setState(() => _selected = v);
+              if (v != null) {
+                UiPrefs.setString('stats_exercice_${widget.userId}', v);
+              }
+            },
           ),
           const SizedBox(height: 12),
           SegmentedButton<_Period>(
@@ -155,7 +181,10 @@ class _StatsScreenState extends State<StatsScreen> {
             ],
             selected: {_period},
             showSelectedIcon: false,
-            onSelectionChanged: (s) => setState(() => _period = s.first),
+            onSelectionChanged: (s) {
+              setState(() => _period = s.first);
+              UiPrefs.setString('stats_period', s.first.name);
+            },
           ),
           if (isPlanche) ...[
             const SizedBox(height: 8),
@@ -171,7 +200,10 @@ class _StatsScreenState extends State<StatsScreen> {
                     icon: Icon(Icons.timer_outlined, size: 18)),
               ],
               selected: {_plancheTime},
-              onSelectionChanged: (s) => setState(() => _plancheTime = s.first),
+              onSelectionChanged: (s) {
+                setState(() => _plancheTime = s.first);
+                UiPrefs.setBool('stats_planche_time', s.first);
+              },
             ),
           ],
           const SizedBox(height: 16),
