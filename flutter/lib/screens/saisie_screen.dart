@@ -124,11 +124,6 @@ class _SaisieScreenState extends State<SaisieScreen>
     if (v > 0) TimerAlerts.requestPermission(); // notifications (Android 13+)
   }
 
-  bool get _isToday {
-    final n = DateTime.now();
-    return _date.year == n.year && _date.month == n.month && _date.day == n.day;
-  }
-
   /// Lance le repos après une série enregistrée (aujourd'hui seulement).
   void _startRest() {
     if (_restSeconds <= 0 || !_isToday || !mounted) return;
