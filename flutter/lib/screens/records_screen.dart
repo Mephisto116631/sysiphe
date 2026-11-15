@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../models/stats.dart';
 import '../services/data_events.dart';
 import '../services/supabase_service.dart';
+import '../services/ui_prefs.dart';
 import '../theme.dart';
 import '../widgets/load_error.dart';
 
@@ -31,6 +32,14 @@ class _RecordsScreenState extends State<RecordsScreen> {
   void initState() {
     super.initState();
     dataVersion.addListener(_onDataChanged);
+    UiPrefs.getString('records_filtre').then((n) {
+      if (!mounted) return;
+      setState(() {
+        for (final e in _Filtre.values) {
+          if (e.name == n) _filtre = e;
+        }
+      });
+    });
     _load();
     _search.addListener(() => setState(() {}));
   }
@@ -122,7 +131,10 @@ class _RecordsScreenState extends State<RecordsScreen> {
                 ],
                 selected: {_filtre},
                 showSelectedIcon: false,
-                onSelectionChanged: (v) => setState(() => _filtre = v.first),
+                onSelectionChanged: (v) {
+                  setState(() => _filtre = v.first);
+                  UiPrefs.setString('records_filtre', v.first.name);
+                },
               ),
               const SizedBox(height: 8),
               TextField(

@@ -3,6 +3,7 @@ import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
 import '../services/data_events.dart';
 import '../services/supabase_service.dart';
+import '../services/ui_prefs.dart';
 import '../models/stats.dart';
 import '../theme.dart';
 import '../widgets/load_error.dart';
@@ -302,6 +303,19 @@ class _RestCardState extends State<_RestCard> {
   _RestPeriod _period = _RestPeriod.all;
 
   @override
+  void initState() {
+    super.initState();
+    UiPrefs.getString('calendar_rest_period').then((n) {
+      if (!mounted) return;
+      setState(() {
+        for (final e in _RestPeriod.values) {
+          if (e.name == n) _period = e;
+        }
+      });
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final dates = sessionDatesSince(widget.dates, _period.days);
@@ -324,7 +338,10 @@ class _RestCardState extends State<_RestCard> {
                 ],
                 selected: {_period},
                 showSelectedIcon: false,
-                onSelectionChanged: (s) => setState(() => _period = s.first),
+                onSelectionChanged: (s) {
+                  setState(() => _period = s.first);
+                  UiPrefs.setString('calendar_rest_period', s.first.name);
+                },
               ),
             ),
             const SizedBox(height: 12),

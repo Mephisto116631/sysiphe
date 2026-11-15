@@ -7,9 +7,12 @@ import '../models/session.dart';
 import '../models/stats.dart';
 import '../services/data_events.dart';
 import '../services/supabase_service.dart';
+import '../services/timer_alerts.dart';
+import '../services/ui_prefs.dart';
 import '../theme.dart';
 import '../widgets/chrono.dart';
 import '../widgets/exercise_card.dart';
+import '../widgets/rest_bar.dart';
 import 'minuteur_screen.dart';
 
 class SaisieScreen extends StatefulWidget {
@@ -21,7 +24,8 @@ class SaisieScreen extends StatefulWidget {
   State<SaisieScreen> createState() => _SaisieScreenState();
 }
 
-class _SaisieScreenState extends State<SaisieScreen> {
+class _SaisieScreenState extends State<SaisieScreen>
+    with WidgetsBindingObserver {
   // ── État du formulaire ────────────────────────────────────────────────────
   final _exerciceCtrl = TextEditingController();
   final _chargeCtrl =
@@ -74,6 +78,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
   void initState() {
     super.initState();
     dataVersion.addListener(_onDataChanged);
+    WidgetsBinding.instance.addObserver(this);
     _init();
   }
 
@@ -84,9 +89,100 @@ class _SaisieScreenState extends State<SaisieScreen> {
       _loadExerciceNames(),
       _loadWeight(),
       _loadHistory(),
+      _loadRestPref(),
     ]);
-    // Pas de reprise automatique : l'exercice est toujours choisi par
-    // l'utilisateur.
+    _preselectFirst();
+  }
+
+  /// À l'ouverture, la carte principale propose le premier exercice de la
+  /// séance précédente (le premier pas encore fait aujourd'hui). Jamais de
+  /// changement d'exercice automatique ensuite.
+  void _preselectFirst() {
+    if (!mounted || _exerciceCtrl.text.trim().isNotEmpty || _previous.isEmpty) {
+      return;
+    }
+    _applyTemplate(nextPending(_previous, _doneToday) ?? _previous.first);
+  }
+
+  // ── Repos entre les séries ────────────────────────────────────────────────
+  int _restSeconds = 90; // 0 = sans repos automatique
+  DateTime? _restEnd;
+  Timer? _restTick;
+  int _restBeep = -1;
+  final _restLeft = ValueNotifier<Duration?>(null);
+
+  Future<void> _loadRestPref() async {
+    final v = await UiPrefs.getInt('rest_seconds');
+    if (v != null && RestBar.choices.contains(v) && mounted) {
+      setState(() => _restSeconds = v);
+    }
+  }
+
+  void _setRestConfig(int v) {
+    setState(() => _restSeconds = v);
+    UiPrefs.setInt('rest_seconds', v);
+    if (v > 0) TimerAlerts.requestPermission(); // notifications (Android 13+)
+  }
+
+  bool get _isToday {
+    final n = DateTime.now();
+    return _date.year == n.year && _date.month == n.month && _date.day == n.day;
+  }
+
+  /// Lance le repos après une série enregistrée (aujourd'hui seulement).
+  void _startRest() {
+    if (_restSeconds <= 0 || !_isToday || !mounted) return;
+    _restEnd = DateTime.now().add(Duration(seconds: _restSeconds));
+    _restBeep = -1;
+    _restTick?.cancel();
+    _restTick = Timer.periodic(const Duration(milliseconds: 200), (_) => _onRestTick());
+    _onRestTick();
+  }
+
+  void _onRestTick() {
+    final end = _restEnd;
+    if (end == null) return;
+    final left = end.difference(DateTime.now());
+    if (left <= Duration.zero) {
+      _stopRest();
+      HapticFeedback.heavyImpact();
+      Future.delayed(const Duration(milliseconds: 250), HapticFeedback.heavyImpact);
+      return;
+    }
+    final sec = (left.inMilliseconds / 1000).ceil();
+    if (sec <= 3 && sec != _restBeep) {
+      _restBeep = sec;
+      HapticFeedback.selectionClick();
+    }
+    _restLeft.value = left;
+  }
+
+  void _stopRest() {
+    _restTick?.cancel();
+    _restEnd = null;
+    _restLeft.value = null;
+    TimerAlerts.cancelAll();
+  }
+
+  void _adjustRest(int seconds) {
+    final end = _restEnd;
+    if (end == null) return;
+    _restEnd = end.add(Duration(seconds: seconds));
+    _onRestTick();
+  }
+
+  // Écran éteint ou autre appli : notification de fin de repos.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final end = _restEnd;
+    if (state == AppLifecycleState.paused && end != null) {
+      final left = end.difference(DateTime.now());
+      if (left > Duration.zero) {
+        TimerAlerts.schedule([TimerAlert(left, 'Repos terminé', 'Prochaine série !')]);
+      }
+    } else if (state == AppLifecycleState.resumed) {
+      TimerAlerts.cancelAll();
+    }
   }
 
   /// Exercices du plus récent au plus ancien (liste « Récents »,
@@ -189,6 +285,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
       _snack(newPr
           ? '🏆 $ex : nouveau record en série (${_num(e.value)})'
           : '$ex · série ${e.serie} enregistrée ✓');
+      _startRest();
       return true;
     } catch (err) {
       _snack('Erreur : $err', error: true);
@@ -683,6 +780,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
           : perfs.length > 1
               ? '${perfs.length} séries enregistrées ✓'
               : 'Enregistré ✓');
+      _startRest();
     } catch (e) {
       setState(() => _saving = false);
       _snack('Erreur : $e', error: true);
@@ -808,6 +906,9 @@ class _SaisieScreenState extends State<SaisieScreen> {
   @override
   void dispose() {
     _autoTimer?.cancel();
+    _restTick?.cancel();
+    _restLeft.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     dataVersion.removeListener(_onDataChanged);
     _exerciceCtrl.dispose();
     _chargeCtrl.dispose();
@@ -845,6 +946,16 @@ class _SaisieScreenState extends State<SaisieScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ── Repos entre les séries ────────────────────────────────────
+            RestBar(
+              seconds: _restSeconds,
+              onConfig: _setRestConfig,
+              left: _restLeft,
+              onSkip: _stopRest,
+              onAdjust: _adjustRest,
+            ),
+            const SizedBox(height: 12),
+
             // ── Résumé du jour ────────────────────────────────────────────
             if (_history.isNotEmpty || _todayPerfs.isNotEmpty) ...[
               _KpiRow(
