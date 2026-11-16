@@ -34,6 +34,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _saving = false;
   bool _enableCharges = true; // user_settings.enable_charges
   bool _loading = true;
+  int _cacheRefresh = 0; // relance le calcul de l'espace utilisé
   bool _autoUpdate = false; // préférence de l'appareil (pas du profil)
 
   @override
@@ -243,6 +244,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         trailing: const Icon(Icons.chevron_right,
                             color: AppTheme.textSecondary),
                         onTap: () => checkAndOfferUpdate(context),
+                      ),
+                      FutureBuilder<int>(
+                        key: ValueKey(_cacheRefresh),
+                        future: UpdateService.cacheBytes(),
+                        builder: (context, snap) {
+                          final mo = (snap.data ?? 0) / 1048576;
+                          return ListTile(
+                            leading: const Icon(Icons.cleaning_services_outlined,
+                                color: AppTheme.primaryBlue),
+                            title: const Text('Libérer de l\'espace'),
+                            subtitle: Text(snap.hasData
+                                ? 'Anciennes mises à jour et exports : '
+                                    '${mo.toStringAsFixed(mo < 10 ? 1 : 0)} Mo'
+                                : 'Calcul…'),
+                            trailing: const Icon(Icons.chevron_right,
+                                color: AppTheme.textSecondary),
+                            onTap: () async {
+                              final freed = await UpdateService.cleanup();
+                              if (!context.mounted) return;
+                              setState(() => _cacheRefresh++);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                      content: Text(
+                                          '${(freed / 1048576).toStringAsFixed(0)} Mo libérés')));
+                            },
+                          );
+                        },
                       ),
                       SwitchListTile(
                         secondary: const Icon(Icons.download_for_offline_outlined,

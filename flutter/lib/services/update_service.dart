@@ -61,6 +61,59 @@ class UpdateService {
   static Future<void> skipBuild(int build) async =>
       (await SharedPreferences.getInstance()).setInt(_skipKey, build);
 
+  /// Fichiers temporaires de l'appli : APK de mise à jour (jamais supprimés
+  /// auparavant : ~58 Mo à chaque mise à jour) et anciens exports CSV.
+  static Future<List<File>> _tempFiles({String? keepLabel}) async {
+    final out = <File>[];
+    try {
+      final d = await _channel.invokeMethod<String>('updatesDir');
+      if (d != null && await Directory(d).exists()) {
+        await for (final e in Directory(d).list()) {
+          if (e is! File) continue;
+          final name = e.uri.pathSegments.last;
+          if (keepLabel != null && name == 'sysiphe-$keepLabel.apk') continue;
+          out.add(e);
+        }
+      }
+    } catch (_) {}
+    try {
+      await for (final e in Directory.systemTemp.list()) {
+        if (e is! File) continue;
+        final name = e.uri.pathSegments.last;
+        if (name.startsWith('sysiphe-export-') && name.endsWith('.csv')) {
+          out.add(e);
+        }
+      }
+    } catch (_) {}
+    return out;
+  }
+
+  /// Octets occupés par ces fichiers temporaires.
+  static Future<int> cacheBytes() async {
+    var n = 0;
+    for (final f in await _tempFiles()) {
+      try {
+        n += await f.length();
+      } catch (_) {}
+    }
+    return n;
+  }
+
+  /// Supprime les APK obsolètes (déjà installés ou interrompus) et les
+  /// exports CSV ; garde seulement l'APK de [keepLabel] (mise à jour prête).
+  /// Retourne les octets libérés.
+  static Future<int> cleanup({String? keepLabel}) async {
+    var freed = 0;
+    for (final f in await _tempFiles(keepLabel: keepLabel)) {
+      try {
+        final len = await f.length();
+        await f.delete();
+        freed += len;
+      } catch (_) {}
+    }
+    return freed;
+  }
+
   /// APK déjà téléchargé en entier (taille conforme), sinon null.
   static Future<File?> cachedApk(UpdateInfo info) async {
     try {
