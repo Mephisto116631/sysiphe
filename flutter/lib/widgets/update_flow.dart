@@ -19,6 +19,8 @@ Future<void> checkAndOfferUpdate(BuildContext context, {bool silent = false}) as
     }
     return;
   }
+  // Libère l'espace : on ne garde que l'APK de la mise à jour en attente.
+  await UpdateService.cleanup(keepLabel: info?.label);
   if (!context.mounted) return;
   if (info == null) {
     if (!silent) {
