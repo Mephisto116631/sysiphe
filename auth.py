@@ -244,7 +244,7 @@ def render_login_page(supabase, pkce_store: dict, app_url: str) -> None:
                         _login_profile(controller, pending)
                         st.rerun()
                     elif statut == "locked":
-                        st.error("Trop d'essais : réessaie dans 15 minutes.")
+                        st.error("Trop d'essais sur ce profil : verrouillé temporairement, réessaie plus tard.")
                     elif statut == "bad_pin":
                         st.error("PIN incorrect.")
                     else:
