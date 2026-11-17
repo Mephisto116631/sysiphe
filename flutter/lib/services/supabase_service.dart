@@ -307,6 +307,19 @@ class SupabaseService {
     return set.toList()..sort();
   }
 
+  /// Tous les exercices de l'historique avec leur dernière unité et catégorie
+  /// (et pas seulement ceux des 90 derniers jours).
+  Future<Map<String, (String, String)>> getExerciceMeta(String userId) async {
+    final perfs = await _fetchPerfs(userId); // du plus récent au plus ancien
+    final out = <String, (String, String)>{};
+    for (final p in perfs) {
+      if (p.exercice.isNotEmpty) {
+        out.putIfAbsent(p.exercice, () => (p.unite, p.categorie));
+      }
+    }
+    return out;
+  }
+
   // ─── Calendrier : jours actifs ────────────────────────────────────────────
 
   /// Nombre de séries par jour ; [months] null = tout l'historique.

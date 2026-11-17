@@ -122,4 +122,17 @@ void main() {
       expect(seriesHint(t.firstWhere((e) => e.exercice == 'Abdos')), '30/40');
     });
   });
+
+  group('nouvel exercice : détection d\'un exercice existant', () {
+    const known = ['Planche', 'Handstand to diamond', 'Pompe'];
+    test('insensible à la casse et aux espaces', () {
+      expect(findExistingExercise(known, '  planche '), 'Planche');
+      expect(findExistingExercise(known, 'HANDSTAND  to   diamond'),
+          'Handstand to diamond');
+    });
+    test('un nom différent n\'est pas confondu', () {
+      expect(findExistingExercise(known, 'Pompes'), isNull);
+      expect(findExistingExercise(known, ''), isNull);
+    });
+  });
 }
