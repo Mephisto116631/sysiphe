@@ -130,6 +130,12 @@ void main() {
       expect(findExistingExercise(known, 'HANDSTAND  to   diamond'),
           'Handstand to diamond');
     });
+    test('insensible aux accents', () {
+      expect(findExistingExercise(['Relevé Planche', 'Élévations'], 'releve planche'),
+          'Relevé Planche');
+      expect(findExistingExercise(['Élévations'], 'ELEVATIONS'), 'Élévations');
+      expect(normalizeExerciseName(' Cœur  gainé '), 'coeur gaine');
+    });
     test('un nom différent n\'est pas confondu', () {
       expect(findExistingExercise(known, 'Pompes'), isNull);
       expect(findExistingExercise(known, ''), isNull);

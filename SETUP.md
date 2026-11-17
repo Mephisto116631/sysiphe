@@ -1,8 +1,9 @@
 # Sysiphe — Setup de la base de données
 
-Schéma **réel** de la base Supabase de production (relevé le 9 novembre 2026).
-À exécuter dans **Supabase Dashboard → SQL Editor** pour recréer la base de zéro.
-Sur la base existante, toutes ces tables sont déjà en place : rien à exécuter.
+Schéma **réel** de la base Supabase de production (relevé le 9 novembre 2026, mis à jour le 17 novembre).
+Pour recréer la base de zéro : exécuter le § 1 dans **Supabase Dashboard → SQL Editor**, puis chaque fichier
+de `supabase/migrations/` **dans l'ordre** (rôles, exercices assistables, sécurité…).
+Sur la base existante, tout est déjà en place : rien à exécuter, sauf ce qui est dans `supabase/a_appliquer/`.
 
 ---
 
@@ -13,7 +14,7 @@ Sur la base existante, toutes ces tables sont déjà en place : rien à exécute
 CREATE TABLE IF NOT EXISTS profiles (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name       TEXT NOT NULL UNIQUE,
-    pin_hash   TEXT,                         -- SHA-256 du PIN (strip), NULL = pas de PIN
+    pin_hash   TEXT,                         -- empreinte du PIN (pin_digest), NULL = pas de PIN
     last_login TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT now()
 );
@@ -28,12 +29,13 @@ CREATE TABLE IF NOT EXISTS perfs (
     performance    NUMERIC DEFAULT 0,        -- valeur : secondes / reps / kg selon unite
     charge         NUMERIC DEFAULT 0,        -- lest externe en kg
     unite          TEXT,                     -- 'Sec' | 'Reps' | 'Kg'
-    categorie      TEXT,                     -- 'Force Iso' | 'Musculation'
+    categorie      TEXT,                     -- 'Force Iso' | 'Gainage' | 'Musculation'
     variante       TEXT,                     -- planche
     forme          TEXT,                     -- planche
     elastique      TEXT,                     -- planche
     tension        TEXT,                     -- planche
-    effort_pondere NUMERIC DEFAULT 0         -- planche, 0 sinon
+    effort_pondere NUMERIC DEFAULT 0         -- planche et exercices assistables, 0 sinon
+    -- + ecartement TEXT (migration assistable_exercises_ecartement)
 );
 
 -- Réglages, une ligne par profil (partagée par l'app web et l'app Flutter)
@@ -51,7 +53,9 @@ CREATE TABLE IF NOT EXISTS user_settings (
     graph_period      TEXT DEFAULT 'Tout l''historique',
     app_theme         TEXT DEFAULT 'Abysse',
     updated_at        TIMESTAMPTZ DEFAULT now()
+    -- + assistable_exercises JSONB, ecartements_config JSONB (migration assistable_exercises_ecartement)
 );
+-- profiles.role, profile_members, pin_attempts, profile_pin_lock : créés par les migrations.
 ```
 
 Points à connaître :
@@ -62,29 +66,26 @@ Points à connaître :
 
 ---
 
-## 2. Sécurité (RLS) — ⚠️ en cours, voir `PLAN.md` phase 3
+## 2. Sécurité (RLS) — active depuis le 12 novembre 2026
 
-La RLS est aujourd'hui **désactivée** sur les trois tables : toute personne qui possède la clé `anon`
-(présente dans l'APK et dans l'app web) peut lire et modifier toutes les données.
+- Chaque appareil ouvre une **session Supabase anonyme** persistante. Un PIN correct, vérifié par le serveur
+  (`claim_profile`), rattache l'appareil au profil dans `profile_members`.
+- RLS active sur toutes les tables : `perfs` et `user_settings` ne sont accessibles que pour les profils
+  rattachés (`is_profile_member`) ; `pin_hash` et `role` ne sont ni lisibles ni modifiables en direct.
+- Anti force brute : 5 erreurs par appareil → 15 min (`pin_attempts`) ; 10 erreurs sur un profil, tous
+  appareils confondus → 1 h, puis 2 h, 4 h… (`profile_pin_lock`).
+- Rôles : `profiles.role` = `user` ou `admin` (onglet Modèle, export de la base via `admin_export_perfs`).
+- Prérequis côté Supabase : Authentication → **Allow anonymous sign-ins** activé.
 
-**Ne pas** activer la RLS avec des policies `auth.uid() = user_id` : la connexion par profil + PIN
-n'utilise pas l'authentification Supabase, donc `auth.uid()` n'est jamais égal à l'id d'un profil, et
-les deux apps ne verraient plus aucune donnée. La solution retenue sera documentée ici.
+Le SQL complet est dans `supabase/migrations/` (étape 1 : `profile_auth_step1`, étape 2 : `rls_step2*`).
 
 ---
 
-## 3. Clé étrangère de `user_settings` — ⚠️ à corriger
+## 3. Clé étrangère de `user_settings` — ⚠️ correctif prêt, à appliquer
 
 En production, `user_settings.user_id` référence `auth.users(id)` au lieu de `profiles(id)`. Un profil
 qui n'a pas de compte Supabase du même id (« Dilbert 🐶 », « Profil 3 ») ne peut donc pas enregistrer
-ses réglages. Correction prévue (`PLAN.md`, phase 3) :
-
-```sql
-ALTER TABLE user_settings DROP CONSTRAINT user_settings_user_id_fkey;
-ALTER TABLE user_settings
-    ADD CONSTRAINT user_settings_user_id_fkey
-    FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE;
-```
+ses réglages. Le correctif, testé sur la base, est dans `supabase/a_appliquer/` avec sa marche à suivre.
 
 ---
 
@@ -95,7 +96,7 @@ ALTER TABLE user_settings
 pip install pytest pandas numpy
 pytest test_data.py -v
 
-# Flutter : modèle et calcul d'effort (parité avec data.py)
+# Flutter : modèles, calcul d'effort (parité avec data.py), écrans
 cd flutter && flutter test
 ```
 
@@ -108,9 +109,9 @@ Les deux suites tournent automatiquement sur chaque PR (`.github/workflows/ci.ym
 L'APK est l'app **Flutter** (`flutter/`), construite et publiée dans les Releases par
 `.github/workflows/build-flutter.yml` :
 
-- **Nouvelle version** : changer `version:` dans `flutter/pubspec.yaml` (ex. `2.2.0+1`). Le nombre
-  après `+` est ignoré : la CI utilise le numéro du run, qui augmente à chaque build.
-- Chaque push sur `main` touchant `flutter/**` reconstruit l'APK et met à jour la Release `v<version>`.
+- **Chaque PR qui modifie l'app doit augmenter `version:`** dans `flutter/pubspec.yaml` (ex. `2.7.0+1` →
+  `2.7.1+1`) : la CI le vérifie. Le nombre après `+` est ignoré : la CI utilise le numéro du run.
+- Chaque push sur `main` touchant `flutter/**` construit l'APK et publie la Release `v<version>`.
 - La version complète (ex. `2.1.0+7`) s'affiche en bas de l'écran Paramètres.
 
 L'ancien hébergement NAS et les anciens APK (WebView, Capacitor) sont dans `archive/` : voir le

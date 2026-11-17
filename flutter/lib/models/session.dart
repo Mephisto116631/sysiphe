@@ -150,9 +150,20 @@ String seriesHint(ExerciseTemplate t) => t.series
         : p.performance.toString())
     .join('/');
 
-/// Nom comparable : sans majuscules, espaces de début/fin et doublons ôtés.
-String normalizeExerciseName(String s) =>
-    s.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+/// Nom comparable : sans majuscules ni accents, espaces de début/fin et
+/// doublons ôtés (« Élévations  » = « elevations »).
+String normalizeExerciseName(String s) {
+  const from = 'àâäáãåçéèêëíìîïñóòôöõúùûüýÿœæ';
+  const to = ['a', 'a', 'a', 'a', 'a', 'a', 'c', 'e', 'e', 'e', 'e', 'i', 'i',
+    'i', 'i', 'n', 'o', 'o', 'o', 'o', 'o', 'u', 'u', 'u', 'u', 'y', 'y', 'oe', 'ae'];
+  final b = StringBuffer();
+  for (final r in s.trim().toLowerCase().runes) {
+    final c = String.fromCharCode(r);
+    final i = from.indexOf(c);
+    b.write(i >= 0 ? to[i] : c);
+  }
+  return b.toString().replaceAll(RegExp(r'\s+'), ' ');
+}
 
 /// L'exercice déjà connu qui porte ce nom (écrit comme à l'origine), sinon null.
 String? findExistingExercise(Iterable<String> known, String typed) {

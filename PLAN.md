@@ -30,7 +30,7 @@ répondent **400**, et l'app reste bloquée sur un chargement infini.
 - [x] Stats / Records / Calendrier : afficher un message d'erreur et un bouton « Réessayer » au lieu d'un chargement infini
 - [x] Ordre des profils identique au web
 - [x] Build Flutter vert après la fusion de la PR #4 (vérifié par Claude)
-- [ ] **Toi** : installer le nouvel APK et vérifier Saisie, Stats, Calendrier et Records sur tes vraies données
+- [x] **Toi** : installer le nouvel APK et vérifier Saisie, Stats, Calendrier et Records sur tes vraies données
 
 ## Phase 2 — Mise en production
 
@@ -43,7 +43,7 @@ répondent **400**, et l'app reste bloquée sur un chargement infini.
 
 ## Phase 3 — Base de données et sécurité 🔐
 
-- [ ] **Protéger les données (RLS)** — solution retenue le 9 novembre : session Supabase anonyme et
+- [x] **Protéger les données (RLS)** — solution retenue le 9 novembre : session Supabase anonyme et
       persistante par appareil, PIN vérifié **par le serveur** une seule fois, puis la base ne sert que les
       profils rattachés à cette session. Aucune reconnexion, aucune latence ajoutée.
   - [x] Réglages Supabase : connexions anonymes, association manuelle d'identités, URL de retour de l'app (toi)
@@ -53,7 +53,7 @@ répondent **400**, et l'app reste bloquée sur un chargement infini.
   - [x] Étape 1 (app Flutter v2.2.0) : session anonyme, PIN vérifié par le serveur, hash du PIN plus jamais
         envoyé au téléphone
   - [x] Étape 1 (site web) : même principe, session gardée dans le cookie d'un an ; une session anonyme n'est jamais prise pour un compte Google
-  - [ ] **Toi** : installer la v2.2.0 et confirmer ton PIN une dernière fois
+  - [x] **Toi** : installer la v2.2.0 et confirmer ton PIN une dernière fois
   - [x] Étape 2 (base, 12/11/2026) : RLS activée sur `perfs`, `profiles`, `user_settings` (accès seulement aux profils
         rattachés à l'appareil), `pin_hash` et `role` illisibles/non modifiables en direct, plus aucun accès sans session ;
         testée en transaction annulée (accès, refus, admin) puis appliquée
@@ -61,7 +61,10 @@ répondent **400**, et l'app reste bloquée sur un chargement infini.
   - [ ] Étape 3 : bouton « Associer mon compte Google » (app + web)
 - [ ] `user_settings.user_id` pointe sur `auth.users` : les profils « Dilbert 🐶 » et « Profil 3 » ne peuvent pas
       enregistrer de réglages (violation de clé étrangère). → Faire pointer la clé sur `profiles(id)`
+      → correctif testé sur la base (17/11), **à appliquer par toi** : `supabase/a_appliquer/README.md`
 - [ ] Harmoniser les catégories en base (`Force isométrique `, `Gainage`, `Force Iso`) : migration SQL
+      → même fichier que ci-dessus : `Force isométrique ` (1 série) → `Force Iso` ; `Gainage` gardé (abdos tenus
+      en secondes, distincts des abdos en reps)
 - [x] Hachage du PIN : `strip()` aussi à la vérification côté web, comme à l'enregistrement et dans Flutter
 - [x] `SETUP.md` réécrit avec le schéma réel de production (3 tables, toutes les colonnes)
 
@@ -85,7 +88,7 @@ Pages et fonctions présentes sur le web, absentes ou simplifiées dans Flutter 
 - [x] **Paramètres** : renommer un exercice dans tout l'historique (avec confirmation si fusion)
 - [x] Initiales des profils : l'emoji de « Dilbert 🐶 » n'est plus coupé en deux, un double espace ne fait plus planter
 - [x] **Calendrier** : tout l'historique est chargé (avant : 6 derniers mois seulement, les mois plus anciens paraissaient vides)
-- [ ] **Paramètres** : export CSV
+- [~] **Paramètres** : export CSV — version admin (toute la base, PR #23) ; pas d'export par profil
 - [ ] Rappel d'inactivité (`inactivity_days`) en notification locale
 
 ## Phase 4 bis — Fonctions perdues (audit du 9 novembre) 🔎
@@ -118,7 +121,7 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
 **Paramètres**
 - [ ] « Inclure la planche » et taille de la moyenne glissante (`include_planche`, `nb_days_avg`)
 - [x] Afficher / masquer le champ lest (`enable_charges`) — Réglages, v2.5.2
-- [ ] Export CSV de l'historique
+- [~] Export CSV de l'historique — version admin seulement (PR #23)
 
 **Traces d'avant git (colonnes orphelines de `user_settings`)**
 - [ ] Thèmes (`app_theme`, défaut « Abysse ») — **reporté** (décision du 9 novembre : pas prioritaire)
@@ -179,6 +182,20 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
 - [ ] Garder Streamlit à long terme, ou tout migrer dans Flutter une fois la phase 4 terminée ?
 - [ ] Icône définitive de l'app Flutter
 
+## Audit du 17 novembre 2026
+
+- [x] PR #32 et #33 (même correctif « existe déjà ») : #33 fusionnée, #32 fermée ; comparaison sans accents reprise
+- [x] Version bloquée à 2.6.1 depuis le 10/11 (13 PR publiées sous le même tag) → **v2.7.0** ; la CI refuse
+      désormais une PR qui modifie l'app sans augmenter `version:`
+- [x] Migrations : fichiers renommés à la version de production, 5 migrations absentes du dépôt ajoutées
+      (dont `profile_pin_lock` et la création de `profiles.role`)
+- [x] README et SETUP à jour (RLS, rôles, assistables, minuteur, sauvegardes, CI)
+- [x] Branches fusionnées ou abandonnées supprimées de GitHub (les branches NAS gardées en tags `archive/…`)
+- [ ] **Toi** : appliquer `supabase/a_appliquer/20261117_reglages_profils_categories.sql` (marche à suivre dans le README du dossier)
+- [ ] Décider du site web (phase 6) : il ne gère ni les exercices assistables, ni les rôles, ni le minuteur
+      → piste : site en consultation seule, saisie uniquement dans l'app
+- [ ] Découper `saisie_screen.dart` (1 865 lignes) en widgets plus petits
+
 ## Phase 7 — Retours de saisie (novembre 2026)
 
 - [x] % de progression vs moyenne des 5 dernières séances, **à série égale** (planche : en points d'effort)
@@ -189,7 +206,7 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
       (catégories : serré / standard / large / très large). Effort = `reps × (poids effectif / 100)² × coef_écartement^1,2`
       avec `poids effectif = poids + lest − force élastique × ratio de tension` (même logique que la planche).
       Colonnes ajoutées : `perfs.ecartement`, `user_settings.assistable_exercises`, `user_settings.ecartements_config`.
-- [ ] Rôles admin / user, validation avant modification de l'algo, export de la base, pop-up de mise à jour + maj auto
+- [x] Rôles admin / user, validation avant modification de l'algo, export de la base, pop-up de mise à jour + maj auto (PR #21)
 - [ ] Passkey ; module course GPS (à décider)
 
 ### Idée gardée pour plus tard — formule « reps équivalentes » (non retenue)
