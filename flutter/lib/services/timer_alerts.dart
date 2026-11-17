@@ -32,6 +32,17 @@ class TimerAlerts {
     ),
   );
 
+  /// Le plugin, prêt à l'emploi (partagé avec les rappels de séance).
+  static Future<FlutterLocalNotificationsPlugin> plugin() async {
+    await _init();
+    return _plugin;
+  }
+
+  /// Ids réservés au minuteur, au repos et au chrono : [1000, 2000[.
+  /// Les rappels de séance utilisent d'autres ids et ne sont jamais effacés ici.
+  static const _firstId = 1000, _endId = 2000;
+  static bool _ours(int? id) => id != null && id >= _firstId && id < _endId;
+
   static Future<void> _init() async {
     if (_ready) return;
     tzdata.initializeTimeZones();
@@ -56,8 +67,8 @@ class TimerAlerts {
   static Future<void> schedule(List<TimerAlert> alerts) async {
     try {
       await _init();
-      await _plugin.cancelAll();
-      var id = 1000;
+      await _cancelOurs();
+      var id = _firstId;
       for (final a in alerts) {
         if (a.inDuration <= Duration.zero) continue;
         final when = tz.TZDateTime.now(tz.local).add(a.inDuration);
@@ -89,10 +100,29 @@ class TimerAlerts {
     } catch (_) {/* les notifications sont un confort : jamais bloquant */}
   }
 
+  /// Annule les alertes programmées ou affichées du minuteur, du repos et
+  /// du chrono (pas les rappels de séance).
   static Future<void> cancelAll() async {
     try {
       await _init();
-      await _plugin.cancelAll();
+      await _cancelOurs();
     } catch (_) {}
+  }
+
+  static Future<void> _cancelOurs() async {
+    final ids = <int>{
+      for (final r in await _plugin.pendingNotificationRequests())
+        if (_ours(r.id)) r.id,
+    };
+    try {
+      final android = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      for (final n in await android?.getActiveNotifications() ?? const []) {
+        if (_ours(n.id)) ids.add(n.id!);
+      }
+    } catch (_) {/* Android < 6 : seulement les programmées */}
+    for (final id in ids) {
+      await _plugin.cancel(id);
+    }
   }
 }

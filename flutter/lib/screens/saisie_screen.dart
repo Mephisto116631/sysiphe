@@ -8,6 +8,7 @@ import '../models/session.dart';
 import '../models/stats.dart';
 import '../services/data_events.dart';
 import '../services/supabase_service.dart';
+import '../services/reminders.dart';
 import '../services/rest_timer.dart';
 import '../theme.dart';
 import '../widgets/chrono.dart';
@@ -73,6 +74,7 @@ class _SaisieScreenState extends State<SaisieScreen>
   // Tout l'historique : panneau du jour, indicateurs par exercice, records.
   List<Perf> _history = [];
   int _nbDaysAvg = 5; // user_settings.nb_days_avg
+  int _inactivityDays = 2; // user_settings.inactivity_days (rappels)
   bool _enableCharges = true; // user_settings.enable_charges
   // Séance précédente, pour la reprendre exercice par exercice.
   List<ExerciseTemplate> _previous = [];
@@ -438,7 +440,9 @@ class _SaisieScreenState extends State<SaisieScreen>
   Future<void> _loadHistory() async {
     try {
       final all = await SupabaseService.instance.getAllPerfs(widget.userId);
-      if (mounted) setState(() => _history = all);
+      if (!mounted) return;
+      setState(() => _history = all);
+      _rescheduleReminders();
     } catch (_) {
       // Non bloquant : indicateurs masqués.
     }
@@ -472,12 +476,20 @@ class _SaisieScreenState extends State<SaisieScreen>
       setState(() {
         _cfg = EffortSettings.fromSettings(settings);
         _nbDaysAvg = (settings['nb_days_avg'] as num?)?.toInt() ?? 5;
+        _inactivityDays = (settings['inactivity_days'] as num?)?.toInt() ?? 2;
         _enableCharges = settings['enable_charges'] as bool? ?? true;
         final a = settings['assistable_exercises'];
         _assistables = a is List ? a.map((e) => '$e'.trim()).toSet() : {};
       });
+      if (_history.isNotEmpty) _rescheduleReminders();
     }
   }
+
+  /// Rappels de séance (inactivité, prochaine séance conseillée) recalculés
+  /// à chaque changement de l'historique ou des réglages.
+  void _rescheduleReminders() =>
+      Reminders.reschedule(_history.map((p) => p.date),
+          inactivityDays: _inactivityDays);
 
   /// Synchronise le nom d'exercice et adapte le formulaire :
   /// « Planche » → options planche ouvertes et unité en secondes.

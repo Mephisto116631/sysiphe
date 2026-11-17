@@ -10,6 +10,7 @@ import '../services/role.dart';
 import '../services/session_store.dart';
 import '../app_version.dart';
 import '../services/update_service.dart';
+import '../widgets/reminders_card.dart';
 import '../widgets/update_flow.dart';
 import 'model_screen.dart';
 import 'assistable_screen.dart';
@@ -419,6 +420,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     onChanged: _setEnableCharges,
                   ),
                 ),
+                const SizedBox(height: 20),
+
+                _SectionLabel('Rappels'),
+                RemindersCard(userId: widget.userId),
                 const SizedBox(height: 20),
 
                 _SectionLabel('Sécurité'),

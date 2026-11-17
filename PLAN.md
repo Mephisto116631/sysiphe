@@ -90,7 +90,7 @@ Pages et fonctions présentes sur le web, absentes ou simplifiées dans Flutter 
 - [x] Initiales des profils : l'emoji de « Dilbert 🐶 » n'est plus coupé en deux, un double espace ne fait plus planter
 - [x] **Calendrier** : tout l'historique est chargé (avant : 6 derniers mois seulement, les mois plus anciens paraissaient vides)
 - [~] **Paramètres** : export CSV — version admin (toute la base, PR #23) ; pas d'export par profil
-- [ ] Rappel d'inactivité (`inactivity_days`) en notification locale
+- [x] Rappel d'inactivité (`inactivity_days`) en notification locale (v2.10.0)
 
 ## Phase 4 bis — Fonctions perdues (audit du 9 novembre) 🔎
 
@@ -126,7 +126,7 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
 
 **Traces d'avant git (colonnes orphelines de `user_settings`)**
 - [ ] Thèmes (`app_theme`, défaut « Abysse ») — **reporté** (décision du 9 novembre : pas prioritaire)
-- [ ] Rappel après N jours sans séance (`inactivity_days`, défaut 2)
+- [x] Rappel après N jours sans séance (`inactivity_days`, défaut 2) — v2.10.0
 - [ ] Période de graphe mémorisée (`graph_period`)
 
 **Connexion web à trancher** (lié à la RLS, phase 3)
@@ -245,5 +245,9 @@ Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec 
 ## Prochains axes (décidés le 17/11)
 
 - [x] Découpage de la saisie (v2.9.1)
-- [ ] Rappels : inactivité (`inactivity_days`) et prochaine séance conseillée, en notifications locales (v2.10.0)
+- [x] Rappels (v2.10.0) : « Séance conseillée aujourd'hui » le jour donné par le repos habituel, et « Ça fait N jours
+      sans séance » après `inactivity_days` jours (défaut 2, partagé avec le web), à l'heure choisie (défaut 18 h).
+      Reprogrammés à chaque chargement de l'historique (ouverture, série enregistrée / supprimée), gardés après un
+      redémarrage. Réglages → Rappels. Le minuteur, le repos et le chrono n'effacent plus que leurs propres notifications
+- [ ] **Toi** : Réglages → Rappels, régler l'heure juste après l'heure actuelle pour voir arriver un rappel
 - [ ] Associer un compte Google : profils retrouvés sur un autre téléphone ou sur le web sans PIN (v2.11.0)
