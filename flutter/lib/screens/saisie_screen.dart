@@ -2,17 +2,27 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import '../models/effort_settings.dart';
 import '../models/perf.dart';
 import '../models/session.dart';
 import '../models/stats.dart';
 import '../services/data_events.dart';
 import '../services/supabase_service.dart';
-import '../services/timer_alerts.dart';
-import '../services/ui_prefs.dart';
+import '../services/reminders.dart';
+import '../services/rest_timer.dart';
 import '../theme.dart';
 import '../widgets/chrono.dart';
 import '../widgets/exercise_card.dart';
 import '../widgets/rest_bar.dart';
+import '../widgets/saisie/form_bits.dart';
+import '../widgets/saisie/kpi.dart';
+import '../widgets/saisie/date_nav_row.dart';
+import '../widgets/saisie/dialogs.dart';
+import '../widgets/saisie/new_exercice_dialog.dart';
+import '../widgets/saisie/options_fields.dart';
+import '../widgets/saisie/recent_chips.dart';
+import '../widgets/saisie/perf_tile.dart';
+import '../widgets/saisie/previous_session_card.dart';
 import 'minuteur_screen.dart';
 
 class SaisieScreen extends StatefulWidget {
@@ -39,6 +49,7 @@ class _SaisieScreenState extends State<SaisieScreen>
     if (ex.isEmpty) return null;
     return _lastFor(ex)?.seriesFor(_serie);
   }
+
   TextEditingController? _acCtrl; // contrôleur interne de l'Autocomplete
   DateTime _date = DateTime.now();
   int _serie = 1;
@@ -52,26 +63,26 @@ class _SaisieScreenState extends State<SaisieScreen>
   String _tension = 'N/A';
   String _ecartement = 'Standard';
   Set<String> _assistables = {}; // exercices assistables (user_settings)
-  Map<String, double>? _ecartementsCfg;
   String _unite = 'Sec';
   bool _showOptions = false;
 
   // ── État UI ───────────────────────────────────────────────────────────────
   List<Perf> _todayPerfs = [];
   List<String> _exerciceNames = [];
-  Map<String, (String, String)> _exerciceMeta = {}; // tout l'historique : unité, catégorie
+  Map<String, (String, String)> _exerciceMeta =
+      {}; // tout l'historique : unité, catégorie
   // Tout l'historique : panneau du jour, indicateurs par exercice, records.
   List<Perf> _history = [];
   int _nbDaysAvg = 5; // user_settings.nb_days_avg
+  int _inactivityDays = 2; // user_settings.inactivity_days (rappels)
   bool _enableCharges = true; // user_settings.enable_charges
   // Séance précédente, pour la reprendre exercice par exercice.
   List<ExerciseTemplate> _previous = [];
   DateTime? _previousDate;
   bool _saving = false;
   bool _loadingPerfs = true;
-  double _weight = 97.0; // poids par défaut, chargé depuis user_settings
-  // Calibration planche de l'utilisateur (null = valeurs par défaut).
-  Map<String, double>? _variantesCfg, _formesCfg, _elastiquesCfg, _tensionsCfg;
+  // Poids et calibrations (planche, assistables) de user_settings.
+  EffortSettings _cfg = const EffortSettings();
 
   final _fb = GlobalKey<FormState>();
 
@@ -90,7 +101,7 @@ class _SaisieScreenState extends State<SaisieScreen>
       _loadExerciceNames(),
       _loadWeight(),
       _loadHistory(),
-      _loadRestPref(),
+      _rest.load(),
     ]);
     _preselectFirst();
   }
@@ -106,86 +117,24 @@ class _SaisieScreenState extends State<SaisieScreen>
   }
 
   // ── Repos entre les séries ────────────────────────────────────────────────
-  int _restSeconds = 90; // 0 = sans repos automatique
-  DateTime? _restEnd;
-  Timer? _restTick;
-  int _restBeep = -1;
-  final _restLeft = ValueNotifier<Duration?>(null);
-
-  Future<void> _loadRestPref() async {
-    final v = await UiPrefs.getInt('rest_seconds');
-    if (v != null && RestBar.choices.contains(v) && mounted) {
-      setState(() => _restSeconds = v);
-    }
-  }
-
-  void _setRestConfig(int v) {
-    setState(() => _restSeconds = v);
-    UiPrefs.setInt('rest_seconds', v);
-    if (v > 0) TimerAlerts.requestPermission(); // notifications (Android 13+)
-  }
+  final _rest = RestTimer();
 
   /// Lance le repos après une série enregistrée (aujourd'hui seulement).
   void _startRest() {
-    if (_restSeconds <= 0 || !_isToday || !mounted) return;
-    _restEnd = DateTime.now().add(Duration(seconds: _restSeconds));
-    _restBeep = -1;
-    _restTick?.cancel();
-    _restTick = Timer.periodic(const Duration(milliseconds: 200), (_) => _onRestTick());
-    _onRestTick();
-  }
-
-  void _onRestTick() {
-    final end = _restEnd;
-    if (end == null) return;
-    final left = end.difference(DateTime.now());
-    if (left <= Duration.zero) {
-      _stopRest();
-      HapticFeedback.heavyImpact();
-      Future.delayed(const Duration(milliseconds: 250), HapticFeedback.heavyImpact);
-      return;
-    }
-    final sec = (left.inMilliseconds / 1000).ceil();
-    if (sec <= 3 && sec != _restBeep) {
-      _restBeep = sec;
-      HapticFeedback.selectionClick();
-    }
-    _restLeft.value = left;
-  }
-
-  void _stopRest() {
-    _restTick?.cancel();
-    _restEnd = null;
-    _restLeft.value = null;
-    TimerAlerts.cancelAll();
-  }
-
-  void _adjustRest(int seconds) {
-    final end = _restEnd;
-    if (end == null) return;
-    _restEnd = end.add(Duration(seconds: seconds));
-    _onRestTick();
+    if (_isToday && mounted) _rest.start();
   }
 
   // Écran éteint ou autre appli : notification de fin de repos.
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    final end = _restEnd;
-    if (state == AppLifecycleState.paused && end != null) {
-      final left = end.difference(DateTime.now());
-      if (left > Duration.zero) {
-        TimerAlerts.schedule([TimerAlert(left, 'Repos terminé', 'Prochaine série !')]);
-      }
-    } else if (state == AppLifecycleState.resumed) {
-      TimerAlerts.cancelAll();
-    }
-  }
+  void didChangeAppLifecycleState(AppLifecycleState state) =>
+      _rest.onLifecycle(state);
 
   /// Exercices du plus récent au plus ancien (liste « Récents »,
   /// autocomplétion) ; ordre alphabétique tant que l'historique charge.
   // ── Petites cartes d'exercices (sous la carte principale) ──────────────
   final List<String> _addedCards = []; // ajoutés à la main pour la séance
-  final Map<String, (String, String)> _newCardMeta = {}; // nom → (unité, catégorie)
+  final Map<String, (String, String)> _newCardMeta =
+      {}; // nom → (unité, catégorie)
 
   ExerciseTemplate? _lastFor(String ex) =>
       _templateFor(ex) ?? lastTemplateFor(_history, ex, _date);
@@ -223,30 +172,19 @@ class _SaisieScreenState extends State<SaisieScreen>
       tension: (planche || assist) ? tension : 'N/A',
       ecartement: assist ? ecartement : 'N/A',
       effortPondere: assist
-          ? calculerEffortAssiste(
+          ? _cfg.assiste(
               reps: valeur,
               lest: lest,
               elastique: elastique,
               tension: tension,
-              ecartement: ecartement,
-              weight: _weight,
-              elastiquesMap: _elastiquesCfg,
-              tensions: _tensionsCfg,
-              ecartements: _ecartementsCfg,
-            )
+              ecartement: ecartement)
           : planche
-              ? calculerEffort(
+              ? _cfg.planche(
                   variante: variante,
+                  forme: forme,
                   elastique: elastique,
                   tension: tension,
-                  forme: forme,
-                  temps: valeur,
-                  weight: _weight,
-                  variantes: _variantesCfg,
-                  formes: _formesCfg,
-                  elastiquesMap: _elastiquesCfg,
-                  tensions: _tensionsCfg,
-                )
+                  temps: valeur)
               : 0,
     );
   }
@@ -298,35 +236,13 @@ class _SaisieScreenState extends State<SaisieScreen>
       ..._recentNames,
       ..._exerciceNames.where((e) => !_recentNames.contains(e)),
     ].where((e) => !already.contains(e)).toList();
-    final picked = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.add_circle_outline,
-                  color: AppTheme.primaryBlue),
-              title: const Text('Nouvel exercice…'),
-              onTap: () => Navigator.pop(ctx, ''),
-            ),
-            for (final e in choices)
-              ListTile(
-                leading: const Icon(Icons.history),
-                title: Text(e, overflow: TextOverflow.ellipsis),
-                onTap: () => Navigator.pop(ctx, e),
-              ),
-          ],
-        ),
-      ),
-    );
+    final picked = await pickExerciseSheet(context, choices);
     if (picked == null || !mounted) return;
     var name = picked;
     if (name.isEmpty) {
       final res = await showDialog<(String, String, String)>(
         context: context,
-        builder: (_) => _NewExerciceDialog(existing: _exerciceNames),
+        builder: (_) => NewExerciceDialog(existing: _exerciceNames),
       );
       if (res == null) return;
       name = res.$1;
@@ -375,11 +291,11 @@ class _SaisieScreenState extends State<SaisieScreen>
             insight: _cardInsight(ex),
             done: _doneToday(ex),
             enableCharges: _enableCharges,
-            variantes: (_variantesCfg ?? kVariantes).keys.toList(),
-            formes: (_formesCfg ?? kFormes).keys.toList(),
-            elastiques: (_elastiquesCfg ?? kElastiques).keys.toList(),
-            tensions: (_tensionsCfg ?? kTensions).keys.toList(),
-            ecartements: (_ecartementsCfg ?? kEcartements).keys.toList(),
+            variantes: (_cfg.variantes ?? kVariantes).keys.toList(),
+            formes: (_cfg.formes ?? kFormes).keys.toList(),
+            elastiques: (_cfg.elastiques ?? kElastiques).keys.toList(),
+            tensions: (_cfg.tensions ?? kTensions).keys.toList(),
+            ecartements: (_cfg.ecartements ?? kEcartements).keys.toList(),
             onSave: (e) => _saveEntry(ex, e),
           ),
         ),
@@ -407,7 +323,7 @@ class _SaisieScreenState extends State<SaisieScreen>
     final ins = _insight(ex);
     if (ins == null) return null;
     final sets = _todayPerfs.where((p) => p.exercice == ex);
-    return _InsightLine(
+    return InsightLine(
         insight: ins,
         todayVolume: _todayVolume(sets, ex),
         todaySets: sets.length,
@@ -524,7 +440,9 @@ class _SaisieScreenState extends State<SaisieScreen>
   Future<void> _loadHistory() async {
     try {
       final all = await SupabaseService.instance.getAllPerfs(widget.userId);
-      if (mounted) setState(() => _history = all);
+      if (!mounted) return;
+      setState(() => _history = all);
+      _rescheduleReminders();
     } catch (_) {
       // Non bloquant : indicateurs masqués.
     }
@@ -541,47 +459,37 @@ class _SaisieScreenState extends State<SaisieScreen>
   /// les exercices assistables : l'historique est donc toujours cohérent).
   double _effortValue(Perf p) => Perf.isPlancheName(p.exercice)
       ? (p.effortPondere ?? 0).toDouble()
-      : effortAssisteExact(
-          reps: p.performance,
-          lest: p.charge,
-          elastique: p.elastique,
-          tension: p.tension,
-          ecartement: p.ecartement,
-          weight: _weight,
-          elastiquesMap: _elastiquesCfg,
-          tensions: _tensionsCfg,
-          ecartements: _ecartementsCfg,
-        );
+      : _cfg.assisteExact(p);
 
-  ExerciseInsight? _insight(String exercice) => insightFor(
-      _history.where((p) => p.exercice == exercice).toList(), _date,
-      nbDaysAvg: _nbDaysAvg,
-      valueOf: _usesPoints(exercice) ? _effortValue : null);
+  ExerciseInsight? _insight(String exercice) =>
+      insightFor(_history.where((p) => p.exercice == exercice).toList(), _date,
+          nbDaysAvg: _nbDaysAvg,
+          valueOf: _usesPoints(exercice) ? _effortValue : null);
 
   /// Volume du jour d'un exercice, dans la même unité que [_insight].
-  double _todayVolume(Iterable<Perf> sets, String exercice) => sets.fold(
-      0.0,
+  double _todayVolume(Iterable<Perf> sets, String exercice) => sets.fold(0.0,
       (s, p) => s + (_usesPoints(exercice) ? _effortValue(p) : p.performance));
 
   Future<void> _loadWeight() async {
     final settings = await SupabaseService.instance.getSettings(widget.userId);
     if (mounted) {
       setState(() {
-        _weight = (settings['weight'] as num?)?.toDouble() ?? 97.0;
+        _cfg = EffortSettings.fromSettings(settings);
         _nbDaysAvg = (settings['nb_days_avg'] as num?)?.toInt() ?? 5;
+        _inactivityDays = (settings['inactivity_days'] as num?)?.toInt() ?? 2;
         _enableCharges = settings['enable_charges'] as bool? ?? true;
-        _variantesCfg = mergeConfig(settings['variantes_config'], kVariantes);
-        _formesCfg = mergeConfig(settings['formes_config'], kFormes);
-        _elastiquesCfg =
-            mergeConfig(settings['elastiques_config'], kElastiques);
-        _tensionsCfg = mergeConfig(settings['tensions_config'], kTensions);
-        _ecartementsCfg =
-            mergeConfig(settings['ecartements_config'], kEcartements);
         final a = settings['assistable_exercises'];
         _assistables = a is List ? a.map((e) => '$e'.trim()).toSet() : {};
       });
+      if (_history.isNotEmpty) _rescheduleReminders();
     }
   }
+
+  /// Rappels de séance (inactivité, prochaine séance conseillée) recalculés
+  /// à chaque changement de l'historique ou des réglages.
+  void _rescheduleReminders() =>
+      Reminders.reschedule(_history.map((p) => p.date),
+          inactivityDays: _inactivityDays);
 
   /// Synchronise le nom d'exercice et adapte le formulaire :
   /// « Planche » → options planche ouvertes et unité en secondes.
@@ -628,25 +536,12 @@ class _SaisieScreenState extends State<SaisieScreen>
   /// confirmation.
   Future<void> _deleteSession() async {
     final label = DateFormat('EEEE d MMMM', 'fr_FR').format(_date);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Supprimer la séance ?'),
-        content: Text('Les ${_todayPerfs.length} séries du $label seront '
-            'supprimées définitivement.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Annuler')),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Supprimer'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
+    if (!await confirmDelete(context,
+        title: 'Supprimer la séance ?',
+        content: 'Les ${_todayPerfs.length} séries du $label seront '
+            'supprimées définitivement.')) {
+      return;
+    }
     try {
       await SupabaseService.instance.deleteSession(widget.userId, _date);
       await _loadTodayPerfs();
@@ -661,7 +556,7 @@ class _SaisieScreenState extends State<SaisieScreen>
   Future<void> _newExercice() async {
     final res = await showDialog<(String, String, String)>(
       context: context,
-      builder: (_) => _NewExerciceDialog(existing: _exerciceNames),
+      builder: (_) => NewExerciceDialog(existing: _exerciceNames),
     );
     if (res == null) return;
     final (name, unite, categorie) = res;
@@ -800,62 +695,27 @@ class _SaisieScreenState extends State<SaisieScreen>
   /// Corrige une série déjà enregistrée (ex. rajouter des reps).
   Future<void> _editPerf(Perf p) async {
     if (p.id == null) return;
-    final ctrl = TextEditingController(text: _num(p.performance));
-    final v = await showDialog<double>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('${p.exercice} · S${p.serie}'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))],
-          decoration: InputDecoration(
-              labelText: p.unite == 'Sec' ? 'Temps (s)' : 'Valeur'),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
-          TextButton(
-            onPressed: () => Navigator.pop(
-                ctx, double.tryParse(ctrl.text.replaceAll(',', '.'))),
-            child: const Text('Valider'),
-          ),
-        ],
-      ),
-    );
-    ctrl.dispose();
+    final v = await askPerfValue(context, p);
     if (v == null || v <= 0 || v == p.performance) return;
     try {
       await SupabaseService.instance.updatePerfValue(
         p.id!,
         v,
         effortPondere: _isAssistable(p.exercice)
-            ? calculerEffortAssiste(
+            ? _cfg.assiste(
                 reps: v,
                 lest: p.charge,
                 elastique: p.elastique,
                 tension: p.tension,
-                ecartement: p.ecartement,
-                weight: _weight,
-                elastiquesMap: _elastiquesCfg,
-                tensions: _tensionsCfg,
-                ecartements: _ecartementsCfg,
-              )
+                ecartement: p.ecartement)
             : p.isPlanche
-            ? calculerEffort(
-                variante: p.variante,
-                elastique: p.elastique,
-                tension: p.tension,
-                forme: p.forme,
-                temps: v,
-                weight: _weight,
-                variantes: _variantesCfg,
-                formes: _formesCfg,
-                elastiquesMap: _elastiquesCfg,
-                tensions: _tensionsCfg,
-              )
-            : null,
+                ? _cfg.planche(
+                    variante: p.variante,
+                    forme: p.forme,
+                    elastique: p.elastique,
+                    tension: p.tension,
+                    temps: v)
+                : null,
       );
       await _loadTodayPerfs();
       _loadHistory();
@@ -865,24 +725,10 @@ class _SaisieScreenState extends State<SaisieScreen>
   }
 
   Future<void> _delete(int id) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Supprimer ?'),
-        content: const Text('Cette performance sera supprimée.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Annuler')),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Supprimer'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
+    if (!await confirmDelete(context,
+        title: 'Supprimer ?', content: 'Cette performance sera supprimée.')) {
+      return;
+    }
     try {
       await SupabaseService.instance.deletePerf(id);
       await _loadTodayPerfs();
@@ -916,8 +762,7 @@ class _SaisieScreenState extends State<SaisieScreen>
   @override
   void dispose() {
     _autoTimer?.cancel();
-    _restTick?.cancel();
-    _restLeft.dispose();
+    _rest.dispose();
     WidgetsBinding.instance.removeObserver(this);
     dataVersion.removeListener(_onDataChanged);
     _exerciceCtrl.dispose();
@@ -925,6 +770,273 @@ class _SaisieScreenState extends State<SaisieScreen>
     _lestCtrl.dispose();
     super.dispose();
   }
+
+  /// Carte de saisie principale (date, exercice, valeur, options).
+  Widget _buildForm(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Form(
+          key: _fb,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              DateNavRow(
+                date: _date,
+                isToday: _isToday,
+                onPrevious: () =>
+                    _setDate(_date.subtract(const Duration(days: 1))),
+                onPick: _pickDate,
+                onToday: () => _setDate(DateTime.now()),
+              ),
+              const SizedBox(height: 12),
+
+              ..._exerciseFields(),
+              // Indicateurs de l'exercice (en-tête des blocs du web)
+              ListenableBuilder(
+                listenable: _exerciceCtrl,
+                builder: (context, _) {
+                  final ex = _exerciceCtrl.text.trim();
+                  if (ex.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  final ins = _insight(ex);
+                  final todaySets = _todayPerfs.where((p) => p.exercice == ex);
+                  final today = _todayVolume(todaySets, ex);
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: InsightLine(
+                        insight: ins,
+                        todayVolume: today,
+                        todaySets: todaySets.length,
+                        unit: _unitFor(ex),
+                        nbDaysAvg: _nbDaysAvg),
+                  );
+                },
+              ),
+
+              ..._valueFields(),
+              // Bouton Enregistrer
+              ElevatedButton.icon(
+                onPressed: _saving ? null : _save,
+                icon: _saving
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.save),
+                label: Text(
+                    _saving ? 'Enregistrement…' : 'Enregistrer maintenant'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Champ exercice (autocomplétion, ⊕ nouvel exercice) et puces « Récents ».
+  List<Widget> _exerciseFields() => [
+        // Exercice + création d'un nouvel exercice
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Autocomplete<String>(
+                // Du plus récent au plus ancien
+                optionsBuilder: (val) => _recentNames
+                    .where(
+                        (e) => e.toLowerCase().contains(val.text.toLowerCase()))
+                    .take(8),
+                onSelected: _pickExercise,
+                fieldViewBuilder: (ctx, ctrl, focusNode, onSubmit) {
+                  // Branché une seule fois : avant, chaque rebuild
+                  // ajoutait un listener et réécrivait le texte
+                  // (curseur qui saute pendant la frappe).
+                  if (!identical(_acCtrl, ctrl)) {
+                    _acCtrl = ctrl
+                      ..text = _exerciceCtrl.text
+                      ..addListener(() => _onExerciceChanged(ctrl.text));
+                  }
+                  return TextFormField(
+                    controller: ctrl,
+                    focusNode: focusNode,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: const InputDecoration(
+                      labelText: 'Exercice',
+                      hintText: 'ex. Planche, Dips…',
+                    ),
+                    validator: (v) =>
+                        (v == null || v.trim().isEmpty) ? 'Requis' : null,
+                  );
+                },
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.add_circle_outline,
+                  color: AppTheme.primaryBlue),
+              tooltip: 'Nouvel exercice',
+              onPressed: _newExercice,
+            ),
+          ],
+        ),
+
+        // Anciens exercices, du plus récent au plus ancien :
+        // un appui reprend la dernière fois.
+        if (_recentNames.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          ListenableBuilder(
+            listenable: _exerciceCtrl,
+            builder: (context, _) => RecentChips(
+              names: _recentNames.take(15).toList(),
+              selected: _exerciceCtrl.text.trim(),
+              doneToday: (e) => _doneToday(e) > 0,
+              onPick: _pickExercise,
+            ),
+          ),
+        ],
+        const SizedBox(height: 12),
+      ];
+
+  /// Série, unité, valeur, chrono, lest et options planche / assistable.
+  List<Widget> _valueFields() => [
+        // Série + Unite + Charge
+        Row(
+          children: [
+            SeriesStepper(
+              serie: _serie,
+              onChanged: (v) => setState(() => _serie = v),
+            ),
+            const SizedBox(width: 16),
+
+            // Unité
+            Expanded(
+              flex: 2,
+              child: DropdownField<String>(
+                label: 'Unité',
+                value: _unite,
+                items: const ['Sec', 'Reps', 'Kg'],
+                onChanged: (v) => setState(() => _unite = v ?? 'Sec'),
+              ),
+            ),
+            const SizedBox(width: 10),
+
+            // Charge
+            Expanded(
+              flex: 3,
+              child: TextFormField(
+                controller: _chargeCtrl,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                // Plusieurs séries d'un coup : « 12 10 8 »,
+                // « 12/10/8 » ou « 12+10+8 ».
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[\d.,/+; ]')),
+                ],
+                decoration: InputDecoration(
+                  labelText: _unite == 'Sec'
+                      ? 'Temps (s)'
+                      : _unite == 'Reps'
+                          ? 'Répétitions'
+                          : 'Poids (kg)',
+                  hintText: _exemple == null
+                      ? 'ex. 12'
+                      : 'ex. ${_num(_exemple!.performance)}',
+                  helperText: 'Enregistré après 3 s',
+                  helperStyle: const TextStyle(fontSize: 10),
+                ),
+                onChanged: _scheduleAutoSave,
+                validator: (v) {
+                  if (v == null || v.trim().isEmpty) {
+                    return 'Requis';
+                  }
+                  try {
+                    return parseSeries(v).isEmpty ? 'Requis' : null;
+                  } on FormatException {
+                    return 'Invalide';
+                  }
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        // Chronomètre pour les exercices en secondes
+        if (_unite == 'Sec') ...[
+          Chrono(
+              exercice: _exerciceCtrl.text,
+              onStop: (sec) {
+                _chargeCtrl.text = '$sec';
+                _scheduleAutoSave(_chargeCtrl.text);
+              }),
+          const SizedBox(height: 12),
+        ],
+
+        // Lest (tractions / dips lestés) — conservé d'une
+        // série à l'autre, vide = sans lest.
+        if (_unite == 'Reps' && _enableCharges) ...[
+          TextFormField(
+            controller: _lestCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
+            ],
+            decoration: InputDecoration(
+              labelText: 'Lest (kg) — optionnel',
+              hintText: (_exemple?.charge ?? 0) > 0
+                  ? 'ex. ${_num(_exemple!.charge)}'
+                  : '0',
+              prefixIcon: const Icon(Icons.fitness_center, size: 18),
+            ),
+            validator: (v) {
+              if (v == null || v.trim().isEmpty) return null;
+              final x = double.tryParse(v.replaceAll(',', '.'));
+              return (x == null || x < 0) ? 'Invalide' : null;
+            },
+          ),
+          const SizedBox(height: 12),
+        ],
+
+        // Options planche : uniquement pour la planche
+        if (Perf.isPlancheName(_exerciceCtrl.text)) ...[
+          PlancheOptions(
+            expanded: _showOptions,
+            onToggle: () => setState(() => _showOptions = !_showOptions),
+            variante: _variante,
+            forme: _forme,
+            elastique: _elastique,
+            tension: _tension,
+            variantes: kVariantes.keys.toList(),
+            formes: kFormes.keys.toList(),
+            elastiques: kElastiques.keys.toList(),
+            tensions: kTensions.keys.toList(),
+            onVariante: (v) => setState(() => _variante = v),
+            onForme: (v) => setState(() => _forme = v),
+            onElastique: (v) => setState(() {
+              _elastique = v;
+              if (v == 'Aucun') _tension = 'N/A';
+            }),
+            onTension: (v) => setState(() => _tension = v),
+          ),
+        ],
+        // Exercice assistable : élastique, tension, écartement
+        if (_isAssistable(_exerciceCtrl.text)) ...[
+          const SizedBox(height: 10),
+          AssistOptions(
+            elastique: _elastique,
+            tension: _tension,
+            ecartement: _ecartement,
+            elastiques: (_cfg.elastiques ?? kElastiques).keys.toList(),
+            tensions: (_cfg.tensions ?? kTensions).keys.toList(),
+            ecartements: (_cfg.ecartements ?? kEcartements).keys.toList(),
+            onElastique: (v) => setState(() => _elastique = v),
+            onTension: (v) => setState(() => _tension = v),
+            onEcartement: (v) => setState(() => _ecartement = v),
+          ),
+        ],
+        const SizedBox(height: 16),
+      ];
 
   @override
   Widget build(BuildContext context) {
@@ -957,18 +1069,21 @@ class _SaisieScreenState extends State<SaisieScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // ── Repos entre les séries ────────────────────────────────────
-            RestBar(
-              seconds: _restSeconds,
-              onConfig: _setRestConfig,
-              left: _restLeft,
-              onSkip: _stopRest,
-              onAdjust: _adjustRest,
+            ListenableBuilder(
+              listenable: _rest,
+              builder: (_, __) => RestBar(
+                seconds: _rest.seconds,
+                onConfig: _rest.setSeconds,
+                left: _rest.left,
+                onSkip: _rest.stop,
+                onAdjust: _rest.adjust,
+              ),
             ),
             const SizedBox(height: 12),
 
             // ── Résumé du jour ────────────────────────────────────────────
             if (_history.isNotEmpty || _todayPerfs.isNotEmpty) ...[
-              _KpiRow(
+              KpiRow(
                 sets: _todayPerfs.length,
                 effort: _todayEffort,
                 monthSessions: sessionsInMonth(_history, _date),
@@ -979,7 +1094,7 @@ class _SaisieScreenState extends State<SaisieScreen>
 
             // ── Séance précédente ─────────────────────────────────────────
             if (_previous.isNotEmpty && _previousDate != null) ...[
-              _PreviousSessionCard(
+              PreviousSessionCard(
                 date: _previousDate!,
                 templates: _previous,
                 doneToday: _doneToday,
@@ -989,898 +1104,24 @@ class _SaisieScreenState extends State<SaisieScreen>
             ],
 
             // ── Formulaire ────────────────────────────────────────────────
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Form(
-                  key: _fb,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Date : ◀ jour précédent · sélecteur · jour suivant ▶
-                      Row(
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.chevron_left),
-                            tooltip: 'Jour précédent',
-                            onPressed: () => _setDate(
-                                _date.subtract(const Duration(days: 1))),
-                          ),
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: _pickDate,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 12),
-                                decoration: BoxDecoration(
-                                  border:
-                                      Border.all(color: AppTheme.borderColor),
-                                  borderRadius: BorderRadius.circular(10),
-                                  color: Colors.white,
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.calendar_today,
-                                        size: 18,
-                                        color: AppTheme.textSecondary),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        _isToday
-                                            ? "Aujourd'hui"
-                                            : DateFormat('EEE d MMM', 'fr_FR')
-                                                .format(_date),
-                                        style: const TextStyle(fontSize: 15),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                          if (_isToday)
-                            const IconButton(
-                                icon: Icon(Icons.chevron_right),
-                                onPressed: null)
-                          else
-                            IconButton(
-                              icon: const Icon(Icons.today),
-                              tooltip: "Revenir à aujourd'hui",
-                              onPressed: () => _setDate(DateTime.now()),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Exercice + création d'un nouvel exercice
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Autocomplete<String>(
-                              // Du plus récent au plus ancien
-                              optionsBuilder: (val) => _recentNames
-                                  .where((e) => e
-                                      .toLowerCase()
-                                      .contains(val.text.toLowerCase()))
-                                  .take(8),
-                              onSelected: _pickExercise,
-                              fieldViewBuilder:
-                                  (ctx, ctrl, focusNode, onSubmit) {
-                                // Branché une seule fois : avant, chaque rebuild
-                                // ajoutait un listener et réécrivait le texte
-                                // (curseur qui saute pendant la frappe).
-                                if (!identical(_acCtrl, ctrl)) {
-                                  _acCtrl = ctrl
-                                    ..text = _exerciceCtrl.text
-                                    ..addListener(
-                                        () => _onExerciceChanged(ctrl.text));
-                                }
-                                return TextFormField(
-                                  controller: ctrl,
-                                  focusNode: focusNode,
-                                  textCapitalization:
-                                      TextCapitalization.sentences,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Exercice',
-                                    hintText: 'ex. Planche, Dips…',
-                                  ),
-                                  validator: (v) =>
-                                      (v == null || v.trim().isEmpty)
-                                          ? 'Requis'
-                                          : null,
-                                );
-                              },
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.add_circle_outline,
-                                color: AppTheme.primaryBlue),
-                            tooltip: 'Nouvel exercice',
-                            onPressed: _newExercice,
-                          ),
-                        ],
-                      ),
-
-                      // Anciens exercices, du plus récent au plus ancien :
-                      // un appui reprend la dernière fois.
-                      if (_recentNames.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          height: 36,
-                          child: ListenableBuilder(
-                            listenable: _exerciceCtrl,
-                            builder: (context, _) {
-                              final cur = _exerciceCtrl.text.trim();
-                              final names = _recentNames.take(15).toList();
-                              return ListView.separated(
-                                scrollDirection: Axis.horizontal,
-                                itemCount: names.length,
-                                separatorBuilder: (_, __) =>
-                                    const SizedBox(width: 6),
-                                itemBuilder: (_, i) => ChoiceChip(
-                                  // Noms longs coupés proprement
-                                  label: ConstrainedBox(
-                                    constraints:
-                                        const BoxConstraints(maxWidth: 180),
-                                    child: Text(names[i],
-                                        overflow: TextOverflow.ellipsis,
-                                        // Bleu : déjà fait pendant la séance.
-                                        style: _doneToday(names[i]) > 0
-                                            ? const TextStyle(
-                                                color: AppTheme.primaryBlue,
-                                                fontWeight: FontWeight.w700)
-                                            : null),
-                                  ),
-                                  showCheckmark: false,
-                                  tooltip: names[i],
-                                  selected: names[i] == cur,
-                                  visualDensity: VisualDensity.compact,
-                                  onSelected: (_) => _pickExercise(names[i]),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 12),
-
-                      // Indicateurs de l'exercice (en-tête des blocs du web)
-                      ListenableBuilder(
-                        listenable: _exerciceCtrl,
-                        builder: (context, _) {
-                          final ex = _exerciceCtrl.text.trim();
-                          if (ex.isEmpty) {
-                            return const SizedBox.shrink();
-                          }
-                          final ins = _insight(ex);
-                          final todaySets =
-                              _todayPerfs.where((p) => p.exercice == ex);
-                          final today = _todayVolume(todaySets, ex);
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: _InsightLine(
-                                insight: ins,
-                                todayVolume: today,
-                                todaySets: todaySets.length,
-                                unit: _unitFor(ex),
-                                nbDaysAvg: _nbDaysAvg),
-                          );
-                        },
-                      ),
-
-                      // Série + Unite + Charge
-                      Row(
-                        children: [
-                          // Série
-                          Column(
-                            children: [
-                              const Text('Série',
-                                  style: TextStyle(
-                                      fontSize: 11,
-                                      color: AppTheme.textSecondary)),
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  _SmallBtn(
-                                      icon: Icons.remove,
-                                      onTap: () => setState(() {
-                                            if (_serie > 1) _serie--;
-                                          })),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 12),
-                                    child: Text('$_serie',
-                                        style: const TextStyle(
-                                            fontSize: 20,
-                                            fontWeight: FontWeight.bold)),
-                                  ),
-                                  _SmallBtn(
-                                      icon: Icons.add,
-                                      onTap: () => setState(() => _serie++)),
-                                ],
-                              ),
-                            ],
-                          ),
-                          const SizedBox(width: 16),
-
-                          // Unité
-                          Expanded(
-                            flex: 2,
-                            child: _DropdownField<String>(
-                              label: 'Unité',
-                              value: _unite,
-                              items: const ['Sec', 'Reps', 'Kg'],
-                              onChanged: (v) =>
-                                  setState(() => _unite = v ?? 'Sec'),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-
-                          // Charge
-                          Expanded(
-                            flex: 3,
-                            child: TextFormField(
-                              controller: _chargeCtrl,
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                      decimal: true),
-                              // Plusieurs séries d'un coup : « 12 10 8 »,
-                              // « 12/10/8 » ou « 12+10+8 ».
-                              inputFormatters: [
-                                FilteringTextInputFormatter.allow(
-                                    RegExp(r'[\d.,/+; ]')),
-                              ],
-                              decoration: InputDecoration(
-                                labelText: _unite == 'Sec'
-                                    ? 'Temps (s)'
-                                    : _unite == 'Reps'
-                                        ? 'Répétitions'
-                                        : 'Poids (kg)',
-                                hintText: _exemple == null
-                                    ? 'ex. 12'
-                                    : 'ex. ${_num(_exemple!.performance)}',
-                                helperText: 'Enregistré après 3 s',
-                                helperStyle: const TextStyle(fontSize: 10),
-                              ),
-                              onChanged: _scheduleAutoSave,
-                              validator: (v) {
-                                if (v == null || v.trim().isEmpty) {
-                                  return 'Requis';
-                                }
-                                try {
-                                  return parseSeries(v).isEmpty
-                                      ? 'Requis'
-                                      : null;
-                                } on FormatException {
-                                  return 'Invalide';
-                                }
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Chronomètre pour les exercices en secondes
-                      if (_unite == 'Sec') ...[
-                        Chrono(
-                            exercice: _exerciceCtrl.text,
-                            onStop: (sec) {
-                          _chargeCtrl.text = '$sec';
-                          _scheduleAutoSave(_chargeCtrl.text);
-                        }),
-                        const SizedBox(height: 12),
-                      ],
-
-                      // Lest (tractions / dips lestés) — conservé d'une
-                      // série à l'autre, vide = sans lest.
-                      if (_unite == 'Reps' && _enableCharges) ...[
-                        TextFormField(
-                          controller: _lestCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(
-                                RegExp(r'[\d.,]')),
-                          ],
-                          decoration: InputDecoration(
-                            labelText: 'Lest (kg) — optionnel',
-                            hintText: (_exemple?.charge ?? 0) > 0
-                                ? 'ex. ${_num(_exemple!.charge)}'
-                                : '0',
-                            prefixIcon:
-                                const Icon(Icons.fitness_center, size: 18),
-                          ),
-                          validator: (v) {
-                            if (v == null || v.trim().isEmpty) return null;
-                            final x = double.tryParse(v.replaceAll(',', '.'));
-                            return (x == null || x < 0) ? 'Invalide' : null;
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                      ],
-
-                      // Options planche : uniquement pour la planche
-                      if (Perf.isPlancheName(_exerciceCtrl.text)) ...[
-                      GestureDetector(
-                        onTap: () =>
-                            setState(() => _showOptions = !_showOptions),
-                        child: Row(
-                          children: [
-                            Text(
-                              'Options planche',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodyMedium
-                                  ?.copyWith(
-                                      color: AppTheme.primaryBlue,
-                                      fontWeight: FontWeight.w500),
-                            ),
-                            const SizedBox(width: 4),
-                            Icon(
-                              _showOptions
-                                  ? Icons.expand_less
-                                  : Icons.expand_more,
-                              color: AppTheme.primaryBlue,
-                              size: 20,
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (_showOptions) ...[
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _DropdownField<String>(
-                                label: 'Variante',
-                                value: _variante,
-                                items: kVariantes.keys.toList(),
-                                onChanged: (v) =>
-                                    setState(() => _variante = v ?? 'Full'),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: _DropdownField<String>(
-                                label: 'Forme',
-                                value: _forme,
-                                items: kFormes.keys.toList(),
-                                onChanged: (v) =>
-                                    setState(() => _forme = v ?? 'Normal'),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _DropdownField<String>(
-                                label: 'Élastique',
-                                value: _elastique,
-                                items: kElastiques.keys.toList(),
-                                onChanged: (v) {
-                                  setState(() {
-                                    _elastique = v ?? 'Aucun';
-                                    if (_elastique == 'Aucun') _tension = 'N/A';
-                                  });
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: _DropdownField<String>(
-                                label: 'Tension',
-                                value: _tension,
-                                items: kTensions.keys.toList(),
-                                onChanged: _elastique == 'Aucun'
-                                    ? null
-                                    : (v) =>
-                                        setState(() => _tension = v ?? 'N/A'),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                      ],
-                      // Exercice assistable : élastique, tension, écartement
-                      if (_isAssistable(_exerciceCtrl.text)) ...[
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _DropdownField<String>(
-                                label: 'Élastique',
-                                value: _elastique,
-                                items: (_elastiquesCfg ?? kElastiques)
-                                    .keys
-                                    .toList(),
-                                onChanged: (v) =>
-                                    setState(() => _elastique = v ?? 'Aucun'),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: _DropdownField<String>(
-                                label: 'Tension',
-                                value: _tension,
-                                items: (_tensionsCfg ?? kTensions)
-                                    .keys
-                                    .toList(),
-                                onChanged: (v) =>
-                                    setState(() => _tension = v ?? 'N/A'),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        _DropdownField<String>(
-                          label: 'Écartement des mains',
-                          value: _ecartement,
-                          items:
-                              (_ecartementsCfg ?? kEcartements).keys.toList(),
-                          onChanged: (v) =>
-                              setState(() => _ecartement = v ?? 'Standard'),
-                        ),
-                      ],
-                      const SizedBox(height: 16),
-
-                      // Bouton Enregistrer
-                      ElevatedButton.icon(
-                        onPressed: _saving ? null : _save,
-                        icon: _saving
-                            ? const SizedBox.square(
-                                dimension: 18,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white))
-                            : const Icon(Icons.save),
-                        label: Text(_saving ? 'Enregistrement…' : 'Enregistrer maintenant'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+            _buildForm(context),
             const SizedBox(height: 16),
 
             // ── Petites cartes : un exercice chacune, saisie rapide ───────
             ..._buildCards(),
 
             // ── Perfs du jour ─────────────────────────────────────────────
-            Text(
-              DateFormat('d MMMM', 'fr_FR').format(_date),
-              style: Theme.of(context).textTheme.titleMedium,
+            DayPerfList(
+              date: _date,
+              loading: _loadingPerfs,
+              perfs: _todayPerfs,
+              onEdit: _editPerf,
+              onDelete: (p) => _delete(p.id!),
             ),
-            const SizedBox(height: 10),
-            if (_loadingPerfs)
-              const Center(child: CircularProgressIndicator())
-            else if (_todayPerfs.isEmpty)
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text('Aucune saisie pour ce jour',
-                      style: Theme.of(context).textTheme.bodyMedium),
-                ),
-              )
-            else
-              ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: _todayPerfs.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
-                itemBuilder: (ctx, i) {
-                  final p = _todayPerfs[i];
-                  return _PerfTile(
-                      perf: p,
-                      onDelete: () => _delete(p.id!),
-                      onEdit: () => _editPerf(p));
-                },
-              ),
             const SizedBox(height: 40),
           ],
         ),
       ),
-    );
-  }
-}
-
-// ─── Composants ───────────────────────────────────────────────────────────────
-
-/// Panneau du jour : séries / effort, séances du mois, volume de la
-/// semaine comparé à la précédente (panneau KPI du web).
-class _KpiRow extends StatelessWidget {
-  final int sets;
-  final int effort;
-  final int monthSessions;
-  final PeriodComparison week;
-
-  const _KpiRow({
-    required this.sets,
-    required this.effort,
-    required this.monthSessions,
-    required this.week,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final d = week.deltaPct;
-    return Row(
-      children: [
-        Expanded(
-            child: _Kpi(
-                label: effort > 0 ? 'Effort du jour' : 'Séries du jour',
-                value: effort > 0 ? '$effort pts' : '$sets')),
-        const SizedBox(width: 8),
-        Expanded(child: _Kpi(label: 'Séances ce mois', value: '$monthSessions')),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _Kpi(
-            label: d == null
-                ? 'Reps cette semaine'
-                : 'Reps semaine (${d >= 0 ? '+' : ''}${d.round()} %)',
-            value: week.current.round().toString(),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// « Record série : 15 · Moy. 5 séances : 42 · Aujourd'hui : 30 (−29 %) »
-class _InsightLine extends StatelessWidget {
-  final ExerciseInsight? insight;
-  final double todayVolume;
-  final int todaySets;
-  final int nbDaysAvg;
-  final String unit; // ' pts' pour la planche
-
-  const _InsightLine(
-      {required this.insight,
-      required this.todayVolume,
-      required this.todaySets,
-      required this.nbDaysAvg,
-      this.unit = ''});
-
-  static String _n(double v) =>
-      v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(1);
-
-  @override
-  Widget build(BuildContext context) {
-    final style = Theme.of(context).textTheme.bodySmall;
-    final ins = insight;
-    if (ins == null) {
-      return Row(children: [
-        const Icon(Icons.fiber_new, size: 18, color: AppTheme.primaryBlue),
-        const SizedBox(width: 6),
-        Text('Nouvel exercice', style: style),
-      ]);
-    }
-    // À série égale : « 3 séries aujourd'hui » vs « 3 premières séries » des
-    // dernières séances (moyenne), pas vs une séance complète.
-    final delta =
-        todaySets > 0 ? ins.deltaPctAtSets(todayVolume, todaySets) : null;
-    return Wrap(
-      spacing: 12,
-      runSpacing: 4,
-      children: [
-        Text('🏆 Record série : ${_n(ins.prSerie)}$unit', style: style),
-        Text('Moy. ${nbDaysAvg < ins.sessions ? nbDaysAvg : ins.sessions} '
-            'séances : ${_n(ins.avgVolume)}$unit', style: style),
-        if (todaySets > 0)
-          Text(
-            "Aujourd'hui : ${_n(todayVolume)}$unit"
-            '${delta == null ? '' : ' (${delta >= 0 ? '+' : ''}${delta.round()} % vs moy.)'}',
-            style: style?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: (delta ?? 0) >= 0
-                    ? Colors.green.shade700
-                    : Colors.orange.shade800),
-          ),
-      ],
-    );
-  }
-}
-
-class _Kpi extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _Kpi({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(value,
-                style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.primaryBlue)),
-            const SizedBox(height: 2),
-            Text(label, style: Theme.of(context).textTheme.bodyMedium),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PerfTile extends StatelessWidget {
-  final Perf perf;
-  final VoidCallback onDelete;
-  final VoidCallback onEdit;
-
-  const _PerfTile(
-      {required this.perf, required this.onDelete, required this.onEdit});
-
-  @override
-  Widget build(BuildContext context) {
-    // Un appui permet de corriger la série.
-    return Card(
-      child: ListTile(
-        onTap: perf.id != null ? onEdit : null,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-        leading: CircleAvatar(
-          radius: 18,
-          backgroundColor: AppTheme.primaryBlue.withOpacity(0.1),
-          child: Text('S${perf.serie}',
-              style: const TextStyle(
-                  color: AppTheme.primaryBlue,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold)),
-        ),
-        title: Text(perf.exercice,
-            style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text(
-          '${perf.displayValue}'
-          '${perf.isPlanche ? " · ${perf.variante} · ${perf.forme}" : ""}'
-          '${(perf.effortPondere ?? 0) > 0 ? " · ${perf.effortPondere} pts" : ""}',
-          style: const TextStyle(fontSize: 12),
-        ),
-        trailing: IconButton(
-          icon: const Icon(Icons.delete_outline, size: 20, color: Colors.grey),
-          onPressed: perf.id != null ? onDelete : null,
-        ),
-      ),
-    );
-  }
-}
-
-class _SmallBtn extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-
-  const _SmallBtn({required this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          color: AppTheme.bgGrey,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppTheme.borderColor),
-        ),
-        child: Icon(icon, size: 16, color: AppTheme.textPrimary),
-      ),
-    );
-  }
-}
-
-class _DropdownField<T> extends StatelessWidget {
-  final String label;
-  final T value;
-  final List<T> items;
-  final ValueChanged<T?>? onChanged;
-
-  const _DropdownField({
-    required this.label,
-    required this.value,
-    required this.items,
-    this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return DropdownButtonFormField<T>(
-      value: value,
-      decoration: InputDecoration(labelText: label),
-      onChanged: onChanged,
-      items: items
-          .map((item) => DropdownMenuItem<T>(
-                value: item,
-                child:
-                    Text(item.toString(), style: const TextStyle(fontSize: 14)),
-              ))
-          .toList(),
-    );
-  }
-}
-
-/// Exercices de la séance précédente : un appui pré-remplit le formulaire
-/// avec la série suivante, telle qu'elle a été faite la dernière fois.
-class _PreviousSessionCard extends StatelessWidget {
-  final DateTime date;
-  final List<ExerciseTemplate> templates;
-  final int Function(String exercice) doneToday;
-  final void Function(ExerciseTemplate) onPick;
-
-  const _PreviousSessionCard({
-    required this.date,
-    required this.templates,
-    required this.doneToday,
-    required this.onPick,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 8, 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.history,
-                    size: 20, color: AppTheme.primaryBlue),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Séance précédente · '
-                    '${DateFormat('EEEE d MMMM', 'fr_FR').format(date)}',
-                    style: theme.textTheme.titleMedium,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 2),
-            Text('Touchez un exercice pour le refaire.',
-                style: theme.textTheme.bodySmall),
-            for (final t in templates)
-              _templateTile(context, t, doneToday(t.exercice)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _templateTile(BuildContext context, ExerciseTemplate t, int done) {
-    final total = t.series.length;
-    final finished = done >= total;
-    return ListTile(
-      contentPadding: const EdgeInsets.only(right: 8),
-      dense: true,
-      title: Text(t.exercice,
-          style: TextStyle(
-              decoration: finished ? TextDecoration.lineThrough : null)),
-      subtitle: Text(t.summary),
-      trailing: finished
-          ? const Icon(Icons.check_circle, color: Colors.green)
-          : done > 0
-              ? Text('$done/$total',
-                  style: const TextStyle(
-                      color: AppTheme.primaryBlue, fontWeight: FontWeight.w600))
-              : const Icon(Icons.play_circle_outline,
-                  color: AppTheme.primaryBlue),
-      onTap: () => onPick(t),
-    );
-  }
-}
-
-/// « Nouvel exercice » : renvoie (nom, unité, catégorie).
-class _NewExerciceDialog extends StatefulWidget {
-  final List<String> existing;
-
-  const _NewExerciceDialog({required this.existing});
-
-  @override
-  State<_NewExerciceDialog> createState() => _NewExerciceDialogState();
-}
-
-class _NewExerciceDialogState extends State<_NewExerciceDialog> {
-  final _form = GlobalKey<FormState>();
-  final _name = TextEditingController();
-  final _cat = TextEditingController(text: 'Musculation');
-  String _unite = 'Reps';
-
-  @override
-  void dispose() {
-    _name.dispose();
-    _cat.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    if (!_form.currentState!.validate()) return;
-    final cat = _cat.text.trim();
-    // Exercice déjà connu : on renvoie son nom d'origine (même casse).
-    final name = findExistingExercise(widget.existing, _name.text) ??
-        _name.text.trim();
-    Navigator.pop(context, (
-      name,
-      _unite,
-      cat.isEmpty ? (_unite == 'Sec' ? 'Force Iso' : 'Musculation') : cat,
-    ));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Nouvel exercice'),
-      content: Form(
-        key: _form,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextFormField(
-                controller: _name,
-                autofocus: true,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: InputDecoration(
-                    labelText: 'Nom',
-                    hintText: 'ex. Tractions lestées',
-                    // Pas de blocage : un nom connu ouvre l'exercice existant.
-                    helperText: findExistingExercise(
-                                widget.existing, _name.text) !=
-                            null
-                        ? 'Existe déjà : il sera ouvert tel quel'
-                        : null),
-                onChanged: (_) => setState(() {}),
-                validator: (v) =>
-                    (v?.trim() ?? '').isEmpty ? 'Requis' : null,
-              ),
-              const SizedBox(height: 16),
-              const Text('Unité'),
-              const SizedBox(height: 6),
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: 'Reps', label: Text('Reps')),
-                  ButtonSegment(value: 'Sec', label: Text('Secondes')),
-                  ButtonSegment(value: 'Kg', label: Text('Kg')),
-                ],
-                selected: {_unite},
-                showSelectedIcon: false,
-                onSelectionChanged: (v) => setState(() {
-                  _unite = v.first;
-                  // Catégorie par défaut cohérente avec l'unité.
-                  if (_cat.text == 'Musculation' || _cat.text == 'Force Iso') {
-                    _cat.text = _unite == 'Sec' ? 'Force Iso' : 'Musculation';
-                  }
-                }),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _cat,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(
-                    labelText: 'Catégorie',
-                    hintText: 'Musculation, Force Iso, Gainage…'),
-                onFieldSubmitted: (_) => _submit(),
-              ),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Annuler')),
-        FilledButton(onPressed: _submit, child: const Text('Créer')),
-      ],
     );
   }
 }
