@@ -1,4 +1,4 @@
-# Sysiphe — Setup de la base de données
+# Thésée — Setup de la base de données
 
 Schéma **réel** de la base Supabase de production (relevé le 9 novembre 2026, mis à jour le 17 novembre).
 Pour recréer la base de zéro : exécuter le § 1 dans **Supabase Dashboard → SQL Editor**, puis chaque fichier
@@ -115,4 +115,4 @@ L'APK est l'app **Flutter** (`flutter/`), construite et publiée dans les Releas
 - La version complète (ex. `2.1.0+7`) s'affiche en bas de l'écran Paramètres.
 
 L'ancien hébergement NAS et les anciens APK (WebView, Capacitor) sont dans `archive/` : voir le
-[README](README.md#archives).
+[`archive/README.md`](archive/README.md).

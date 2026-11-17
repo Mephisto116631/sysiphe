@@ -1,96 +1,171 @@
-# Sysiphe 🏋️
+<p align="center">
+  <img src="assets/logo/icon_512.png" alt="Thésée" width="120">
+</p>
 
-Tracker de performance sportive personnel. Enregistrement des séances, calcul d'effort, statistiques, heatmap d'activité, records.
+<h1 align="center">Thésée</h1>
+
+<p align="center">
+  <strong>Suivi d'entraînement au poids du corps : planche, force, calisthénie.</strong><br>
+  App Android pour s'entraîner, site web pour consulter. Une seule base, partagée.
+</p>
+
+<p align="center">
+  <a href="https://github.com/Mephisto116631/sysiphe/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Mephisto116631/sysiphe/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/Mephisto116631/sysiphe/releases/latest"><img alt="Dernière version" src="https://img.shields.io/github/v/release/Mephisto116631/sysiphe?label=APK&color=0D47A1"></a>
+  <img alt="Flutter 3.24" src="https://img.shields.io/badge/Flutter-3.24-02569B">
+  <img alt="Supabase" src="https://img.shields.io/badge/Supabase-RLS-3ECF8E">
+</p>
 
 ---
 
-## Table des matières
+Thésée (anciennement *Sysiphe*) enregistre chaque série, calcule un **effort pondéré** comparable d'une séance à
+l'autre, même quand la variante, l'élastique ou l'écartement des mains changent, et montre la progression :
+tendances, plateaux, records, récupération. Projet personnel, utilisé par quelques profils.
 
-- [Vue d'ensemble](#vue-densemble)
+## Sommaire
+
+- [Fonctionnalités](#fonctionnalités)
+- [Installer l'app](#installer-lapp)
 - [Architecture](#architecture)
-- [Base de données](#base-de-données)
-- [Logique métier](#logique-métier)
-- [Application web — Streamlit](#application-web--streamlit)
-- [Application mobile — Flutter](#application-mobile--flutter)
-- [Hébergement](#hébergement)
-- [CI/CD](#cicd)
-- [Secrets & sécurité](#secrets--sécurité)
-- [Développement local](#développement-local)
+- [Sécurité des données](#sécurité-des-données)
+- [Développement](#développement)
+- [Publier une version](#publier-une-version)
 - [Sauvegardes](#sauvegardes)
-- [Archives](#archives)
+- [Documentation](#documentation)
+- [Référence technique](#référence-technique)
 
----
+## Fonctionnalités
 
-## Vue d'ensemble
+### App Android (saisie et consultation)
 
-Sysiphe est un tracker de performance individuel, utilisé par ~3 profils. Il couvre :
+| Onglet | Ce qu'on y fait |
+|--------|-----------------|
+| **Saisie** | Une carte par exercice, la séance précédente en exemple grisé, « 12/10/8 » pour plusieurs séries, enregistrement automatique, % de progression à série égale, repos automatique entre les séries, chronomètre et **minuteur HIIT** (préparation, exercice, repos, cycles, notifications en arrière-plan) |
+| **Stats** | Courbes d'effort ou de volume par exercice, périodes, tendance et détection de plateau |
+| **Calendrier** | Heatmap de l'activité, détail d'un jour, récupération entre les séances |
+| **Records** | Meilleures séances et meilleures séries, filtrables (planche, musculation, recherche) |
+| **Modèle** *(admin)* | Coefficients de l'effort (variantes, formes, élastiques, tensions), grille en temps réel, recalcul de tout l'historique |
+| **Réglages** | Mises à jour intégrées, poids de corps, exercices assistables, profils et exercices, PIN, export CSV *(admin)* |
 
-- **Saisie** de séries (reps, lest, temps) par cartes d'exercice, avec la séance précédente en exemple,
-  % de progression, repos automatique entre les séries, chronomètre et **minuteur HIIT**
-- **Effort pondéré** pour la planche (variante, forme, élastique, tension) et les exercices **assistables**
-  (élastique, tension, écartement des mains)
-- **Statistiques** : courbes de progression, détection de plateau/régression, comparaison de périodes
-- **Calendrier** : heatmap de l'activité et récupération
-- **Records** personnels par exercice, filtrables
-- **Modèle** (admin) : coefficients de l'effort, grille et recalcul en temps réel
-- **Réglages** : mises à jour intégrées, poids de corps, exercices assistables, PIN, export CSV (admin)
+### Site web (consultation seule)
 
-Connexion : chaque appareil a une **session Supabase anonyme et persistante** ; le PIN d'un profil est vérifié
-**par le serveur** une seule fois (RPC `claim_profile`), puis l'appareil est rattaché au profil. La sécurité par
-ligne (RLS) ne laisse lire et écrire que les profils rattachés à l'appareil.
+Stats, Calendrier, Records, Repos et Infos (export CSV, réglages en lecture), sur
+[Streamlit Cloud](https://sysiphe-voseesdgwwcstfepbdepkh.streamlit.app). La saisie, les réglages et la gestion des
+profils se font dans l'app : le site refuse toute écriture (`LECTURE_SEULE` dans `supabase_io.py`).
 
----
+### Effort pondéré
+
+```
+poids effectif = poids du corps + lest − force de l'élastique × ratio de tension
+planche        : effort = temps × (poids effectif / 100)² × (score variante × score forme)^1,2 / 100
+assistables    : effort = reps  × (poids effectif / 100)² × coef. d'écartement^1,2
+```
+
+Les coefficients sont réglables par profil (onglet Modèle) et partagés entre l'app et le site.
+
+## Installer l'app
+
+1. Ouvre la [dernière Release](https://github.com/Mephisto116631/sysiphe/releases/latest) sur le téléphone et
+   télécharge `thesee.apk` (anciennes versions : `sysiphe.apk`).
+2. Autorise l'installation depuis le navigateur si Android le demande, puis installe.
+3. Choisis ton profil et entre ton PIN **une seule fois** : l'appareil reste rattaché au profil.
+
+Ensuite, les mises à jour se font depuis l'app : **Réglages → Mises à jour**.
 
 ## Architecture
 
 ```
-sysiphe/
-│
-├── app.py                  # Entrypoint Streamlit (routing, session)
-├── auth.py                 # Sélection de profil, vérification PIN
-├── data.py                 # Logique métier pure (testable, sans Streamlit)
-├── supabase_io.py          # Toutes les requêtes Supabase (lecture/écriture)
-├── ui_saisie.py            # Onglet Saisie
-├── ui_stats.py             # Onglets Stats, Calendrier, Records, Paramètres
-├── ui_helpers.py           # Composants UI réutilisables
-├── requirements.txt        # Dépendances Python
-│
-├── flutter/                # App Android Flutter (version : flutter/pubspec.yaml)
-│   ├── lib/
-│   │   ├── main.dart, theme.dart, app_version.dart
-│   │   ├── models/         # perf, session, stats, effort_model, interval_plan, profile
-│   │   ├── screens/        # 6 onglets + profils, minuteur, assistables, gestion
-│   │   ├── services/       # supabase_service, session_store, update_service, rôle, alertes…
-│   │   └── widgets/        # carte d'exercice, chrono, bandeau de repos, PIN, mise à jour
-│   ├── test/               # tests Flutter (flutter test)
-│   ├── pubspec.yaml
-│   └── android/            # dont MainActivity.kt (installation des mises à jour)
-│
-├── supabase/
-│   ├── migrations/         # toutes les migrations appliquées en production (même version)
-│   └── a_appliquer/        # changements prêts, à appliquer à la main (voir son README)
-├── backup/                 # sauvegardes quotidiennes : Google Drive (CSV) ou NAS
-│
-└── archive/                # Anciennes briques, plus utilisées (voir § Archives)
+┌──────────────────────┐        ┌─────────────────────────────┐
+│ App Android (Flutter)│──────▶ │ Supabase                    │
+│ saisie + consultation│        │ Postgres · RLS · RPC · Auth │
+└──────────────────────┘        └─────────────────────────────┘
+┌──────────────────────┐                     ▲
+│ Site web (Streamlit) │─────────────────────┘
+│ consultation seule   │
+└──────────────────────┘
 ```
 
-**Flux de données :**
-
 ```
-Flutter app  ──────────────────────▶  Supabase Cloud
-Streamlit  ──[ supabase_io.py ]────▶  Supabase Cloud
-            (Streamlit Cloud)
+.
+├── flutter/                 App Android (lib/models, screens, services, widgets ; test/)
+├── app.py, auth.py          Site web : navigation, connexion par profil
+├── supabase_io.py           Site web : accès aux données (écritures bloquées)
+├── ui_stats.py, ui_helpers.py
+├── data.py, test_data.py    Logique métier du site et ses tests
+├── supabase/migrations/     Toutes les migrations appliquées en production
+├── supabase/a_appliquer/    Changements de base prêts, à appliquer à la main
+├── backup/                  Sauvegardes quotidiennes (Google Drive ou NAS)
+├── assets/logo/             Logo et icônes
+└── archive/                 Anciennes briques (NAS, APK WebView, Capacitor), plus utilisées
 ```
 
-Les deux apps partagent la même base. L'app Flutter communique **directement** avec Supabase, sans passer par Streamlit.
+## Sécurité des données
 
----
+- Chaque appareil ouvre une **session Supabase anonyme** persistante ; le PIN d'un profil est vérifié **par le
+  serveur** (`claim_profile`), une seule fois, puis l'appareil est rattaché au profil.
+- **RLS** sur toutes les tables : un appareil ne lit et n'écrit que les profils auxquels il est rattaché. Le hash
+  du PIN et le rôle ne sont jamais lisibles par les apps.
+- Anti force brute : 5 erreurs par appareil → 15 min ; 10 erreurs sur un profil → 1 h, puis 2 h, 4 h…
+- Aucune clé secrète dans le code : l'URL et la clé publique Supabase sont injectées à la compilation
+  (`--dart-define`) et dans les secrets Streamlit.
 
-## Base de données
+## Développement
 
-Projet Supabase hébergé sur `supabase.io`.
+```bash
+# App Android
+cd flutter
+flutter pub get
+flutter test
+flutter run --dart-define=SUPABASE_URL=https://xxx.supabase.co --dart-define=SUPABASE_ANON_KEY=…
 
-### Table `profiles`
+# Site web
+pip install -r requirements.txt
+python -m pytest test_data.py
+# .streamlit/secrets.toml : SUPABASE_URL = "…", SUPABASE_KEY = "…"
+streamlit run app.py
+```
+
+Prérequis : Flutter 3.24 (Dart 3.5), Java 17 et Android SDK pour construire l'APK, Python 3.11+.
+
+## Publier une version
+
+1. Ouvre une PR. La CI (`ci.yml`) lance `flutter analyze`, `flutter test`, un build APK de vérification,
+   `pytest`, et refuse une PR qui modifie l'app **sans augmenter `version:`** dans `flutter/pubspec.yaml`.
+2. Après la fusion, `build-flutter.yml` construit et signe l'APK, puis publie la Release `v<version>` avec
+   `thesee.apk` (numéro de build = numéro du run, ex. `2.8.0+41`).
+3. Les téléphones la voient dans **Réglages → Mises à jour**.
+
+| Secret GitHub | Usage |
+|---------------|-------|
+| `SUPABASE_URL`, `SUPABASE_ANON_KEY` | Injectés dans l'APK |
+| `SIGNING_KEY`, `KEYSTORE_PASSWORD` | Keystore (base64) et mot de passe, alias `sysiphe` |
+
+Les identifiants techniques gardent l'ancien nom pour que les mises à jour continuent de s'installer par-dessus
+l'app existante : paquet Android `com.sysiphe.app`, alias de signature, paquet Dart `sysiphe`.
+
+## Sauvegardes
+
+L'offre Supabase gratuite ne fournit aucune sauvegarde téléchargeable. [`backup/README.md`](backup/README.md) :
+un script Google Apps Script dépose chaque nuit un CSV par table dans Google Drive (recommandé), un script NAS fait
+une copie complète restaurable. L'export admin de l'app (Réglages) dépanne à la main.
+
+## Documentation
+
+| Fichier | Contenu |
+|---------|---------|
+| [`PLAN.md`](PLAN.md) | Feuille de route cochée : ce qui est fait, ce qui reste |
+| [`SETUP.md`](SETUP.md) | Schéma de la base, sécurité, recréer la base de zéro |
+| [`supabase/a_appliquer/`](supabase/a_appliquer/) | Changements de base en attente, avec leur marche à suivre |
+| [`backup/README.md`](backup/README.md) | Installer les sauvegardes |
+| [`archive/`](archive/) | NAS, APK WebView, Capacitor : conservés pour mémoire, plus construits ni déployés |
+
+## Référence technique
+
+### Base de données
+
+Projet Supabase (région eu-west-1, nommé « Sysiphe » dans le tableau de bord). Schéma complet : [`SETUP.md`](SETUP.md) et [`supabase/migrations/`](supabase/migrations/).
+
+#### Table `profiles`
 
 | Colonne | Type | Description |
 |---------|------|-------------|
@@ -101,7 +176,7 @@ Projet Supabase hébergé sur `supabase.io`.
 | `last_login` | timestamptz | Dernière connexion |
 | `created_at` | timestamptz | Date de création |
 
-### Table `perfs`
+#### Table `perfs`
 
 | Colonne | Type | Description |
 |---------|------|-------------|
@@ -128,7 +203,7 @@ Projet Supabase hébergé sur `supabase.io`.
 > Le volume d'une série lestée vaut `performance × charge`.
 > La planche est identifiée par son **nom** (`exercice` = « Planche », insensible à la casse).
 
-### Table `user_settings`
+#### Table `user_settings`
 
 Une ligne par utilisateur, partagée par l'app web et l'app Flutter (voir `SETUP.md` pour sa création).
 
@@ -150,7 +225,7 @@ Une ligne par utilisateur, partagée par l'app web et l'app Flutter (voir `SETUP
 > ⚠️ En production, `user_settings.user_id` référence encore `auth.users` au lieu de `profiles` : correctif prêt
 > dans `supabase/a_appliquer/`.
 
-### Accès et sécurité (tables techniques)
+#### Accès et sécurité (tables techniques)
 
 | Table | Rôle |
 |-------|------|
@@ -165,11 +240,11 @@ Les configs JSONB sont **fusionnées** avec les valeurs par défaut de `data.py`
 
 ---
 
-## Logique métier
+### Logique métier
 
-Tout le code pur (sans Streamlit ni Supabase) est dans `data.py`. Il est couvert par `test_data.py`.
+Le calcul est identique dans `data.py` (site) et `flutter/lib/models/` (app) ; les deux suites de tests le vérifient.
 
-### Score d'effort planche (isométrique)
+#### Score d'effort planche (isométrique)
 
 Formule adaptée pour normaliser la difficulté d'un hold de planche selon la variante, la forme des hanches, l'élastique et la tension des mains :
 
@@ -202,245 +277,13 @@ effort = round( (temps × (poids_effectif/100)² × (score_variante × score_for
 | Écarté | 0.85 |
 | Serré | 0.60 |
 
-### Détection plateau/progression
+#### Détection plateau/progression
 
 Régression linéaire sur une fenêtre glissante de 21 jours. Statuts : `progress`, `plateau`, `regression`, `insufficient_data`.
 
-### Lissage
+#### Lissage
 
 Rééchantillonnage sur index date continu avec trois modes : `interpolate` (courbes lisses), `ffill` (dernier connu), `zero` (volumes journaliers).
-
----
-
-## Application web — Streamlit
-
-### Lancement local
-
-```bash
-pip install -r requirements.txt
-# Créer .streamlit/secrets.toml :
-# SUPABASE_URL = "https://xxx.supabase.co"
-# SUPABASE_KEY = "eyJ..."
-streamlit run app.py
-```
-
-### Structure des onglets
-
-| Onglet | Fichier | Description |
-|--------|---------|-------------|
-| Saisie | `ui_saisie.py` | Formulaire série, autocomplete exercice, options planche |
-| Stats | `ui_stats.py` | Courbes progression, plateau/régression |
-| Calendrier | `ui_stats.py` | Heatmap d'activité (streamlit-calendar) |
-| Records | `ui_stats.py` | Meilleures perfs par exercice |
-| Paramètres | `ui_stats.py` | Poids de corps, PIN, export CSV/ICS |
-
-### Authentification
-
-- Page d'accueil : grille de profils (initiales)
-- Session Supabase anonyme gardée dans un cookie d'un an ; PIN vérifié par le serveur (`claim_profile`)
-- Le site ne gère pas encore les exercices assistables, les rôles ni le minuteur (voir `PLAN.md`, phase 6)
-
----
-
-## Application mobile — Flutter
-
-App native Android, connexion directe à Supabase. Mises à jour intégrées : Réglages → « Mises à jour »
-télécharge l'APK de la dernière Release GitHub et l'installe.
-
-### Dépendances principales
-
-| Package | Usage |
-|---------|-------|
-| `supabase_flutter ^2.5.0` | Client Supabase officiel |
-| `crypto ^3.0.3` | Repli de transition (PIN vérifié localement si la session anonyme est indisponible) |
-| `fl_chart ^0.68.0` | Courbes de progression |
-| `table_calendar ^3.1.0` | Heatmap calendrier |
-| `shared_preferences` | Profil mémorisé, filtres et préférences d'affichage |
-| `flutter_local_notifications`, `timezone`, `wakelock_plus` | Minuteur HIIT en arrière-plan, écran allumé |
-| `share_plus` | Export CSV |
-| `intl ^0.19.0` | Formats date fr_FR |
-
-### Screens
-
-```
-ProfileScreen   → sélection / création de profil + PIN (une fois par appareil)
-  └─ HomeScreen (BottomNavigationBar, IndexedStack)
-       ├─ SaisieScreen    (cartes d'exercice, repos, chrono → MinuteurScreen)
-       ├─ StatsScreen     (fl_chart, périodes, tendance)
-       ├─ CalendarScreen  (table_calendar, heatmap, récupération)
-       ├─ RecordsScreen   (records filtrables)
-       ├─ ModelScreen     (admin : coefficients, grille, recalcul)
-       └─ SettingsScreen  (mises à jour, poids, AssistableScreen, ManageScreen, PIN, export admin)
-```
-
-### Credentials à la compilation
-
-Les clés Supabase ne sont **jamais** dans le code source. Elles sont injectées à la compilation via `--dart-define` :
-
-```dart
-const _supabaseUrl    = String.fromEnvironment('SUPABASE_URL');
-const _supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
-```
-
-En local :
-
-```bash
-cd flutter
-flutter pub get
-flutter run \
-  --dart-define=SUPABASE_URL=https://xxx.supabase.co \
-  --dart-define=SUPABASE_ANON_KEY=eyJ...
-```
-
-### Build Android manuel
-
-```bash
-cd flutter
-flutter build apk --release \
-  --dart-define=SUPABASE_URL=... \
-  --dart-define=SUPABASE_ANON_KEY=...
-# APK : flutter/build/app/outputs/flutter-apk/app-release.apk
-```
-
-### Notes Gradle
-
-Le projet utilise la **nouvelle API déclarative Flutter Gradle** (Flutter 3.16+) :
-
-- `settings.gradle` : bloc `pluginManagement` + `plugins {}` (pas d'`apply from:` impératif)
-- `app/build.gradle` : `plugins { id "dev.flutter.flutter-gradle-plugin" }` (pas d'`apply from: flutter.gradle`)
-- Gradle wrapper : 8.4
-
-**`dependency_overrides`** : `app_links` est épinglé à `< 6.4.0` car les versions 6.4.x référencent `flutter.compileSdkVersion` dans le build.gradle d'un projet *library*, ce qui n'est pas disponible pour les plugins Android.
-
----
-
-## Hébergement
-
-L'app web tourne uniquement sur **Streamlit Cloud** : `https://sysiphe-voseesdgwwcstfepbdepkh.streamlit.app`. Elle est redéployée automatiquement à chaque push sur `main`.
-
-`APP_URL` (optionnel, dans `secrets.toml`) remplace l'URL publique utilisée pour les redirections d'authentification, par exemple en local. Par défaut, c'est l'URL Streamlit Cloud (`app.py`).
-
-L'app mobile est l'**APK Flutter**, publié dans les Releases GitHub.
-
----
-
-## CI/CD
-
-Deux workflows actifs :
-
-- **`ci.yml`** (sur chaque PR et chaque push sur `main`) : `flutter analyze` + `flutter test`, build APK debug
-  (valide le code natif), `pytest test_data.py`, et sur les PR une vérification que **toute modification de
-  l'app augmente `version:`** dans `flutter/pubspec.yaml`. Ne publie rien.
-- **`build-flutter.yml`** : construit, signe et publie l'APK Flutter.
-
-#### `build-flutter.yml`
-
-Déclenché sur push vers `main` touchant `flutter/**` (ou le workflow lui-même), ou manuellement (*Run workflow*).
-
-| Étape | Détail |
-|-------|--------|
-| Java 17 (Temurin) | — |
-| Flutter 3.24.3 stable | `subosito/flutter-action@v2` |
-| `local.properties` | `sdk.dir` + `flutter.sdk` depuis les vars d'env CI |
-| `flutter pub get` | — |
-| `flutter build apk --release` | Inject `SUPABASE_URL` + `SUPABASE_ANON_KEY` via `--dart-define` |
-| Signature `apksigner` | Keystore base64 depuis `SIGNING_KEY`, alias `sysiphe` |
-| GitHub Release | Tag `v{version}`, fichier `sysiphe.apk`, build = numéro du run (`2.7.0+N`) |
-
-Une nouvelle version = un nouveau tag et une nouvelle Release. Rebuilder la même version remplace l'APK de sa
-Release : d'où la vérification de version dans `ci.yml`.
-
----
-
-## Secrets & sécurité
-
-### Secrets GitHub Actions requis
-
-| Secret | Usage |
-|--------|-------|
-| `SUPABASE_URL` | URL du projet Supabase |
-| `SUPABASE_ANON_KEY` | Clé `anon` publique Supabase |
-| `SIGNING_KEY` | Keystore JKS encodé en base64 |
-| `KEYSTORE_PASSWORD` | Mot de passe du keystore (alias `sysiphe`) |
-
-Les secrets `KEYSTORE_BASE64` et `KEY_ALIAS` ne servaient qu'au workflow Capacitor archivé : ils peuvent être supprimés des réglages GitHub.
-
-### Règles
-
-- Les fichiers `secrets.toml`, `.env`, et tout CSV de données sont dans `.gitignore`
-- La clé `service_role` Supabase n'est **jamais** dans le code ni dans les secrets CI ; elle n'existe que dans
-  les propriétés du script Google de sauvegarde (`backup/`)
-- Les credentials Supabase sont injectés **uniquement à la compilation** via `--dart-define` pour Flutter, et via les *Secrets* de Streamlit Cloud (ou `.streamlit/secrets.toml` en local) pour Streamlit
-
----
-
-## Développement local
-
-### Prérequis
-
-- Python 3.11+, `pip`
-- Flutter 3.24+ (pour l'app mobile)
-- Android SDK + Java 17 (pour le build APK)
-- Un projet Supabase avec les tables `profiles`, `perfs`, `user_settings` (voir `SETUP.md`)
-
-### Setup Streamlit
-
-```bash
-git clone https://github.com/Mephisto116631/sysiphe.git
-cd sysiphe
-pip install -r requirements.txt
-
-mkdir -p .streamlit
-cat > .streamlit/secrets.toml << 'EOF'
-SUPABASE_URL = "https://xxx.supabase.co"
-SUPABASE_KEY = "eyJ..."
-EOF
-
-streamlit run app.py
-```
-
-### Setup Flutter
-
-```bash
-cd flutter
-flutter pub get
-flutter run \
-  --dart-define=SUPABASE_URL=https://xxx.supabase.co \
-  --dart-define=SUPABASE_ANON_KEY=eyJ...
-```
-
-### Tests
-
-```bash
-python -m pytest test_data.py -v     # logique web : calculer_effort, parse_reps, lissage, plateau
-cd flutter && flutter test           # logique et écrans Flutter (effort, séances, stats, minuteur…)
-```
-
-
----
-
-## Sauvegardes
-
-L'offre Supabase gratuite ne fournit aucune sauvegarde téléchargeable. `backup/README.md` décrit deux solutions
-cumulables : un script Google Apps Script qui dépose chaque nuit un CSV par table dans Google Drive (recommandé),
-et un script NAS (`pg_dump`, copie complète restaurable). L'export admin de l'app (Réglages) dépanne à la main.
-
----
-
-## Archives
-
-Le dossier `archive/` conserve, pour mémoire, les briques abandonnées depuis l'abandon du NAS. Elles ne sont **plus construites ni déployées** : les workflows archivés sont hors de `.github/workflows/`, donc GitHub ne les exécute plus.
-
-| Dossier | Ancien rôle |
-|---------|-------------|
-| `archive/nas/` | Auto-hébergement sur NAS : `Dockerfile`, docker-compose OMV, Tailscale Funnel, `update.sh` |
-| `archive/android-webview/` | APK WebView v1.4 (ouvrait l'URL du NAS, sinon une page hors ligne) |
-| `archive/mobile-capacitor/` | Premier wrapper APK (Capacitor), `targets.json`, icône source |
-| `archive/workflows/` | `docker-image.yml` (image `ghcr.io`), `build-apk.yml`, `android-apk.yml` |
-
-Pour réactiver une brique : remettre son dossier à la racine et son workflow dans `.github/workflows/`. Les chemins internes n'ont pas été modifiés.
-
-Les APK WebView déjà installés lisent `mobile/targets.json` sur `main`. Ce fichier n'y est plus, donc ils affichent leur page hors ligne : il faut les désinstaller au profit de l'APK Flutter.
 
 ---
 

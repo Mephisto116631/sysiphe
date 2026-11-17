@@ -159,9 +159,9 @@ def test_suggest_next_session_donnees_insuffisantes():
 
 # --- build_ics_event ---------------------------------------------------------
 def test_build_ics_event_contient_les_champs_essentiels():
-    ics = build_ics_event(datetime(2026, 6, 25, 18, 0), "Séance Sysiphe", "Planche + Dips")
+    ics = build_ics_event(datetime(2026, 6, 25, 18, 0), "Séance Thésée", "Planche + Dips")
     assert "BEGIN:VCALENDAR" in ics
-    assert "SUMMARY:Séance Sysiphe" in ics
+    assert "SUMMARY:Séance Thésée" in ics
     assert "DTSTART:20260625T180000" in ics
     assert "END:VCALENDAR" in ics
 

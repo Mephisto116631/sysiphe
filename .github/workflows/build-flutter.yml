@@ -80,7 +80,7 @@ jobs:
             --ks-key-alias sysiphe \
             --ks-pass "pass:${{ secrets.KEYSTORE_PASSWORD }}" \
             --key-pass "pass:${{ secrets.KEYSTORE_PASSWORD }}" \
-            --out sysiphe.apk \
+            --out thesee.apk \
             flutter/build/app/outputs/flutter-apk/app-release.apk
           rm /tmp/keystore.jks
 
@@ -89,11 +89,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.name }}
-          name: "Sysiphe ${{ steps.version.outputs.name }}"
+          name: "Thésée ${{ steps.version.outputs.name }}"
           # Notes générées depuis les PR fusionnées depuis la Release précédente.
           # Un rebuild de la même version met à jour cette Release.
           body: |
             Build ${{ steps.version.outputs.full }} — commit ${{ github.sha }}
           generate_release_notes: true
-          files: sysiphe.apk
+          files: thesee.apk
           make_latest: true

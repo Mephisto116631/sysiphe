@@ -1,6 +1,6 @@
 name: sysiphe
-description: Sysiphe — fitness tracker natif Flutter
-version: 2.7.0+1
+description: Thésée — suivi d'entraînement natif Flutter
+version: 2.8.0+1
 
 environment:
   sdk: '>=3.3.0 <4.0.0'

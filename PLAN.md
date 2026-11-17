@@ -1,12 +1,13 @@
-# Sysiphe — Plan d'actions
+# Thésée — Plan d'actions
 
 > Cocher une case : remplacer `[ ]` par `[x]` (sur GitHub : bouton ✏️ du fichier).
 > Ce fichier est la référence du suivi : chaque session Claude le lit et le met à jour.
 >
-> Dernière mise à jour : 9 novembre 2026
+> Dernière mise à jour : 17 novembre 2026
 
-**Cap** : l'app mobile est l'APK **Flutter**. L'app web **Streamlit** reste sur Streamlit Cloud
-(calibration, analyses avancées). Les deux partagent la même base **Supabase**. Le NAS est abandonné.
+**Cap** : l'app mobile est l'APK **Flutter** (saisie, réglages, consultation). Le site **Streamlit** reste sur
+Streamlit Cloud en **consultation seule** (depuis le 17/11). Les deux partagent la même base **Supabase**.
+Le NAS est abandonné. Projet renommé **Thésée** le 17/11 (anciennement Sysiphe).
 
 ---
 
@@ -169,7 +170,7 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
 - [x] CI : `pytest test_data.py` sur chaque PR (28 tests)
 - [x] Script de sauvegarde quotidienne vers le NAS (`backup/`) : copie complète restaurable + CSV des perfs, 60 jours
       (testé sur une base locale : mot de passe à caractères spéciaux, rotation, restauration, échec)
-- [x] Script Google Apps Script : CSV quotidiens dans Drive « Sysiphe sauvegardes », 60 jours (`backup/google-drive`)
+- [x] Script Google Apps Script : CSV quotidiens dans Drive « Thésée sauvegardes », 60 jours (`backup/google-drive`)
 - [ ] Installer la sauvegarde Drive (toi, sur ordi : clé `service_role` + script, `backup/README.md` option A)
 - [ ] (facultatif) Installer la sauvegarde NAS (`backup/README.md` option B)
 - [ ] Vérifier la 1re sauvegarde réelle (fichiers du jour dans Drive)
@@ -179,7 +180,7 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
 
 ## Phase 6 — Plus tard / à décider
 
-- [ ] Garder Streamlit à long terme, ou tout migrer dans Flutter une fois la phase 4 terminée ?
+- [x] Garder Streamlit à long terme, ou tout migrer dans Flutter ? → gardé en consultation seule (17/11)
 - [ ] Icône définitive de l'app Flutter
 
 ## Audit du 17 novembre 2026
@@ -195,8 +196,15 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
       Rien n'est perdu : tout est fusionné ou repris (vérifié le 17/11 ; seul le message de blocage PIN de
       `feat/saisie-pct` manquait, repris dans la v2.7.0)
 - [ ] **Toi** : appliquer `supabase/a_appliquer/20261117_reglages_profils_categories.sql` (marche à suivre dans le README du dossier)
-- [ ] Décider du site web (phase 6) : il ne gère ni les exercices assistables, ni les rôles, ni le minuteur
-      → piste : site en consultation seule, saisie uniquement dans l'app
+- [x] Site web en **consultation seule** (décision du 17/11) : page Saisie retirée, réglages en lecture,
+      création de profil / de compte retirée, toute écriture refusée dans `supabase_io.py` (`LECTURE_SEULE`)
+- [x] Renommage en **Thésée** : noms affichés (app, site, Release, export, sauvegardes) et README réécrit en page
+      de présentation. Identifiants techniques gardés (`com.sysiphe.app`, alias de signature, paquet Dart)
+      pour que les mises à jour s'installent par-dessus l'app existante
+- [ ] **Toi** (facultatif) : renommer le dépôt GitHub en `thesee` (Settings → General → Repository name). Les
+      liens et la mise à jour intégrée suivent la redirection de GitHub ; je mettrai ensuite les liens à jour
+- [ ] **Toi** (facultatif) : renommer le projet Supabase (Settings → General → Project name), sans effet sur l'app
+- [ ] Nouveau logo pour Thésée (l'icône actuelle représente Sisyphe)
 - [ ] Découper `saisie_screen.dart` (1 865 lignes) en widgets plus petits
 
 ## Phase 7 — Retours de saisie (novembre 2026)
