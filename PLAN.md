@@ -226,3 +226,13 @@ Alternative étudiée pour les exercices assistables, plus simple à comparer au
 `effort = reps × (poids effectif / poids du corps)^k × coef_écartement`, avec k = 1 par défaut (réglable).
 Sans élastique ni lest, l'effort vaut exactement les reps → l'historique reste directement comparable.
 Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec le reste de l'app.
+
+## Demande du 17 novembre — chrono des exercices en secondes (v2.9.0)
+
+- [x] Mode **objectif** : décompte jusqu'à zéro (30 s, 45 s, 1:00, 1:30, 2:00 ou temps personnalisé), barre de
+      progression, tics sur les 3 dernières secondes, triple vibration à zéro, puis dépassement affiché en « +0:05 » ;
+      Arrêter renvoie toujours le temps total
+- [x] Objectif mémorisé **par exercice** (la planche et le gainage gardent chacun le leur) ; « Libre » = chrono classique
+- [x] « Départ dans » : temps personnalisé en plus de Sans / 5 / 10 / 15 s (saisie « 20 », « 1:30 » ou « 2m »)
+- [x] Écran éteint ou autre app avant l'objectif : notification programmée à l'heure de fin
+- [ ] **Toi** : tester la v2.9.0 sur le téléphone

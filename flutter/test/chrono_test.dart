@@ -6,11 +6,13 @@ import 'package:sysiphe/widgets/chrono.dart';
 
 void main() {
   Future<void> pump(WidgetTester t, DateTime Function() now, List<int> got,
-      {int pre = 0}) async {
-    SharedPreferences.setMockInitialValues({kChronoPreKey: pre});
+      {int pre = 0, Map<String, Object> extra = const {}, String? exo}) async {
+    SharedPreferences.setMockInitialValues({kChronoPreKey: pre, ...extra});
     await t.pumpWidget(MaterialApp(
       theme: AppTheme.light,
-      home: Scaffold(body: Chrono(now: now, onStop: got.add)),
+      home: Scaffold(
+          body: SingleChildScrollView(
+              child: Chrono(now: now, onStop: got.add, exercice: exo))),
     ));
     await t.pumpAndSettle(); // laisse charger le réglage
   }
@@ -86,5 +88,69 @@ void main() {
     await t.tap(find.text('15 s'));
     await t.pump();
     expect((await SharedPreferences.getInstance()).getInt(kChronoPreKey), 15);
+  });
+
+  test('parseDuree accepte secondes et min:s', () {
+    expect(parseDuree('90'), 90);
+    expect(parseDuree('1:30'), 90);
+    expect(parseDuree('1m30'), 90);
+    expect(parseDuree('1 min 30'), 90);
+    expect(parseDuree('2m'), 120);
+    expect(parseDuree('45s'), 45);
+    expect(parseDuree('1:75'), isNull);
+    expect(parseDuree('abc'), isNull);
+    expect(parseDuree(''), isNull);
+    expect(formatDuree(45), '45 s');
+    expect(formatDuree(75), '1:15');
+  });
+
+  testWidgets('objectif 1:00 : décompte, puis dépassement, temps total renvoyé',
+      (t) async {
+    var now = DateTime(2026, 11, 17, 10);
+    final got = <int>[];
+    await pump(t, () => now, got,
+        extra: {chronoTargetKey('Planche'): 60}, exo: 'Planche');
+    expect(find.text('Objectif'), findsOneWidget);
+    await t.tap(find.text('Démarrer'));
+    await t.pump();
+    expect(find.text('1:00'), findsWidgets);
+    now = now.add(const Duration(seconds: 15, milliseconds: 300));
+    await t.pump(const Duration(milliseconds: 100));
+    expect(find.text('0:45'), findsOneWidget); // 44,7 s restantes → 0:45
+    now = now.add(const Duration(seconds: 50));
+    await t.pump(const Duration(milliseconds: 100));
+    expect(find.text('+0:05'), findsOneWidget);
+    expect(find.textContaining('Objectif atteint'), findsOneWidget);
+    await t.tap(find.text('Arrêter'));
+    await t.pump();
+    expect(got, [65]);
+    await t.pump(const Duration(seconds: 1)); // fin des vibrations différées
+  });
+
+  testWidgets('objectif mémorisé par exercice, temps personnalisé', (t) async {
+    final now = DateTime(2026, 11, 17, 10);
+    await pump(t, () => now, <int>[], exo: 'Gainage');
+    await t.tap(find.text('Autre').last); // chip « Autre » de l'objectif
+    await t.pumpAndSettle();
+    await t.enterText(find.byType(TextField), '1:15');
+    await t.tap(find.text('OK'));
+    await t.pumpAndSettle();
+    final p = await SharedPreferences.getInstance();
+    expect(p.getInt(chronoTargetKey('Gainage')), 75);
+    expect(find.text('1:15'), findsOneWidget); // chip personnalisé sélectionné
+  });
+
+  testWidgets(
+      'préparation personnalisée invalide → erreur, pas d\'enregistrement',
+      (t) async {
+    final now = DateTime(2026, 11, 17, 10);
+    await pump(t, () => now, <int>[], pre: 5);
+    await t.tap(find.text('Autre').first);
+    await t.pumpAndSettle();
+    await t.enterText(find.byType(TextField), '1:99');
+    await t.tap(find.text('OK'));
+    await t.pumpAndSettle();
+    expect(find.textContaining('Ex. 90'), findsOneWidget);
+    expect((await SharedPreferences.getInstance()).getInt(kChronoPreKey), 5);
   });
 }

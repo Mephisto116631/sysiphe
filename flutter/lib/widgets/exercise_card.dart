@@ -281,7 +281,9 @@ class _ExerciseCardState extends State<ExerciseCard> {
             ),
             if (_unite == 'Sec') ...[
               const SizedBox(height: 10),
-              Chrono(onStop: (sec) {
+              Chrono(
+                  exercice: widget.exercice,
+                  onStop: (sec) {
                 _value.text = '$sec';
                 _auto?.cancel();
                 _auto = Timer(const Duration(seconds: 3), () {
