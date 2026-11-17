@@ -1,17 +1,15 @@
 """
-Sysiphe v19 — Navigation multi-pages (st.navigation + st.Page).
-Chaque section (Saisie, Stats, Calendrier…) est une page indépendante
-accessible depuis le menu latéral.
+Thésée — site web en CONSULTATION SEULE (st.navigation + st.Page).
+Stats, Calendrier, Records, Repos et Infos ; la saisie et les réglages se
+font dans l'app Android. Les écritures sont bloquées dans supabase_io.py.
 """
-from datetime import datetime, timedelta
 import streamlit as st
 
 from auth import (get_pkce_store, check_oauth_callback, render_login_page,
                   get_cookie_controller, persist_session_tokens)
 from supabase_io import _clear_profiles_cache
 from data import DEFAULT_VARIANTES, DEFAULT_FORMES, DEFAULT_ELASTIQUES, DEFAULT_TENSIONS
-from supabase_io import get_supabase_client, load_data, delete_perfs, load_user_settings
-from ui_saisie import render_planche_block, render_exercise_block, render_kpi_panel, render_save_all_button
+from supabase_io import get_supabase_client, load_data, load_user_settings
 from ui_stats import (
     render_graph_tab, render_calendar_tab,
     render_records_tab, render_repos_tab, render_param_tab,
@@ -25,7 +23,7 @@ try:
 except Exception:
     APP_URL = CLOUD_URL
 
-st.set_page_config(page_title="Sysiphe", layout="centered")
+st.set_page_config(page_title="Thésée", page_icon="🧭", layout="centered")
 
 # ─── CSS responsive mobile ───────────────────────────────────────────────────
 st.markdown("""
@@ -59,7 +57,6 @@ st.markdown("""
 # ─── Session state defaults ──────────────────────────────────────────────────
 _DEFAULTS = {
     "user": None,
-    "date_seance": datetime.now().date(),
     "weight": 97,
     "nb_days_avg": 5,
     "include_planche": True,
@@ -67,7 +64,6 @@ _DEFAULTS = {
     "config_formes":     dict(DEFAULT_FORMES),
     "config_elastiques": dict(DEFAULT_ELASTIQUES),
     "config_tensions":   dict(DEFAULT_TENSIONS),
-    "confirm_delete_session": False,
 }
 for _k, _v in _DEFAULTS.items():
     if _k not in st.session_state:
@@ -101,6 +97,7 @@ if "config_loaded" not in st.session_state:
 # ─── Sidebar globale (déconnexion / changement de profil) ────────────────────
 with st.sidebar:
     st.caption(f"👤 {st.session_state.user.email}")
+    st.info("👀 Consultation seule. Saisie et réglages : app Android Thésée.")
     # Libellé contextuel selon le mode d'auth
     is_profile_mode = st.session_state.get("auth_mode") == "profile"
     btn_label = "🔀 Changer de profil" if is_profile_mode else "🚪 Déconnexion"
@@ -121,7 +118,7 @@ with st.sidebar:
             except Exception:
                 pass
         _clear_profiles_cache()
-        for k in ["user", "exos_du_jour", "last_seen_date", "oauth_intent", "config_loaded"]:
+        for k in ["user", "oauth_intent", "config_loaded"]:
             st.session_state.pop(k, None)
         st.cache_data.clear()
         st.rerun()
@@ -144,132 +141,6 @@ if not df_global.empty:
 # PAGES
 # ═════════════════════════════════════════════════════════════════════════════
 
-def page_saisie():
-    # Sidebar spécifique à cette page
-    with st.sidebar:
-        st.markdown("---")
-        st.header("📅 Navigation")
-        date_active = st.date_input(
-            "Choisir une date", st.session_state.date_seance, key="date_picker"
-        )
-        if date_active != st.session_state.date_seance:
-            st.session_state.date_seance = date_active
-            st.session_state.confirm_delete_session = False
-            st.rerun()
-
-        if not df_global.empty:
-            st.write("")
-            jours_entraines = sorted([
-                d.day for d in df_global["date"].unique()
-                if d.month == date_active.month and d.year == date_active.year
-            ])
-            if jours_entraines:
-                st.markdown(
-                    f"**🎯 Ce mois :** <span style='background:#2e7d32;color:white;"
-                    f"padding:4px 12px;border-radius:12px;font-size:16px;font-weight:bold;'>"
-                    f"{len(jours_entraines)} séance(s)</span>",
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.caption("ℹ️ Aucune séance ce mois.")
-
-        st.markdown("---")
-
-        # Suppression de séance (2 étapes)
-        if not st.session_state.confirm_delete_session:
-            if st.button("🗑️ Supprimer cette séance", type="secondary", use_container_width=True):
-                st.session_state.confirm_delete_session = True
-                st.rerun()
-        else:
-            st.warning(f"⚠️ Supprimer la séance du {date_active.strftime('%d/%m/%Y')} ?")
-            col_yes, col_no = st.columns(2)
-            with col_yes:
-                if st.button("Oui", type="primary", use_container_width=True):
-                    delete_perfs(USER_ID, str(date_active))
-                    st.cache_data.clear()
-                    st.session_state.exos_du_jour = []
-                    st.session_state.confirm_delete_session = False
-                    st.toast(f"Séance du {date_active.strftime('%d/%m/%Y')} supprimée", icon="🗑️")
-                    st.session_state.date_seance = datetime.now().date()
-                    st.rerun()
-            with col_no:
-                if st.button("Annuler", use_container_width=True):
-                    st.session_state.confirm_delete_session = False
-                    st.rerun()
-
-    # ── Contenu principal ──
-    date_active = st.session_state.date_seance
-
-    # Navigation date rapide (mobile-first)
-    _c_prev, _c_mid, _c_next = st.columns([1, 2, 1])
-    with _c_prev:
-        if st.button("◀ Hier", use_container_width=True):
-            st.session_state.date_seance = date_active - timedelta(days=1)
-            st.session_state.confirm_delete_session = False
-            st.rerun()
-    with _c_mid:
-        _today = datetime.now().date()
-        _lbl = f"📅 {date_active.strftime('%d/%m')}" + (" ↩ Auj." if date_active != _today else "")
-        if st.button(_lbl, use_container_width=True, disabled=(date_active == _today)):
-            st.session_state.date_seance = _today
-            st.session_state.confirm_delete_session = False
-            st.rerun()
-    with _c_next:
-        if st.button("Demain ▶", use_container_width=True):
-            st.session_state.date_seance = date_active + timedelta(days=1)
-            st.session_state.confirm_delete_session = False
-            st.rerun()
-
-    # Préfill exercices du jour
-    if "last_seen_date" not in st.session_state or st.session_state.last_seen_date != date_active:
-        st.session_state.last_seen_date = date_active
-        if not df_global.empty:
-            df_today = df_global[df_global["date"] == date_active]
-            if not df_today.empty:
-                st.session_state.exos_du_jour = (
-                    df_today[df_today["exercice"].str.lower() != "planche"]["exercice"].unique().tolist()
-                )
-            else:
-                dates_passees = df_global[df_global["date"] < date_active]["date"]
-                if not dates_passees.empty:
-                    df_last = df_global[df_global["date"] == dates_passees.max()]
-                    st.session_state.exos_du_jour = (
-                        df_last[df_last["exercice"].str.lower() != "planche"]["exercice"].unique().tolist()
-                    )
-                else:
-                    st.session_state.exos_du_jour = []
-        else:
-            st.session_state.exos_du_jour = []
-
-    # KPI du jour
-    with st.expander("📊 Stats du jour & prochaine séance", expanded=True):
-        render_kpi_panel(df_global, date_active)
-
-    st.write("")
-
-    # Saisie
-    if st.session_state.include_planche:
-        render_planche_block(df_global, date_active, USER_ID,
-                             float(st.session_state.weight), st.session_state.config_variantes)
-
-    for nom_exo in list(st.session_state.exos_du_jour):
-        render_exercise_block(nom_exo, df_global, date_active, USER_ID)
-
-    render_save_all_button(USER_ID, date_active, st.session_state.exos_du_jour)
-
-    # Ajout d'exercice
-    col_sel, col_add = st.columns([3, 1])
-    with col_sel:
-        new_sel = st.selectbox("Exercices Habituels", ["--- Sélectionner ---"] + tous_les_exos)
-        new_txt = st.text_input("...ou taper un nouvel exercice")
-    with col_add:
-        if st.button("➕ Ajouter", use_container_width=True):
-            exo_ok = new_txt.strip() or (new_sel if new_sel != "--- Sélectionner ---" else None)
-            if exo_ok and exo_ok not in st.session_state.exos_du_jour:
-                st.session_state.exos_du_jour.append(exo_ok)
-                st.rerun()
-
-
 def page_stats():
     st.title("📈 Statistiques")
     render_graph_tab(df_global, tous_les_exos, st.session_state.include_planche)
@@ -290,18 +161,17 @@ def page_repos():
     render_repos_tab(df_global)
 
 
-def page_params():
-    st.title("⚙️ Paramètres")
+def page_infos():
+    st.title("ℹ️ Infos")
     render_param_tab(df_global, tous_les_exos, USER_ID)
 
 
 # ─── Navigation ──────────────────────────────────────────────────────────────
 pg = st.navigation([
-    st.Page(page_saisie,   title="Saisie",      icon="🏋️", default=True),
-    st.Page(page_stats,    title="Stats",        icon="📈"),
+    st.Page(page_stats,    title="Stats",        icon="📈", default=True),
     st.Page(page_calendar, title="Calendrier",   icon="📅"),
     st.Page(page_records,  title="Records",      icon="🏆"),
     st.Page(page_repos,    title="Repos",        icon="💤"),
-    st.Page(page_params,   title="Paramètres",   icon="⚙️"),
+    st.Page(page_infos,    title="Infos",        icon="ℹ️"),
 ])
 pg.run()

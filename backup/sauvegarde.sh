@@ -1,7 +1,7 @@
 #!/bin/sh
-# Sauvegarde quotidienne de la base Supabase de Sysiphe, sur le NAS.
+# Sauvegarde quotidienne de la base Supabase de Thésée, sur le NAS.
 # Mode d'emploi : backup/README.md. À planifier dans OMV (Système > Tâches planifiées), utilisateur root :
-#   sh /compose_data/sysiphe-backup/sauvegarde.sh >> /var/log/sysiphe-backup.log 2>&1
+#   sh /compose_data/thesee-backup/sauvegarde.sh >> /var/log/thesee-backup.log 2>&1
 set -eu
 cd "$(dirname "$0")"
 
@@ -27,10 +27,10 @@ docker run --rm -e PGURL="$SUPABASE_DB_URL" -v "$PWD/dumps:/out" postgres:17-alp
     "\copy (select * from public.perfs order by id) to /out/.en-cours.csv csv header"
 '
 
-mv dumps/.en-cours.dump "dumps/sysiphe-$JOUR.dump"
+mv dumps/.en-cours.dump "dumps/thesee-$JOUR.dump"
 mv dumps/.en-cours.csv "dumps/perfs-$JOUR.csv"
 chmod 600 dumps/*
-find dumps -name 'sysiphe-*.dump' -mtime +"$GARDER_JOURS" -delete
+find dumps -name 'thesee-*.dump' -mtime +"$GARDER_JOURS" -delete
 find dumps -name 'perfs-*.csv' -mtime +"$GARDER_JOURS" -delete
 
-echo "$(date '+%F %T') OK : sysiphe-$JOUR.dump ($(du -h "dumps/sysiphe-$JOUR.dump" | cut -f1)), $(($(wc -l < "dumps/perfs-$JOUR.csv") - 1)) perfs"
+echo "$(date '+%F %T') OK : thesee-$JOUR.dump ($(du -h "dumps/thesee-$JOUR.dump" | cut -f1)), $(($(wc -l < "dumps/perfs-$JOUR.csv") - 1)) perfs"

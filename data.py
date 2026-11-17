@@ -1,5 +1,5 @@
 """
-Sysiphe — Fonctions métier pures (sans dépendance Streamlit/Supabase).
+Thésée — Fonctions métier pures (sans dépendance Streamlit/Supabase).
 Toutes les fonctions ici sont testables unitairement (voir test_data.py).
 """
 import pandas as pd
@@ -252,13 +252,13 @@ def build_ics_event(start_dt: datetime, title: str, description: str = "",
     """
     end_dt = start_dt + timedelta(minutes=duration_minutes)
     fmt = "%Y%m%dT%H%M%S"
-    uid = f"sysiphe-{start_dt.strftime('%Y%m%d%H%M%S')}@sysiphe.local"
+    uid = f"thesee-{start_dt.strftime('%Y%m%d%H%M%S')}@thesee.local"
     now_stamp = datetime.now(timezone.utc).strftime(fmt) + "Z"
 
     return (
         "BEGIN:VCALENDAR\r\n"
         "VERSION:2.0\r\n"
-        "PRODID:-//Sysiphe//Reminder//FR\r\n"
+        "PRODID:-//Thesee//Reminder//FR\r\n"
         "BEGIN:VEVENT\r\n"
         f"UID:{uid}\r\n"
         f"DTSTAMP:{now_stamp}\r\n"

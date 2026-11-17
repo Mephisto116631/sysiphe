@@ -119,7 +119,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         color: Colors.white, size: 24),
                   ),
                   const SizedBox(width: 12),
-                  Text('Sysiphe',
+                  Text('Thésée',
                       style: Theme.of(context).textTheme.headlineMedium),
                 ],
               ),

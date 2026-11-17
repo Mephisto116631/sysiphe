@@ -1,5 +1,5 @@
 """
-Sysiphe — Authentification (Email/Password + Google OAuth via PKCE + Cookies)
+Thésée — Authentification (Email/Password + Google OAuth via PKCE + Cookies)
 + Mode Profils : sélection rapide sans mot de passe pour un usage familial,
 avec la connexion sécurisée (Google/email) conservée en option de secours.
 """
@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import streamlit as st
 from streamlit_cookies_controller import CookieController
 
-from supabase_io import (load_profiles, create_profile, claim_profile,
+from supabase_io import (load_profiles, claim_profile,
                          touch_profile_login, _clear_profiles_cache)
 
 def get_cookie_controller():
@@ -221,8 +221,8 @@ def render_login_page(supabase, pkce_store: dict, app_url: str) -> None:
     """Affiche l'écran de connexion : sélection de profil en premier plan,
     connexion sécurisée (Google/email) repliée en secours."""
     controller = get_cookie_controller()
-    st.title("🪨 Sysiphe")
-    st.markdown("Choisis ton profil pour continuer.")
+    st.title("🧭 Thésée")
+    st.markdown("Choisis ton profil pour consulter tes séances.")
 
     _, col_auth, _ = st.columns([1, 2, 1])
     with col_auth:
@@ -271,17 +271,7 @@ def render_login_page(supabase, pkce_store: dict, app_url: str) -> None:
                 else:
                     st.error("Connexion impossible, réessaie dans un instant.")
 
-        with st.expander("➕ Nouveau profil"):
-            new_name = st.text_input("Prénom / pseudo", key="new_profile_name", placeholder="ex: Sarah")
-            if st.button("Créer le profil", key="btn_create_profile", width='stretch'):
-                name = new_name.strip()
-                if not name:
-                    st.warning("Saisis un prénom ou pseudo.")
-                else:
-                    profil = create_profile(name)  # rattaché à ce navigateur
-                    if profil:
-                        _login_profile(controller, profil)
-                        st.rerun()
+        st.caption("Nouveau profil : à créer dans l'app Android Thésée.")
 
         st.markdown("<div style='text-align:center;margin:20px 0;opacity:0.6;'>— ou —</div>",
                     unsafe_allow_html=True)
@@ -305,22 +295,17 @@ def render_login_page(supabase, pkce_store: dict, app_url: str) -> None:
             st.markdown("<div style='text-align:center;margin:15px 0;'>— OU —</div>",
                         unsafe_allow_html=True)
 
-            choix = st.radio("Connexion classique :", ["Se connecter", "Créer un compte"], horizontal=True)
             email = st.text_input("Adresse Email")
             password = st.text_input("Mot de passe", type="password")
 
             if st.button("Valider", width='stretch'):
                 try:
-                    if choix == "Créer un compte":
-                        supabase.auth.sign_up({"email": email, "password": password})
-                        st.success("✅ Compte créé ! Tu peux maintenant te connecter.")
-                    else:
-                        resp = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                        st.session_state.user = resp.user
-                        st.session_state.auth_mode = "oauth"
-                        # SAUVEGARDE EN COOKIE (valable 30 jours)
-                        controller.set("sys_acc_token", resp.session.access_token, max_age=31536000)  # 1 an
-                        controller.set("sys_ref_token", resp.session.refresh_token, max_age=31536000)  # 1 an
-                        st.rerun()
+                    resp = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                    st.session_state.user = resp.user
+                    st.session_state.auth_mode = "oauth"
+                    # Session gardée en cookie (1 an)
+                    controller.set("sys_acc_token", resp.session.access_token, max_age=31536000)
+                    controller.set("sys_ref_token", resp.session.refresh_token, max_age=31536000)
+                    st.rerun()
                 except Exception as e:
                     st.error(f"❌ Erreur : {e}")
