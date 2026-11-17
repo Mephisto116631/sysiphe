@@ -1,5 +1,5 @@
 """
-Sysiphe — Onglets de statistiques (Graphiques, Records, Repos, Paramètres, Calendrier).
+Thésée — Onglets de statistiques (Graphiques, Records, Repos, Infos, Calendrier).
 Sans dépendance numpy — listes Python pures pour la heatmap.
 """
 from datetime import datetime, timedelta
@@ -10,8 +10,6 @@ import plotly.graph_objects as go
 
 from data import (lisser_donnees, detect_plateau, suggest_next_session, compute_daily_activity,
                   DEFAULT_FORMES, DEFAULT_ELASTIQUES, DEFAULT_TENSIONS)
-from supabase_io import (update_exercise_name, save_user_settings, load_profiles,
-                         rename_profile, delete_profile, recalculate_all_efforts)
 
 
 def _plateau_badge(dates, values, label: str) -> None:
@@ -335,19 +333,17 @@ def render_repos_tab(df_global: pd.DataFrame) -> None:
 # PARAMÈTRES
 # =========================================================================
 def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str) -> None:
-    st.subheader("⚙️ Configuration Générale")
+    """Infos (consultation seule) : export de l'historique et réglages en lecture.
+    Les réglages se modifient dans l'app Android ; le site ne peut plus écrire."""
+    st.info("👀 Le site est en **consultation seule**. Saisie, réglages, profils et "
+            "recalcul des efforts : dans l'app Android Thésée (Réglages).")
 
-    st.checkbox("Inclure la Planche dans la saisie", key="include_planche")
-    st.number_input("Taille de la moyenne glissante (séances)",
-                    min_value=1, max_value=30, step=1, key="nb_days_avg")
-
-    st.write("---")
     st.subheader("📥 Export de données")
     if not df_global.empty:
         st.download_button(
             "📥 Télécharger tout mon historique (CSV)",
             data=df_global.to_csv(index=False).encode("utf-8"),
-            file_name=f"sysiphe_export_{datetime.now().strftime('%Y%m%d')}.csv",
+            file_name=f"thesee_export_{datetime.now().strftime('%Y%m%d')}.csv",
             mime="text/csv",
             use_container_width=True,
         )
@@ -356,185 +352,22 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
         st.caption("Aucune donnée à exporter.")
 
     st.write("---")
-    st.subheader("🔧 Coefficients de calcul planche")
-    st.caption(
-        "Tous les paramètres du modèle isométrique. "
-        "Les modifications sont sauvegardées sur ton compte et persistent entre sessions."
-    )
-
-    # ── Poids ────────────────────────────────────────────────────────────────
-    st.markdown("**⚖️ Poids corporel de référence (kg)**")
-    st.number_input(
-        "Poids (kg)", min_value=40, max_value=200, step=1, key="weight",
-        label_visibility="collapsed",
-    )
-
-    # ── Variantes ─────────────────────────────────────────────────────────
-    st.markdown("**🤸 Scores de variante** *(difficulté relative, sans unité)*")
-    cols_v = st.columns(2)
-    updated_variantes = {}
-    for i, (var, score) in enumerate(st.session_state.config_variantes.items()):
-        with cols_v[i % 2]:
-            updated_variantes[var] = st.number_input(
-                var, min_value=1, max_value=20, value=int(score), step=1, key=f"cal_{var}"
+    st.subheader("🔧 Réglages utilisés pour les calculs")
+    st.caption("Lus depuis ton profil, tels qu'enregistrés dans l'app.")
+    st.markdown(f"**⚖️ Poids corporel** : {float(st.session_state.weight):g} kg")
+    blocs = [
+        ("🤸 Scores de variante", st.session_state.config_variantes),
+        ("📐 Scores de forme", st.session_state.get("config_formes", dict(DEFAULT_FORMES))),
+        ("🔴 Force des élastiques (kg)", st.session_state.get("config_elastiques", dict(DEFAULT_ELASTIQUES))),
+        ("↔️ Ratios de tension", st.session_state.get("config_tensions", dict(DEFAULT_TENSIONS))),
+    ]
+    for titre, valeurs in blocs:
+        with st.expander(titre):
+            st.dataframe(
+                pd.DataFrame({"Nom": list(valeurs.keys()),
+                              "Valeur": [f"{float(v):g}" for v in valeurs.values()]}),
+                hide_index=True, use_container_width=True,
             )
-
-    # ── Formes ────────────────────────────────────────────────────────────
-    st.markdown("**📐 Scores de forme** *(hauteur de hanche normalisée)*")
-    formes_config = st.session_state.get("config_formes", dict(DEFAULT_FORMES))
-    cols_f = st.columns(2)
-    updated_formes = {}
-    for i, (forme, score) in enumerate(formes_config.items()):
-        with cols_f[i % 2]:
-            updated_formes[forme] = st.number_input(
-                forme, min_value=1.0, max_value=200.0, value=float(score),
-                step=0.1, format="%.2f", key=f"forme_{forme}"
-            )
-
-    # ── Élastiques ────────────────────────────────────────────────────────
-    st.markdown("**🔴 Force des élastiques (kg de décharge)**")
-    elastiques_config = st.session_state.get("config_elastiques", dict(DEFAULT_ELASTIQUES))
-    cols_e = st.columns(2)
-    updated_elastiques = {}
-    for i, (nom, force) in enumerate(elastiques_config.items()):
-        with cols_e[i % 2]:
-            updated_elastiques[nom] = st.number_input(
-                nom, min_value=0, max_value=100, value=int(force), step=1, key=f"elast_{nom}"
-            )
-
-    # ── Tensions ──────────────────────────────────────────────────────────
-    st.markdown("**↔️ Ratios de tension** *(fraction de la force élastique appliquée)*")
-    tensions_config = st.session_state.get("config_tensions", dict(DEFAULT_TENSIONS))
-    cols_t = st.columns(2)
-    updated_tensions = {}
-    for i, (nom, ratio) in enumerate(tensions_config.items()):
-        with cols_t[i % 2]:
-            updated_tensions[nom] = st.number_input(
-                nom, min_value=0.0, max_value=2.0, value=float(ratio),
-                step=0.01, format="%.2f", key=f"tension_{nom}"
-            )
-
-    # ── Boutons ───────────────────────────────────────────────────────────
-    st.write("")
-    if st.button("✅ Sauvegarder tous les paramètres", use_container_width=True):
-        st.session_state.config_variantes  = updated_variantes
-        st.session_state.config_formes     = updated_formes
-        st.session_state.config_elastiques = updated_elastiques
-        st.session_state.config_tensions   = updated_tensions
-        ok = save_user_settings(
-            user_id,
-            updated_variantes,
-            formes_config=updated_formes,
-            elastiques_config=updated_elastiques,
-            tensions_config=updated_tensions,
-            weight=float(st.session_state.weight),
-            nb_days_avg=int(st.session_state.nb_days_avg),
-            include_planche=bool(st.session_state.include_planche),
-        )
-        st.cache_data.clear()
-        if ok:
-            st.success("✅ Paramètres sauvegardés — seront restaurés à ta prochaine connexion.")
-        else:
-            st.warning("Paramètres appliqués pour cette session, mais la sauvegarde a échoué.")
-        st.rerun()
-
-    if st.button("🔄 Recalculer tous les efforts en base", use_container_width=True, type="secondary"):
-        with st.spinner("Recalcul en cours…"):
-            n = recalculate_all_efforts(
-                user_id,
-                float(st.session_state.weight),
-                st.session_state.config_variantes,
-                st.session_state.get("config_formes",     dict(DEFAULT_FORMES)),
-                st.session_state.get("config_elastiques", dict(DEFAULT_ELASTIQUES)),
-                st.session_state.get("config_tensions",   dict(DEFAULT_TENSIONS)),
-            )
-        st.cache_data.clear()
-        if n:
-            st.success(f"✅ {n} perfs de planche recalculées.")
-        else:
-            st.info("Aucune perf de planche trouvée.")
-        st.rerun()
-
-    st.write("---")
-    st.subheader("👥 Gestion des profils")
-    profiles = load_profiles()
-    current_uid = st.session_state.get("user") and st.session_state.user.id
-
-    if profiles:
-        # ── Renommer ──
-        noms = [p["name"] for p in profiles]
-        idx_profil = st.selectbox("Profil à modifier", range(len(profiles)),
-                                   format_func=lambda i: noms[i], key="profil_sel")
-        profil_cible = profiles[idx_profil]
-
-        c_nom, c_btn = st.columns([4, 1])
-        with c_nom:
-            nouveau_nom = st.text_input("Nouveau nom", key="profil_nouveau_nom",
-                                         placeholder=profil_cible["name"])
-        with c_btn:
-            st.write("")
-            if st.button("✏️", key="btn_rename_profil", use_container_width=True):
-                n = nouveau_nom.strip()
-                if not n:
-                    st.warning("Saisis un nouveau nom.")
-                elif n == profil_cible["name"]:
-                    st.warning("Même nom, rien à changer.")
-                elif rename_profile(profil_cible["id"], n):
-                    # Mettre à jour l'affichage si c'est le profil actif
-                    if profil_cible["id"] == current_uid:
-                        st.session_state.user.email = f"{n} (profil partagé)"
-                    st.toast(f"✅ '{profil_cible['name']}' → '{n}'")
-                    st.rerun()
-
-        # ── Supprimer ──
-        st.write("")
-        confirm_key = f"confirm_del_profil_{profil_cible['id']}"
-        if profil_cible["id"] == current_uid:
-            st.caption("⚠️ Tu ne peux pas supprimer ton propre profil actif.")
-        elif not st.session_state.get(confirm_key):
-            if st.button(f"🗑️ Supprimer « {profil_cible['name']} »",
-                         key="btn_del_profil", type="secondary", use_container_width=True):
-                st.session_state[confirm_key] = True
-                st.rerun()
-        else:
-            st.warning(f"Supprimer définitivement « {profil_cible['name']} » ? "
-                       f"Ses données d'entraînement resteront en base.")
-            c_yes, c_no = st.columns(2)
-            with c_yes:
-                if st.button("Oui, supprimer", type="primary", use_container_width=True):
-                    delete_profile(profil_cible["id"])
-                    st.session_state.pop(confirm_key, None)
-                    st.toast(f"🗑️ Profil « {profil_cible['name']} » supprimé.")
-                    st.rerun()
-            with c_no:
-                if st.button("Annuler", use_container_width=True):
-                    st.session_state.pop(confirm_key, None)
-                    st.rerun()
-
-    st.write("---")
-    st.subheader("✏️ Renommer un exercice")
-    st.markdown("Corrige les fautes de frappe ou uniformise les noms dans tout ton historique.")
-    if tous_les_exos:
-        exo_a_renommer = st.selectbox("Exercice à modifier", tous_les_exos)
-        nouveau_nom    = st.text_input("Nouveau nom")
-        if st.button("✏️ Renommer", use_container_width=True):
-                nv = nouveau_nom.strip()
-                if not nv:
-                    st.error("Le nouveau nom ne peut pas être vide.")
-                elif nv == exo_a_renommer:
-                    st.warning("Le nouveau nom est identique à l'ancien.")
-                elif nv in tous_les_exos:
-                    st.error(f"⚠️ '{nv}' existe déjà.")
-                else:
-                    try:
-                        update_exercise_name(user_id, exo_a_renommer, nv)
-                        st.cache_data.clear()
-                        st.success(f"✅ '{exo_a_renommer}' → '{nv}'")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erreur lors du renommage : {e}")
-    else:
-        st.caption("Aucun exercice personnalisé enregistré pour le moment.")
 
 
 # =========================================================================
@@ -542,7 +375,7 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
 # =========================================================================
 def render_stats_tabs(df_global: pd.DataFrame, tous_les_exos: list, user_id: str) -> None:
     tab_graph, tab_calendar, tab_records, tab_repos, tab_param = st.tabs([
-        "📈 Stats", "📅 Calendrier", "🏆 Records", "💤 Repos", "⚙️ Paramètres",
+        "📈 Stats", "📅 Calendrier", "🏆 Records", "💤 Repos", "ℹ️ Infos",
     ])
     with tab_graph:
         render_graph_tab(df_global, tous_les_exos, st.session_state.include_planche)

@@ -1,5 +1,5 @@
 """
-Sysiphe — Couche d'accès aux données (Supabase + cache Streamlit).
+Thésée — Couche d'accès aux données (Supabase + cache Streamlit).
 Toute fonction ici suppose un contexte Streamlit actif (st.cache_data, st.secrets).
 """
 import streamlit as st
@@ -15,6 +15,26 @@ _SETTINGS_DEFAULTS = {
     "nb_days_avg": 5,
     "include_planche": True,
 }
+
+
+# Le site est en CONSULTATION SEULE : la saisie et les réglages se font dans
+# l'app Android. Toute écriture depuis le site est refusée ici, quel que soit
+# l'écran qui l'appelle (la connexion par PIN, elle, reste possible).
+LECTURE_SEULE = True
+MESSAGE_LECTURE_SEULE = ("Le site est en consultation seule : la saisie et les "
+                         "réglages se font dans l'app Android Thésée.")
+
+
+def ecriture(fn):
+    """Bloque une fonction d'écriture tant que LECTURE_SEULE est vrai."""
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        if LECTURE_SEULE:
+            raise PermissionError(MESSAGE_LECTURE_SEULE)
+        return fn(*args, **kwargs)
+    return wrapper
 
 
 def get_supabase_client():
@@ -78,6 +98,7 @@ def load_data(uid: str, current_weight: float, variantes_config: dict,
     return df
 
 
+@ecriture
 def insert_perfs(rows: list) -> bool:
     """Insère les lignes en base. Retourne True si OK, False si erreur."""
     if not rows:
@@ -91,6 +112,7 @@ def insert_perfs(rows: list) -> bool:
         return False
 
 
+@ecriture
 def delete_perfs(uid: str, date_str: str, exercice: str = None) -> bool:
     """Supprime des perfs. Retourne True si OK, False si erreur."""
     try:
@@ -191,6 +213,7 @@ def verify_pin(profile_id: str, pin: str) -> bool:
     return claim_profile(profile_id, pin) == "ok"
 
 
+@ecriture
 def set_pin(profile_id: str, pin: str) -> bool:
     """Définit ou change le PIN d'un profil (vérifié côté serveur). True si OK."""
     try:
@@ -215,6 +238,7 @@ def _clear_profiles_cache() -> None:
     st.session_state.pop("_profiles_cache", None)
 
 
+@ecriture
 def create_profile(name: str, pin: str | None = None) -> dict | None:
     """Crée un profil (PIN facultatif) rattaché à ce navigateur.
     Retourne {id, name} ou None si erreur."""
@@ -243,6 +267,7 @@ def create_profile(name: str, pin: str | None = None) -> dict | None:
     return None
 
 
+@ecriture
 def rename_profile(profile_id: str, new_name: str) -> bool:
     """Renomme un profil. Retourne True si OK."""
     try:
@@ -254,6 +279,7 @@ def rename_profile(profile_id: str, new_name: str) -> bool:
         return False
 
 
+@ecriture
 def delete_profile(profile_id: str) -> bool:
     """Supprime un profil (et laisse ses perfs orphelines). Retourne True si OK."""
     try:
@@ -264,6 +290,7 @@ def delete_profile(profile_id: str) -> bool:
         return False
 
 
+@ecriture
 def update_exercise_name(uid: str, old_name: str, new_name: str) -> None:
     get_supabase_client().table("perfs").update({"exercice": new_name}) \
         .eq("user_id", uid).eq("exercice", old_name).execute()
@@ -308,6 +335,7 @@ def load_user_settings(uid: str) -> dict:
     }
 
 
+@ecriture
 def recalculate_all_efforts(uid: str, current_weight: float,
                              variantes_config: dict, formes_config: dict,
                              elastiques_config: dict = None,
@@ -347,6 +375,7 @@ def recalculate_all_efforts(uid: str, current_weight: float,
     return len(updates)
 
 
+@ecriture
 def save_user_settings(
     uid: str,
     variantes_config: dict,
