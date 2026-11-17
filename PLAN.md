@@ -190,7 +190,10 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
 - [x] Migrations : fichiers renommés à la version de production, 5 migrations absentes du dépôt ajoutées
       (dont `profile_pin_lock` et la création de `profiles.role`)
 - [x] README et SETUP à jour (RLS, rôles, assistables, minuteur, sauvegardes, CI)
-- [x] Branches fusionnées ou abandonnées supprimées de GitHub (les branches NAS gardées en tags `archive/…`)
+- [ ] **Toi** (Claude n'a pas le droit de supprimer des branches) : GitHub → Settings → General → cocher
+      « Automatically delete head branches », puis supprimer les 15 branches de la page Branches sauf `main`.
+      Rien n'est perdu : tout est fusionné ou repris (vérifié le 17/11 ; seul le message de blocage PIN de
+      `feat/saisie-pct` manquait, repris dans la v2.7.0)
 - [ ] **Toi** : appliquer `supabase/a_appliquer/20261117_reglages_profils_categories.sql` (marche à suivre dans le README du dossier)
 - [ ] Décider du site web (phase 6) : il ne gère ni les exercices assistables, ni les rôles, ni le minuteur
       → piste : site en consultation seule, saisie uniquement dans l'app
