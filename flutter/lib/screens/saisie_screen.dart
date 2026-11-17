@@ -15,6 +15,20 @@ import '../widgets/exercise_card.dart';
 import '../widgets/rest_bar.dart';
 import 'minuteur_screen.dart';
 
+/// Nom normalisé pour comparer deux exercices : sans majuscules, accents,
+/// ni espaces multiples (« Pompe  » = « pompe »).
+String normName(String s) {
+  const from = 'àâäáãçéèêëíìîïñóòôöõúùûüýÿ';
+  const to = 'aaaaaceeeeiiiinooooouuuuyy';
+  final b = StringBuffer();
+  for (final r in s.toLowerCase().trim().runes) {
+    final c = String.fromCharCode(r);
+    final i = from.indexOf(c);
+    b.write(i >= 0 ? to[i] : c);
+  }
+  return b.toString().replaceAll(RegExp(r'\s+'), ' ');
+}
+
 class SaisieScreen extends StatefulWidget {
   final String userId;
 
@@ -326,7 +340,14 @@ class _SaisieScreenState extends State<SaisieScreen>
       );
       if (res == null) return;
       name = res.$1;
-      _newCardMeta[name] = (res.$2, res.$3);
+      final known = [..._exerciceNames, ..._addedCards]
+          .where((e) => normName(e) == normName(name));
+      if (known.isNotEmpty) {
+        name = known.first; // existe déjà : on réutilise le nom d'origine
+        _snack('« $name » existe déjà : carte ajoutée');
+      } else {
+        _newCardMeta[name] = (res.$2, res.$3);
+      }
     }
     setState(() => _addedCards.add(name));
   }
@@ -653,7 +674,15 @@ class _SaisieScreenState extends State<SaisieScreen>
       builder: (_) => _NewExerciceDialog(existing: _exerciceNames),
     );
     if (res == null) return;
-    final (name, unite, categorie) = res;
+    final (typed, unite, categorie) = res;
+    final known = _exerciceNames.where((e) => normName(e) == normName(typed));
+    if (known.isNotEmpty) {
+      // Déjà dans la liste : on l'ouvre au lieu de bloquer la saisie.
+      await _pickExercise(known.first);
+      _snack('« ${known.first} » existe déjà : ouvert');
+      return;
+    }
+    final name = typed;
     _acCtrl?.text = name;
     _exerciceCtrl.text = name;
     _chargeCtrl.clear();
@@ -1810,17 +1839,16 @@ class _NewExerciceDialogState extends State<_NewExerciceDialog> {
                 controller: _name,
                 autofocus: true,
                 textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(
-                    labelText: 'Nom', hintText: 'ex. Tractions lestées'),
-                validator: (v) {
-                  final n = v?.trim() ?? '';
-                  if (n.isEmpty) return 'Requis';
-                  final exists = widget.existing
-                      .any((e) => e.toLowerCase() == n.toLowerCase());
-                  return exists
-                      ? 'Existe déjà : choisissez-le dans la liste'
-                      : null;
-                },
+                decoration: InputDecoration(
+                    labelText: 'Nom',
+                    hintText: 'ex. Tractions lestées',
+                    helperText: widget.existing.any(
+                            (e) => normName(e) == normName(_name.text))
+                        ? 'Existe déjà : il sera simplement ouvert'
+                        : null),
+                onChanged: (_) => setState(() {}),
+                validator: (v) =>
+                    (v?.trim() ?? '').isEmpty ? 'Requis' : null,
               ),
               const SizedBox(height: 16),
               const Text('Unité'),
