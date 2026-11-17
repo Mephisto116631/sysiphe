@@ -27,7 +27,7 @@ Future<void> checkAndOfferUpdate(BuildContext context, {bool silent = false}) as
       messenger.showSnackBar(SnackBar(
           content: Text(kAppVersion == 'dev'
               ? 'Build de développement : mise à jour désactivée'
-              : 'Thésée est à jour ($kAppVersion)'),
+              : 'Sysiphe est à jour ($kAppVersion)'),
           behavior: SnackBarBehavior.floating));
     }
     return;
@@ -101,7 +101,7 @@ Future<void> _confirmAndInstall(BuildContext context, UpdateInfo info,
       builder: (ctx) => AlertDialog(
         title: const Text('Autorisation Android'),
         content: const Text(
-            'Active « Autoriser depuis cette source » pour Thésée dans l\'écran '
+            'Active « Autoriser depuis cette source » pour Sysiphe dans l\'écran '
             'qui vient de s\'ouvrir, puis reviens ici et appuie sur Installer.'),
         actions: [
           FilledButton(

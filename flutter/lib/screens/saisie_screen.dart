@@ -1265,7 +1265,9 @@ class _SaisieScreenState extends State<SaisieScreen>
 
                       // Chronomètre pour les exercices en secondes
                       if (_unite == 'Sec') ...[
-                        Chrono(onStop: (sec) {
+                        Chrono(
+                            exercice: _exerciceCtrl.text,
+                            onStop: (sec) {
                           _chargeCtrl.text = '$sec';
                           _scheduleAutoSave(_chargeCtrl.text);
                         }),

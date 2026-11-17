@@ -1,4 +1,4 @@
-# Thésée — Plan d'actions
+# Sysiphe — Plan d'actions
 
 > Cocher une case : remplacer `[ ]` par `[x]` (sur GitHub : bouton ✏️ du fichier).
 > Ce fichier est la référence du suivi : chaque session Claude le lit et le met à jour.
@@ -7,7 +7,7 @@
 
 **Cap** : l'app mobile est l'APK **Flutter** (saisie, réglages, consultation). Le site **Streamlit** reste sur
 Streamlit Cloud en **consultation seule** (depuis le 17/11). Les deux partagent la même base **Supabase**.
-Le NAS est abandonné. Projet renommé **Thésée** le 17/11 (anciennement Sysiphe).
+Le NAS est abandonné. Le nom reste **Sysiphe** (bref passage à « Thésée » en v2.8.0, annulé le 17/11).
 
 ---
 
@@ -170,7 +170,7 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
 - [x] CI : `pytest test_data.py` sur chaque PR (28 tests)
 - [x] Script de sauvegarde quotidienne vers le NAS (`backup/`) : copie complète restaurable + CSV des perfs, 60 jours
       (testé sur une base locale : mot de passe à caractères spéciaux, rotation, restauration, échec)
-- [x] Script Google Apps Script : CSV quotidiens dans Drive « Thésée sauvegardes », 60 jours (`backup/google-drive`)
+- [x] Script Google Apps Script : CSV quotidiens dans Drive « Sysiphe sauvegardes », 60 jours (`backup/google-drive`)
 - [ ] Installer la sauvegarde Drive (toi, sur ordi : clé `service_role` + script, `backup/README.md` option A)
 - [ ] (facultatif) Installer la sauvegarde NAS (`backup/README.md` option B)
 - [ ] Vérifier la 1re sauvegarde réelle (fichiers du jour dans Drive)
@@ -201,10 +201,9 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
 - [x] Renommage en **Thésée** : noms affichés (app, site, Release, export, sauvegardes) et README réécrit en page
       de présentation. Identifiants techniques gardés (`com.sysiphe.app`, alias de signature, paquet Dart)
       pour que les mises à jour s'installent par-dessus l'app existante
-- [ ] **Toi** (facultatif) : renommer le dépôt GitHub en `thesee` (Settings → General → Repository name). Les
-      liens et la mise à jour intégrée suivent la redirection de GitHub ; je mettrai ensuite les liens à jour
-- [ ] **Toi** (facultatif) : renommer le projet Supabase (Settings → General → Project name), sans effet sur l'app
-- [ ] Nouveau logo pour Thésée (l'icône actuelle représente Sisyphe)
+- [x] **Annulé** (v2.9.0, 17/11) : le nom redevient **Sysiphe** partout (app, site, Release `sysiphe.apk`, export,
+      sauvegardes, README). Les mises à jour depuis la v2.8.0 « Thésée » s'installent normalement (mêmes identifiants
+      techniques) ; les anciens exports `thesee-export-*` sont toujours nettoyés
 - [ ] Découper `saisie_screen.dart` (1 865 lignes) en widgets plus petits
 
 ## Phase 7 — Retours de saisie (novembre 2026)
@@ -226,3 +225,18 @@ Alternative étudiée pour les exercices assistables, plus simple à comparer au
 `effort = reps × (poids effectif / poids du corps)^k × coef_écartement`, avec k = 1 par défaut (réglable).
 Sans élastique ni lest, l'effort vaut exactement les reps → l'historique reste directement comparable.
 Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec le reste de l'app.
+
+## Demande du 17 novembre — chrono des exercices en secondes (v2.9.0)
+
+- [x] Mode **objectif** : décompte jusqu'à zéro (30 s, 45 s, 1:00, 1:30, 2:00 ou temps personnalisé), barre de
+      progression, tics sur les 3 dernières secondes, triple vibration à zéro, puis dépassement affiché en « +0:05 » ;
+      Arrêter renvoie toujours le temps total
+- [x] Objectif mémorisé **par exercice** (la planche et le gainage gardent chacun le leur) ; « Libre » = chrono classique
+- [x] « Départ dans » : temps personnalisé en plus de Sans / 5 / 10 / 15 s (saisie « 20 », « 1:30 » ou « 2m »)
+- [x] Écran éteint ou autre app avant l'objectif : notification programmée à l'heure de fin
+- [x] **Bips** sur les 3 dernières secondes de la préparation et de l'objectif, au départ et à l'objectif atteint
+      (la musique est juste baissée le temps du bip) ; bouton 🔊 pour les couper, choix mémorisé
+- [x] **Écran toujours allumé** pendant la préparation et la série
+- [x] **Plein écran** (bouton ⛶ pendant la série) : temps en très gros chiffres, barre d'objectif, gros bouton
+      Arrêter ; le dernier choix est repris à la série suivante, « réduire » ou retour pour revenir en petit
+- [ ] **Toi** : tester la v2.9.0 sur le téléphone (son, écran allumé, plein écran)

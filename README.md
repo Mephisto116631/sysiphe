@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/logo/icon_512.png" alt="Thésée" width="120">
+  <img src="assets/logo/icon_512.png" alt="Sysiphe" width="120">
 </p>
 
-<h1 align="center">Thésée</h1>
+<h1 align="center">Sysiphe</h1>
 
 <p align="center">
   <strong>Suivi d'entraînement au poids du corps : planche, force, calisthénie.</strong><br>
@@ -18,7 +18,7 @@
 
 ---
 
-Thésée (anciennement *Sysiphe*) enregistre chaque série, calcule un **effort pondéré** comparable d'une séance à
+Sysiphe enregistre chaque série, calcule un **effort pondéré** comparable d'une séance à
 l'autre, même quand la variante, l'élastique ou l'écartement des mains changent, et montre la progression :
 tendances, plateaux, records, récupération. Projet personnel, utilisé par quelques profils.
 
@@ -66,7 +66,7 @@ Les coefficients sont réglables par profil (onglet Modèle) et partagés entre 
 ## Installer l'app
 
 1. Ouvre la [dernière Release](https://github.com/Mephisto116631/sysiphe/releases/latest) sur le téléphone et
-   télécharge `thesee.apk` (anciennes versions : `sysiphe.apk`).
+   télécharge `sysiphe.apk` (la v2.8.0 s'appelait `thesee.apk`).
 2. Autorise l'installation depuis le navigateur si Android le demande, puis installe.
 3. Choisis ton profil et entre ton PIN **une seule fois** : l'appareil reste rattaché au profil.
 
@@ -132,7 +132,7 @@ Prérequis : Flutter 3.24 (Dart 3.5), Java 17 et Android SDK pour construire l'A
 1. Ouvre une PR. La CI (`ci.yml`) lance `flutter analyze`, `flutter test`, un build APK de vérification,
    `pytest`, et refuse une PR qui modifie l'app **sans augmenter `version:`** dans `flutter/pubspec.yaml`.
 2. Après la fusion, `build-flutter.yml` construit et signe l'APK, puis publie la Release `v<version>` avec
-   `thesee.apk` (numéro de build = numéro du run, ex. `2.8.0+41`).
+   `sysiphe.apk` (numéro de build = numéro du run, ex. `2.8.0+41`).
 3. Les téléphones la voient dans **Réglages → Mises à jour**.
 
 | Secret GitHub | Usage |

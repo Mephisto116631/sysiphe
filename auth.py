@@ -1,5 +1,5 @@
 """
-Thésée — Authentification (Email/Password + Google OAuth via PKCE + Cookies)
+Sysiphe — Authentification (Email/Password + Google OAuth via PKCE + Cookies)
 + Mode Profils : sélection rapide sans mot de passe pour un usage familial,
 avec la connexion sécurisée (Google/email) conservée en option de secours.
 """
@@ -221,7 +221,7 @@ def render_login_page(supabase, pkce_store: dict, app_url: str) -> None:
     """Affiche l'écran de connexion : sélection de profil en premier plan,
     connexion sécurisée (Google/email) repliée en secours."""
     controller = get_cookie_controller()
-    st.title("🧭 Thésée")
+    st.title("🪨 Sysiphe")
     st.markdown("Choisis ton profil pour consulter tes séances.")
 
     _, col_auth, _ = st.columns([1, 2, 1])
@@ -271,7 +271,7 @@ def render_login_page(supabase, pkce_store: dict, app_url: str) -> None:
                 else:
                     st.error("Connexion impossible, réessaie dans un instant.")
 
-        st.caption("Nouveau profil : à créer dans l'app Android Thésée.")
+        st.caption("Nouveau profil : à créer dans l'app Android Sysiphe.")
 
         st.markdown("<div style='text-align:center;margin:20px 0;opacity:0.6;'>— ou —</div>",
                     unsafe_allow_html=True)
