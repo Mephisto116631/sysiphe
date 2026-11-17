@@ -1,5 +1,6 @@
 -- Rôles : lecture du rôle d'un profil rattaché à l'appareil + export admin.
--- Additif (nouvelles fonctions). `profiles.role` existait déjà ('user' | 'admin').
+-- Seconde version (search_path vide) de profile_role et admin_export_perfs, après
+-- 20261111135251_profile_roles_admin_export.sql qui a créé `profiles.role` et is_admin().
 
 create or replace function public.profile_role(p_profile uuid)
 returns text

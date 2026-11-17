@@ -53,7 +53,7 @@ class _PinDialogState extends State<_PinDialog> {
       setState(() {
         _checking = false;
         _error = r == ClaimResult.locked
-            ? 'Trop d\'essais : réessayez dans 15 minutes'
+            ? 'Trop d\'essais sur ce profil : verrouillé temporairement, réessayez plus tard'
             : 'PIN incorrect';
       });
     } catch (e) {

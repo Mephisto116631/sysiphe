@@ -168,7 +168,7 @@ def _legacy_pin_ok(profile_id: str, pin: str | None) -> bool:
 
 def claim_profile(profile_id: str, pin: str | None = None) -> str:
     """Fait vérifier le PIN par le serveur, qui rattache ce navigateur au
-    profil. Retourne 'ok', 'bad_pin', 'locked' (5 essais faux → 15 min) ou
+    profil. Retourne 'ok', 'bad_pin', 'locked' (5 erreurs sur l'appareil → 15 min ; 10 sur le profil → 1 h et plus) ou
     'error' (réseau, session absente)."""
     if not _has_session():
         try:

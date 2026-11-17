@@ -16,6 +16,7 @@ Tracker de performance sportive personnel. Enregistrement des séances, calcul d
 - [CI/CD](#cicd)
 - [Secrets & sécurité](#secrets--sécurité)
 - [Développement local](#développement-local)
+- [Sauvegardes](#sauvegardes)
 - [Archives](#archives)
 
 ---
@@ -24,13 +25,19 @@ Tracker de performance sportive personnel. Enregistrement des séances, calcul d
 
 Sysiphe est un tracker de performance individuel, utilisé par ~3 profils. Il couvre :
 
-- **Saisie** de séries (reps, charge, temps), incluant des exercices de force (planche isométrique avec calcul d'effort pondéré)
-- **Statistiques** : courbes de progression sur 180 jours, détection de plateau/régression, lissage
-- **Calendrier** : heatmap GitHub-style de l'activité
-- **Records** personnels par exercice
-- **Paramètres** : poids de corps, PIN, déconnexion
+- **Saisie** de séries (reps, lest, temps) par cartes d'exercice, avec la séance précédente en exemple,
+  % de progression, repos automatique entre les séries, chronomètre et **minuteur HIIT**
+- **Effort pondéré** pour la planche (variante, forme, élastique, tension) et les exercices **assistables**
+  (élastique, tension, écartement des mains)
+- **Statistiques** : courbes de progression, détection de plateau/régression, comparaison de périodes
+- **Calendrier** : heatmap de l'activité et récupération
+- **Records** personnels par exercice, filtrables
+- **Modèle** (admin) : coefficients de l'effort, grille et recalcul en temps réel
+- **Réglages** : mises à jour intégrées, poids de corps, exercices assistables, PIN, export CSV (admin)
 
-L'authentification est légère : sélection de profil + PIN optionnel (hash SHA-256, stocké dans Supabase).
+Connexion : chaque appareil a une **session Supabase anonyme et persistante** ; le PIN d'un profil est vérifié
+**par le serveur** une seule fois (RPC `claim_profile`), puis l'appareil est rattaché au profil. La sécurité par
+ligne (RLS) ne laisse lire et écrire que les profils rattachés à l'appareil.
 
 ---
 
@@ -48,15 +55,21 @@ sysiphe/
 ├── ui_helpers.py           # Composants UI réutilisables
 ├── requirements.txt        # Dépendances Python
 │
-├── flutter/                # App native Flutter v2.0 (Android)
+├── flutter/                # App Android Flutter (version : flutter/pubspec.yaml)
 │   ├── lib/
-│   │   ├── main.dart
-│   │   ├── theme.dart
-│   │   ├── models/         # perf.dart, profile.dart
-│   │   ├── screens/        # 5 onglets
-│   │   └── services/       # supabase_service.dart
+│   │   ├── main.dart, theme.dart, app_version.dart
+│   │   ├── models/         # perf, session, stats, effort_model, interval_plan, profile
+│   │   ├── screens/        # 6 onglets + profils, minuteur, assistables, gestion
+│   │   ├── services/       # supabase_service, session_store, update_service, rôle, alertes…
+│   │   └── widgets/        # carte d'exercice, chrono, bandeau de repos, PIN, mise à jour
+│   ├── test/               # tests Flutter (flutter test)
 │   ├── pubspec.yaml
-│   └── android/
+│   └── android/            # dont MainActivity.kt (installation des mises à jour)
+│
+├── supabase/
+│   ├── migrations/         # toutes les migrations appliquées en production (même version)
+│   └── a_appliquer/        # changements prêts, à appliquer à la main (voir son README)
+├── backup/                 # sauvegardes quotidiennes : Google Drive (CSV) ou NAS
 │
 └── archive/                # Anciennes briques, plus utilisées (voir § Archives)
 ```
@@ -83,7 +96,8 @@ Projet Supabase hébergé sur `supabase.io`.
 |---------|------|-------------|
 | `id` | UUID (PK) | Identifiant du profil |
 | `name` | text | Nom affiché |
-| `pin_hash` | text \| null | SHA-256 du PIN (null = pas de PIN) |
+| `pin_hash` | text \| null | Empreinte du PIN (`pin_digest`, null = pas de PIN). Illisible par les apps : tout passe par les RPC |
+| `role` | text | `user` (défaut) ou `admin` (onglet Modèle, export de la base) |
 | `last_login` | timestamptz | Dernière connexion |
 | `created_at` | timestamptz | Date de création |
 
@@ -101,10 +115,11 @@ Projet Supabase hébergé sur `supabase.io`.
 | `performance` | numeric | **Valeur de la série** : secondes, reps ou kg selon `unite` |
 | `charge` | numeric | Lest externe en kg (tractions/dips lestés), `0` sinon |
 | `unite` | text | `Sec` / `Reps` / `Kg` |
-| `categorie` | text | `Force Iso` (planche, holds) ou `Musculation` |
-| `elastique` | text | Élastique utilisé (planche) |
-| `tension` | text | Tension des mains (planche) |
-| `effort_pondere` | numeric | Score d'effort calculé (planche uniquement, `0` sinon) |
+| `categorie` | text | `Force Iso` (planche, holds), `Gainage` ou `Musculation` |
+| `elastique` | text | Élastique utilisé (planche, exercices assistables) |
+| `tension` | text | Tension des mains (planche, exercices assistables) |
+| `ecartement` | text | Écartement des mains (exercices assistables) |
+| `effort_pondere` | numeric | Score d'effort (planche et exercices assistables, `0` sinon) |
 
 > ⚠️ Il n'y a **pas** de colonne `created_at` dans `perfs` : trier dessus renvoie une erreur 400.
 > Pour l'ordre d'insertion, trier sur `id`. Une requête renvoie au plus 1 000 lignes : paginer avec `range()`.
@@ -127,7 +142,24 @@ Une ligne par utilisateur, partagée par l'app web et l'app Flutter (voir `SETUP
 | `tensions_config` | jsonb | Ratios de tension personnalisés |
 | `nb_days_avg` | int | Fenêtre de moyenne glissante (stats web) |
 | `include_planche` | bool | Inclure la planche dans les stats globales |
+| `enable_charges` | bool | Afficher le champ « Lest (kg) » |
+| `assistable_exercises` | jsonb | Exercices assistables (élastique / tension / écartement) |
+| `ecartements_config` | jsonb | Coefficients d'écartement des mains |
 | `updated_at` | timestamptz | — |
+
+> ⚠️ En production, `user_settings.user_id` référence encore `auth.users` au lieu de `profiles` : correctif prêt
+> dans `supabase/a_appliquer/`.
+
+### Accès et sécurité (tables techniques)
+
+| Table | Rôle |
+|-------|------|
+| `profile_members` | Appareils (session anonyme `auth.uid()`) rattachés à chaque profil après un PIN correct |
+| `pin_attempts` | Anti force brute par appareil : 5 erreurs → 15 min |
+| `profile_pin_lock` | Anti force brute par profil, tous appareils : 10 erreurs → 1 h, puis 2 h, 4 h… |
+
+RLS active sur toutes les tables. Les apps passent par les RPC `list_profiles`, `claim_profile`, `create_profile`,
+`set_profile_pin`, `profile_role`, `admin_export_perfs`. Détail et historique : `supabase/migrations/`.
 
 Les configs JSONB sont **fusionnées** avec les valeurs par défaut de `data.py` : seules les clés modifiées y sont stockées. Les écritures se font par upsert partiel, pour qu'aucune app n'écrase les réglages de l'autre.
 
@@ -204,36 +236,41 @@ streamlit run app.py
 
 ### Authentification
 
-- Page d'accueil : grille de profils (CircleAvatar avec initiales)
-- PIN optionnel : hash SHA-256 comparé à `profiles.pin_hash`
-- Session PKCE avec TTL via `streamlit-cookies-controller`
+- Page d'accueil : grille de profils (initiales)
+- Session Supabase anonyme gardée dans un cookie d'un an ; PIN vérifié par le serveur (`claim_profile`)
+- Le site ne gère pas encore les exercices assistables, les rôles ni le minuteur (voir `PLAN.md`, phase 6)
 
 ---
 
 ## Application mobile — Flutter
 
-App native Android (v2.0.0+), connexion directe à Supabase.
+App native Android, connexion directe à Supabase. Mises à jour intégrées : Réglages → « Mises à jour »
+télécharge l'APK de la dernière Release GitHub et l'installe.
 
 ### Dépendances principales
 
 | Package | Usage |
 |---------|-------|
 | `supabase_flutter ^2.5.0` | Client Supabase officiel |
-| `crypto ^3.0.3` | SHA-256 pour vérification PIN |
+| `crypto ^3.0.3` | Repli de transition (PIN vérifié localement si la session anonyme est indisponible) |
 | `fl_chart ^0.68.0` | Courbes de progression |
 | `table_calendar ^3.1.0` | Heatmap calendrier |
+| `shared_preferences` | Profil mémorisé, filtres et préférences d'affichage |
+| `flutter_local_notifications`, `timezone`, `wakelock_plus` | Minuteur HIIT en arrière-plan, écran allumé |
+| `share_plus` | Export CSV |
 | `intl ^0.19.0` | Formats date fr_FR |
 
 ### Screens
 
 ```
-ProfileScreen   → sélection profil + PIN
+ProfileScreen   → sélection / création de profil + PIN (une fois par appareil)
   └─ HomeScreen (BottomNavigationBar, IndexedStack)
-       ├─ SaisieScreen    (formulaire + liste du jour)
-       ├─ StatsScreen     (fl_chart, 180 jours)
-       ├─ CalendarScreen  (table_calendar, heatmap)
-       ├─ RecordsScreen   (records par exercice)
-       └─ SettingsScreen  (poids, PIN, déconnexion)
+       ├─ SaisieScreen    (cartes d'exercice, repos, chrono → MinuteurScreen)
+       ├─ StatsScreen     (fl_chart, périodes, tendance)
+       ├─ CalendarScreen  (table_calendar, heatmap, récupération)
+       ├─ RecordsScreen   (records filtrables)
+       ├─ ModelScreen     (admin : coefficients, grille, recalcul)
+       └─ SettingsScreen  (mises à jour, poids, AssistableScreen, ManageScreen, PIN, export admin)
 ```
 
 ### Credentials à la compilation
@@ -291,7 +328,9 @@ L'app mobile est l'**APK Flutter**, publié dans les Releases GitHub.
 
 Deux workflows actifs :
 
-- **`ci.yml`** (sur chaque PR et chaque push sur `main`) : `flutter analyze` + `flutter test`, et `pytest test_data.py`. Ne publie rien.
+- **`ci.yml`** (sur chaque PR et chaque push sur `main`) : `flutter analyze` + `flutter test`, build APK debug
+  (valide le code natif), `pytest test_data.py`, et sur les PR une vérification que **toute modification de
+  l'app augmente `version:`** dans `flutter/pubspec.yaml`. Ne publie rien.
 - **`build-flutter.yml`** : construit, signe et publie l'APK Flutter.
 
 #### `build-flutter.yml`
@@ -306,7 +345,10 @@ Déclenché sur push vers `main` touchant `flutter/**` (ou le workflow lui-même
 | `flutter pub get` | — |
 | `flutter build apk --release` | Inject `SUPABASE_URL` + `SUPABASE_ANON_KEY` via `--dart-define` |
 | Signature `apksigner` | Keystore base64 depuis `SIGNING_KEY`, alias `sysiphe` |
-| GitHub Release | Tag `v{version}`, fichier `sysiphe.apk` |
+| GitHub Release | Tag `v{version}`, fichier `sysiphe.apk`, build = numéro du run (`2.7.0+N`) |
+
+Une nouvelle version = un nouveau tag et une nouvelle Release. Rebuilder la même version remplace l'APK de sa
+Release : d'où la vérification de version dans `ci.yml`.
 
 ---
 
@@ -326,7 +368,8 @@ Les secrets `KEYSTORE_BASE64` et `KEY_ALIAS` ne servaient qu'au workflow Capacit
 ### Règles
 
 - Les fichiers `secrets.toml`, `.env`, et tout CSV de données sont dans `.gitignore`
-- La clé `service_role` Supabase n'est **jamais** dans le code ni dans les secrets CI
+- La clé `service_role` Supabase n'est **jamais** dans le code ni dans les secrets CI ; elle n'existe que dans
+  les propriétés du script Google de sauvegarde (`backup/`)
 - Les credentials Supabase sont injectés **uniquement à la compilation** via `--dart-define` pour Flutter, et via les *Secrets* de Streamlit Cloud (ou `.streamlit/secrets.toml` en local) pour Streamlit
 
 ---
@@ -369,11 +412,18 @@ flutter run \
 ### Tests
 
 ```bash
-python -m pytest test_data.py -v
+python -m pytest test_data.py -v     # logique web : calculer_effort, parse_reps, lissage, plateau
+cd flutter && flutter test           # logique et écrans Flutter (effort, séances, stats, minuteur…)
 ```
 
-Les tests couvrent `calculer_effort`, `parse_reps`, `lisser_donnees`, `detect_plateau`.
 
+---
+
+## Sauvegardes
+
+L'offre Supabase gratuite ne fournit aucune sauvegarde téléchargeable. `backup/README.md` décrit deux solutions
+cumulables : un script Google Apps Script qui dépose chaque nuit un CSV par table dans Google Drive (recommandé),
+et un script NAS (`pg_dump`, copie complète restaurable). L'export admin de l'app (Réglages) dépanne à la main.
 
 ---
 

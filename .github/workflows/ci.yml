@@ -67,6 +67,36 @@ jobs:
       - run: flutter build apk --debug --dart-define=APP_VERSION=0.0.0+0
         timeout-minutes: 20
 
+  version:
+    name: Version de l'app augmentée
+    # Toute PR qui change l'app (flutter/lib, android, pubspec) doit changer
+    # « version: » dans pubspec.yaml : sinon l'APK écrase la Release précédente
+    # (même tag, notes fausses, impossible de revenir en arrière).
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Vérifier pubspec.yaml
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          app=$(git diff --name-only "$BASE"...HEAD -- flutter/lib flutter/android flutter/pubspec.yaml)
+          if [ -z "$app" ]; then echo "L'app n'est pas modifiée : rien à vérifier."; exit 0; fi
+          avant=$(git show "$BASE:flutter/pubspec.yaml" | grep '^version:' | awk '{print $2}' | cut -d+ -f1)
+          apres=$(grep '^version:' flutter/pubspec.yaml | awk '{print $2}' | cut -d+ -f1)
+          echo "Version : $avant → $apres"
+          if [ "$avant" = "$apres" ]; then
+            echo "::error file=flutter/pubspec.yaml::L'app change mais la version reste $avant : augmente « version: » (ex. 2.7.1+1)."
+            exit 1
+          fi
+          plus_grande=$(printf '%s\n%s\n' "$avant" "$apres" | sort -V | tail -n 1)
+          if [ "$plus_grande" != "$apres" ]; then
+            echo "::error file=flutter/pubspec.yaml::La version $apres est inférieure à $avant."
+            exit 1
+          fi
+
   python:
     name: Python — tests data.py
     runs-on: ubuntu-latest
