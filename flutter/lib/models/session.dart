@@ -149,3 +149,17 @@ String seriesHint(ExerciseTemplate t) => t.series
         ? p.performance.toInt().toString()
         : p.performance.toString())
     .join('/');
+
+/// Nom comparable : sans majuscules, espaces de début/fin et doublons ôtés.
+String normalizeExerciseName(String s) =>
+    s.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
+/// L'exercice déjà connu qui porte ce nom (écrit comme à l'origine), sinon null.
+String? findExistingExercise(Iterable<String> known, String typed) {
+  final n = normalizeExerciseName(typed);
+  if (n.isEmpty) return null;
+  for (final k in known) {
+    if (normalizeExerciseName(k) == n) return k;
+  }
+  return null;
+}

@@ -59,6 +59,7 @@ class _SaisieScreenState extends State<SaisieScreen>
   // ── État UI ───────────────────────────────────────────────────────────────
   List<Perf> _todayPerfs = [];
   List<String> _exerciceNames = [];
+  Map<String, (String, String)> _exerciceMeta = {}; // tout l'historique : unité, catégorie
   // Tout l'historique : panneau du jour, indicateurs par exercice, records.
   List<Perf> _history = [];
   int _nbDaysAvg = 5; // user_settings.nb_days_avg
@@ -256,6 +257,7 @@ class _SaisieScreenState extends State<SaisieScreen>
     final meta = _newCardMeta[ex];
     final categorie = last?.categorie ??
         meta?.$2 ??
+        _exerciceMeta[ex]?.$2 ??
         (e.unite == 'Sec' ? 'Force Iso' : 'Musculation');
     final ins = _usesPoints(ex) ? null : _insight(ex);
     final newPr = ins != null && ins.prSerie > 0 && e.value > ins.prSerie;
@@ -290,10 +292,12 @@ class _SaisieScreenState extends State<SaisieScreen>
 
   /// « + Ajouter un exercice » : exercices récents, ou nouveau.
   Future<void> _addCard(List<String> already) async {
-    final choices = _recentNames
-        .where((e) => !Perf.isPlancheName(e) && !already.contains(e))
-        .take(20)
-        .toList();
+    // Tous les exercices connus (récents d'abord), pas seulement les 90 derniers
+    // jours : sinon un ancien exercice semblait « inexistant » sans être listé.
+    final choices = [
+      ..._recentNames,
+      ..._exerciceNames.where((e) => !_recentNames.contains(e)),
+    ].where((e) => !already.contains(e)).toList();
     final picked = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
@@ -326,7 +330,8 @@ class _SaisieScreenState extends State<SaisieScreen>
       );
       if (res == null) return;
       name = res.$1;
-      _newCardMeta[name] = (res.$2, res.$3);
+      // Nom déjà connu : on ouvre l'exercice existant, avec son unité d'origine.
+      if (!_exerciceNames.contains(name)) _newCardMeta[name] = (res.$2, res.$3);
     }
     setState(() => _addedCards.add(name));
   }
@@ -358,6 +363,7 @@ class _SaisieScreenState extends State<SaisieScreen>
             exercice: ex,
             unite: _lastFor(ex)?.unite ??
                 _newCardMeta[ex]?.$1 ??
+                _exerciceMeta[ex]?.$1 ??
                 (Perf.isPlancheName(ex) ? 'Sec' : 'Reps'),
             kind: Perf.isPlancheName(ex)
                 ? CardKind.planche
@@ -502,9 +508,14 @@ class _SaisieScreenState extends State<SaisieScreen>
 
   Future<void> _loadExerciceNames() async {
     try {
-      final names =
-          await SupabaseService.instance.getExerciceNames(widget.userId);
-      if (mounted) setState(() => _exerciceNames = names);
+      final meta =
+          await SupabaseService.instance.getExerciceMeta(widget.userId);
+      if (mounted) {
+        setState(() {
+          _exerciceMeta = meta;
+          _exerciceNames = meta.keys.toList()..sort();
+        });
+      }
     } catch (_) {
       // Non bloquant : l'autocomplétion reste simplement vide.
     }
@@ -654,6 +665,10 @@ class _SaisieScreenState extends State<SaisieScreen>
     );
     if (res == null) return;
     final (name, unite, categorie) = res;
+    if (_exerciceNames.contains(name)) {
+      await _pickExercise(name); // existe déjà : on l'ouvre tel quel
+      return;
+    }
     _acCtrl?.text = name;
     _exerciceCtrl.text = name;
     _chargeCtrl.clear();
@@ -1788,8 +1803,11 @@ class _NewExerciceDialogState extends State<_NewExerciceDialog> {
   void _submit() {
     if (!_form.currentState!.validate()) return;
     final cat = _cat.text.trim();
+    // Exercice déjà connu : on renvoie son nom d'origine (même casse).
+    final name = findExistingExercise(widget.existing, _name.text) ??
+        _name.text.trim();
     Navigator.pop(context, (
-      _name.text.trim(),
+      name,
       _unite,
       cat.isEmpty ? (_unite == 'Sec' ? 'Force Iso' : 'Musculation') : cat,
     ));
@@ -1810,17 +1828,18 @@ class _NewExerciceDialogState extends State<_NewExerciceDialog> {
                 controller: _name,
                 autofocus: true,
                 textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(
-                    labelText: 'Nom', hintText: 'ex. Tractions lestées'),
-                validator: (v) {
-                  final n = v?.trim() ?? '';
-                  if (n.isEmpty) return 'Requis';
-                  final exists = widget.existing
-                      .any((e) => e.toLowerCase() == n.toLowerCase());
-                  return exists
-                      ? 'Existe déjà : choisissez-le dans la liste'
-                      : null;
-                },
+                decoration: InputDecoration(
+                    labelText: 'Nom',
+                    hintText: 'ex. Tractions lestées',
+                    // Pas de blocage : un nom connu ouvre l'exercice existant.
+                    helperText: findExistingExercise(
+                                widget.existing, _name.text) !=
+                            null
+                        ? 'Existe déjà : il sera ouvert tel quel'
+                        : null),
+                onChanged: (_) => setState(() {}),
+                validator: (v) =>
+                    (v?.trim() ?? '').isEmpty ? 'Requis' : null,
               ),
               const SizedBox(height: 16),
               const Text('Unité'),
