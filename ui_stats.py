@@ -1,5 +1,5 @@
 """
-Thésée — Onglets de statistiques (Graphiques, Records, Repos, Infos, Calendrier).
+Sysiphe — Onglets de statistiques (Graphiques, Records, Repos, Infos, Calendrier).
 Sans dépendance numpy — listes Python pures pour la heatmap.
 """
 from datetime import datetime, timedelta
@@ -336,14 +336,14 @@ def render_param_tab(df_global: pd.DataFrame, tous_les_exos: list, user_id: str)
     """Infos (consultation seule) : export de l'historique et réglages en lecture.
     Les réglages se modifient dans l'app Android ; le site ne peut plus écrire."""
     st.info("👀 Le site est en **consultation seule**. Saisie, réglages, profils et "
-            "recalcul des efforts : dans l'app Android Thésée (Réglages).")
+            "recalcul des efforts : dans l'app Android Sysiphe (Réglages).")
 
     st.subheader("📥 Export de données")
     if not df_global.empty:
         st.download_button(
             "📥 Télécharger tout mon historique (CSV)",
             data=df_global.to_csv(index=False).encode("utf-8"),
-            file_name=f"thesee_export_{datetime.now().strftime('%Y%m%d')}.csv",
+            file_name=f"sysiphe_export_{datetime.now().strftime('%Y%m%d')}.csv",
             mime="text/csv",
             use_container_width=True,
         )

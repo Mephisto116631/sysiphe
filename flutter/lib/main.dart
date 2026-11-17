@@ -32,18 +32,18 @@ Future<void> main() async {
   // (lu localement, fonctionne même sans réseau).
   final saved = await SessionStore.load();
 
-  runApp(TheseeApp(savedProfile: saved));
+  runApp(SysipheApp(savedProfile: saved));
 }
 
-class TheseeApp extends StatelessWidget {
+class SysipheApp extends StatelessWidget {
   final Profile? savedProfile;
 
-  const TheseeApp({super.key, this.savedProfile});
+  const SysipheApp({super.key, this.savedProfile});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Thésée',
+      title: 'Sysiphe',
       theme: AppTheme.light,
       debugShowCheckedModeBanner: false,
       home: savedProfile != null

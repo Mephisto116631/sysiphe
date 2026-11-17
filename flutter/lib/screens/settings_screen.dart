@@ -188,13 +188,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       final (csv, n) = await SupabaseService.instance.exportAllPerfsCsv();
       final d = DateTime.now();
-      final name = 'thesee-export-${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}.csv';
+      final name = 'sysiphe-export-${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}.csv';
       final file = File('${Directory.systemTemp.path}/$name');
       // BOM UTF-8 : Excel affiche correctement les accents.
       await file.writeAsString('\uFEFF$csv', flush: true);
       await Share.shareXFiles(
         [XFile(file.path, mimeType: 'text/csv', name: name)],
-        subject: 'Export Thésée ($n séries)',
+        subject: 'Export Sysiphe ($n séries)',
       );
     } catch (e) {
       if (!mounted) return;
@@ -446,7 +446,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const SizedBox(height: 40),
                 Center(
-                  child: Text('Thésée v$kAppVersion · Flutter',
+                  child: Text('Sysiphe v$kAppVersion · Flutter',
                       style: Theme.of(context).textTheme.bodyMedium),
                 ),
               ],

@@ -1,5 +1,5 @@
 """
-Thésée — Couche d'accès aux données (Supabase + cache Streamlit).
+Sysiphe — Couche d'accès aux données (Supabase + cache Streamlit).
 Toute fonction ici suppose un contexte Streamlit actif (st.cache_data, st.secrets).
 """
 import streamlit as st
@@ -22,7 +22,7 @@ _SETTINGS_DEFAULTS = {
 # l'écran qui l'appelle (la connexion par PIN, elle, reste possible).
 LECTURE_SEULE = True
 MESSAGE_LECTURE_SEULE = ("Le site est en consultation seule : la saisie et les "
-                         "réglages se font dans l'app Android Thésée.")
+                         "réglages se font dans l'app Android Sysiphe.")
 
 
 def ecriture(fn):

@@ -1,5 +1,5 @@
 """
-Thésée — Petits utilitaires d'interface.
+Sysiphe — Petits utilitaires d'interface.
 """
 import time
 import streamlit as st

@@ -1,5 +1,5 @@
 /**
- * Thésée — sauvegarde quotidienne des données Supabase en CSV dans Google Drive.
+ * Sysiphe — sauvegarde quotidienne des données Supabase en CSV dans Google Drive.
  *
  * Installation (5 min, une fois) : voir backup/README.md, section « Google Drive ».
  * Fonctions à utiliser depuis l'éditeur Apps Script :
@@ -8,7 +8,7 @@
  */
 
 const SUPABASE_URL = 'https://qzvfkscqcllfnoqywkwq.supabase.co';
-const DOSSIER = 'Thésée sauvegardes';
+const DOSSIER = 'Sysiphe sauvegardes';
 const GARDER_JOURS = 60;
 const PAGE = 1000; // Supabase renvoie au plus 1000 lignes par requête
 

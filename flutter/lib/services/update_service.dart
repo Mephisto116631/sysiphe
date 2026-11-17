@@ -71,7 +71,7 @@ class UpdateService {
         await for (final e in Directory(d).list()) {
           if (e is! File) continue;
           final name = e.uri.pathSegments.last;
-          if (keepLabel != null && name == 'thesee-$keepLabel.apk') continue;
+          if (keepLabel != null && name == 'sysiphe-$keepLabel.apk') continue;
           out.add(e);
         }
       }
@@ -80,9 +80,9 @@ class UpdateService {
       await for (final e in Directory.systemTemp.list()) {
         if (e is! File) continue;
         final name = e.uri.pathSegments.last;
-        // « sysiphe-export- » : exports d'avant le renommage en Thésée.
-        if ((name.startsWith('thesee-export-') ||
-                name.startsWith('sysiphe-export-')) &&
+        // « thesee-export- » : exports de la v2.8.0 (nom Thésée abandonné).
+        if ((name.startsWith('sysiphe-export-') ||
+                name.startsWith('thesee-export-')) &&
             name.endsWith('.csv')) {
           out.add(e);
         }
@@ -121,7 +121,7 @@ class UpdateService {
   static Future<File?> cachedApk(UpdateInfo info) async {
     try {
       final dir = await _channel.invokeMethod<String>('updatesDir');
-      final f = File('$dir/thesee-${info.label}.apk');
+      final f = File('$dir/sysiphe-${info.label}.apk');
       return await f.exists() && (info.size == 0 || await f.length() == info.size)
           ? f
           : null;
@@ -137,7 +137,7 @@ class UpdateService {
       final req = await client.getUrl(Uri.parse(_latestUrl));
       req.headers
         ..set(HttpHeaders.acceptHeader, 'application/vnd.github+json')
-        ..set(HttpHeaders.userAgentHeader, 'thesee-app');
+        ..set(HttpHeaders.userAgentHeader, 'sysiphe-app');
       final res = await req.close();
       if (res.statusCode != 200) {
         throw HttpException('GitHub a répondu ${res.statusCode}');
@@ -154,7 +154,7 @@ class UpdateService {
   static Future<File> download(UpdateInfo info,
       {void Function(double)? onProgress}) async {
     final dir = await _channel.invokeMethod<String>('updatesDir');
-    final file = File('$dir/thesee-${info.label}.apk');
+    final file = File('$dir/sysiphe-${info.label}.apk');
     final part = File('${file.path}.part'); // jamais d'APK à moitié écrit
     final client = HttpClient();
     try {

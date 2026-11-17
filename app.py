@@ -1,5 +1,5 @@
 """
-Thésée — site web en CONSULTATION SEULE (st.navigation + st.Page).
+Sysiphe — site web en CONSULTATION SEULE (st.navigation + st.Page).
 Stats, Calendrier, Records, Repos et Infos ; la saisie et les réglages se
 font dans l'app Android. Les écritures sont bloquées dans supabase_io.py.
 """
@@ -23,7 +23,7 @@ try:
 except Exception:
     APP_URL = CLOUD_URL
 
-st.set_page_config(page_title="Thésée", page_icon="🧭", layout="centered")
+st.set_page_config(page_title="Sysiphe", page_icon="🪨", layout="centered")
 
 # ─── CSS responsive mobile ───────────────────────────────────────────────────
 st.markdown("""
@@ -97,7 +97,7 @@ if "config_loaded" not in st.session_state:
 # ─── Sidebar globale (déconnexion / changement de profil) ────────────────────
 with st.sidebar:
     st.caption(f"👤 {st.session_state.user.email}")
-    st.info("👀 Consultation seule. Saisie et réglages : app Android Thésée.")
+    st.info("👀 Consultation seule. Saisie et réglages : app Android Sysiphe.")
     # Libellé contextuel selon le mode d'auth
     is_profile_mode = st.session_state.get("auth_mode") == "profile"
     btn_label = "🔀 Changer de profil" if is_profile_mode else "🚪 Déconnexion"
