@@ -235,4 +235,9 @@ Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec 
 - [x] Objectif mémorisé **par exercice** (la planche et le gainage gardent chacun le leur) ; « Libre » = chrono classique
 - [x] « Départ dans » : temps personnalisé en plus de Sans / 5 / 10 / 15 s (saisie « 20 », « 1:30 » ou « 2m »)
 - [x] Écran éteint ou autre app avant l'objectif : notification programmée à l'heure de fin
-- [ ] **Toi** : tester la v2.9.0 sur le téléphone
+- [x] **Bips** sur les 3 dernières secondes de la préparation et de l'objectif, au départ et à l'objectif atteint
+      (la musique est juste baissée le temps du bip) ; bouton 🔊 pour les couper, choix mémorisé
+- [x] **Écran toujours allumé** pendant la préparation et la série
+- [x] **Plein écran** (bouton ⛶ pendant la série) : temps en très gros chiffres, barre d'objectif, gros bouton
+      Arrêter ; le dernier choix est repris à la série suivante, « réduire » ou retour pour revenir en petit
+- [ ] **Toi** : tester la v2.9.0 sur le téléphone (son, écran allumé, plein écran)

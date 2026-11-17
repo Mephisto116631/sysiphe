@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/chrono_fx.dart';
 import '../services/timer_alerts.dart';
 import '../theme.dart';
 
@@ -13,6 +14,10 @@ const kChronoPreChoices = [0, 5, 10, 15];
 /// pour que la planche et le gainage gardent chacun leur temps.
 const kChronoTargetKey = 'chrono_target_seconds';
 const kChronoTargetChoices = [0, 30, 45, 60, 90, 120]; // 0 = libre
+
+/// Bips activés (défaut oui) et plein écran à l'ouverture (dernier choix).
+const kChronoSoundKey = 'chrono_sound';
+const kChronoFullKey = 'chrono_fullscreen';
 
 String chronoTargetKey(String? exercice) {
   final e = exercice?.trim().toLowerCase() ?? '';
@@ -48,16 +53,25 @@ String formatDuree(int s) =>
 /// on peut tenir plus longtemps, Arrêter renvoie toujours le temps total.
 /// Préparation et objectif acceptent un temps personnalisé (bouton ✎).
 ///
-/// Basé sur l'horloge (pas sur un compteur) : reste juste si l'écran se met
-/// en veille. Si l'app passe en arrière-plan avant l'objectif, une
-/// notification est programmée pour l'heure de fin.
+/// Bips (désactivables) sur les 3 dernières secondes de la préparation et de
+/// l'objectif, au départ et à l'objectif atteint. L'écran reste allumé
+/// pendant la série, et le temps peut s'afficher en plein écran (lisible
+/// depuis le sol en planche) ; le dernier choix est repris à la série suivante.
+///
+/// Basé sur l'horloge (pas sur un compteur) : reste juste même si l'app passe
+/// en arrière-plan. Dans ce cas, avant l'objectif, une notification est
+/// programmée pour l'heure de fin.
 class Chrono extends StatefulWidget {
   final ValueChanged<int> onStop;
   final DateTime Function()? now; // injectable pour les tests
   /// Exercice en cours : l'objectif est mémorisé par exercice.
   final String? exercice;
 
-  const Chrono({super.key, required this.onStop, this.now, this.exercice});
+  /// Sons et écran allumé (injectable pour les tests).
+  final ChronoFx? fx;
+
+  const Chrono(
+      {super.key, required this.onStop, this.now, this.exercice, this.fx});
 
   @override
   State<Chrono> createState() => _ChronoState();
@@ -73,8 +87,24 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
   int _lastBeep = -1;
   bool _reached = false; // objectif atteint pendant cette série
   bool _alertsOn = false;
+  bool _sound = true;
+  bool _fullPref = false;
+  Route<void>? _fullRoute;
+  final _rev = ValueNotifier<int>(0); // redessine la vue plein écran
 
   DateTime _now() => (widget.now ?? DateTime.now)();
+  ChronoFx get _fx => widget.fx ?? DeviceChronoFx.instance;
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _rev.value++;
+  }
+
+  void _bip(Bip b) {
+    if (_sound) _fx.bip(b);
+  }
+
   bool get _running => _start != null;
   bool get _counting => _goAt != null;
 
@@ -102,8 +132,12 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
       final t = p.getInt(chronoTargetKey(widget.exercice)) ??
           p.getInt(kChronoTargetKey) ??
           0;
+      final sound = p.getBool(kChronoSoundKey) ?? true;
+      final full = p.getBool(kChronoFullKey) ?? false;
       if (!mounted) return;
       setState(() {
+        _sound = sound;
+        _fullPref = full;
         _pre = pre.clamp(0, 600);
         _target = t.clamp(0, 9999);
       });
@@ -115,6 +149,48 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
     try {
       (await SharedPreferences.getInstance()).setInt(kChronoPreKey, v);
     } catch (_) {}
+  }
+
+  Future<void> _savePref(String k, bool v) async {
+    try {
+      (await SharedPreferences.getInstance()).setBool(k, v);
+    } catch (_) {}
+  }
+
+  void _toggleSound() {
+    setState(() => _sound = !_sound);
+    _savePref(kChronoSoundKey, _sound);
+  }
+
+  // ---------------------------------------------------------- plein écran
+
+  void _openFull() {
+    if (_fullRoute != null) return;
+    _fullPref = true;
+    _savePref(kChronoFullKey, true);
+    final route = PageRouteBuilder<void>(
+      opaque: true,
+      pageBuilder: (_, __, ___) => _FullView(state: this),
+      transitionsBuilder: (_, a, __, child) =>
+          FadeTransition(opacity: a, child: child),
+    );
+    _fullRoute = route;
+    Navigator.of(context).push(route).then((_) {
+      if (_fullRoute == route) _fullRoute = null;
+    });
+  }
+
+  /// Bouton « réduire » ou retour Android : la série continue en petit.
+  void _shrink() {
+    _fullPref = false;
+    _savePref(kChronoFullKey, false);
+    _closeFull();
+  }
+
+  void _closeFull() {
+    final r = _fullRoute;
+    _fullRoute = null;
+    if (r != null && r.isActive) r.navigator?.removeRoute(r);
   }
 
   Future<void> _setTarget(int v) async {
@@ -185,7 +261,9 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
     if (_running) return _end();
     if (_counting) return _cancel();
     _reached = false;
+    _fx.keepAwake(true);
     _pre == 0 ? _begin(_now()) : _countdown();
+    if (_fullPref) _openFull();
   }
 
   void _countdown() {
@@ -201,6 +279,7 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
     if (left <= Duration.zero) {
       _tick?.cancel();
       HapticFeedback.heavyImpact(); // top départ
+      _bip(Bip.depart);
       _begin(_goAt!); // l'heure de départ est celle prévue, pas celle du tick
       return;
     }
@@ -208,6 +287,7 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
     if (sec != _lastBeep) {
       _lastBeep = sec;
       HapticFeedback.selectionClick(); // un tic par seconde
+      if (sec <= 3) _bip(Bip.court);
     }
     setState(() {});
   }
@@ -215,6 +295,8 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
   void _cancel() {
     _tick?.cancel();
     _cancelAlerts();
+    _fx.keepAwake(false);
+    _closeFull();
     setState(() {
       _goAt = null;
       _elapsed = Duration.zero;
@@ -241,6 +323,7 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
     final leftMs = _target * 1000 - _elapsed.inMilliseconds;
     if (leftMs <= 0) {
       _reached = true;
+      _bip(Bip.objectif);
       HapticFeedback.heavyImpact();
       Future.delayed(
           const Duration(milliseconds: 180), HapticFeedback.heavyImpact);
@@ -252,12 +335,15 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
     if (sec <= 3 && sec != _lastBeep) {
       _lastBeep = sec;
       HapticFeedback.selectionClick();
+      _bip(Bip.court);
     }
   }
 
   void _end() {
     _tick?.cancel();
     _cancelAlerts();
+    _fx.keepAwake(false);
+    _closeFull();
     final e = _now().difference(_start!);
     setState(() {
       _start = null;
@@ -300,6 +386,9 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _tick?.cancel();
     _cancelAlerts();
+    if (_running || _counting) _fx.keepAwake(false);
+    _closeFull();
+    _rev.dispose();
     super.dispose();
   }
 
@@ -328,6 +417,23 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
     }
     return _fmt(ms);
   }
+
+  String? get _hint {
+    if (_counting) {
+      return _target > 0
+          ? 'Mets-toi en position… objectif ${formatDuree(_target)}'
+          : 'Mets-toi en position…';
+    }
+    if (_running && _over) {
+      return 'Objectif atteint 🎯 — total ${_fmt(_elapsed.inMilliseconds, tenths: false)}';
+    }
+    if (_running && _target > 0) return 'Objectif ${formatDuree(_target)}';
+    return null;
+  }
+
+  double? get _progress => _target > 0 && _running
+      ? (_elapsed.inMilliseconds / (_target * 1000)).clamp(0.0, 1.0)
+      : null;
 
   Color? get _color {
     if (_counting) return Colors.orange;
@@ -412,6 +518,18 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
                 ),
               ),
             ),
+            if (idle)
+              IconButton(
+                tooltip: _sound ? 'Couper les bips' : 'Activer les bips',
+                onPressed: _toggleSound,
+                icon: Icon(_sound ? Icons.volume_up : Icons.volume_off),
+              )
+            else
+              IconButton(
+                tooltip: 'Plein écran',
+                onPressed: _openFull,
+                icon: const Icon(Icons.fullscreen),
+              ),
             if (idle && _elapsed > Duration.zero)
               IconButton(
                 tooltip: 'Remettre à zéro',
@@ -479,6 +597,107 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
                 style: const TextStyle(color: Colors.orange, fontSize: 12)),
           ),
       ],
+    );
+  }
+}
+
+/// Temps en très gros chiffres sur tout l'écran, lisible depuis le sol.
+/// Reflète l'état du petit chrono (même horloge, mêmes boutons).
+class _FullView extends StatelessWidget {
+  final _ChronoState state;
+  const _FullView({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) state._shrink();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: SafeArea(
+          child: ValueListenableBuilder<int>(
+            valueListenable: state._rev,
+            builder: (context, _, __) {
+              final s = state;
+              final color = s._color ?? Colors.white;
+              final hint = s._hint;
+              final progress = s._progress;
+              return Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    Align(
+                      alignment: Alignment.topLeft,
+                      child: IconButton(
+                        tooltip: 'Réduire',
+                        onPressed: s._shrink,
+                        color: Colors.white70,
+                        iconSize: 32,
+                        icon: const Icon(Icons.fullscreen_exit),
+                      ),
+                    ),
+                    Expanded(
+                      child: Center(
+                        child: FittedBox(
+                          fit: BoxFit.contain,
+                          child: Text(
+                            s._label,
+                            key: const ValueKey('chrono-full-time'),
+                            style: TextStyle(
+                              fontSize: 200,
+                              fontWeight: FontWeight.w800,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures()
+                              ],
+                              color: color,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (progress != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: LinearProgressIndicator(
+                          value: progress,
+                          minHeight: 14,
+                          color: color,
+                          backgroundColor: Colors.white12,
+                          borderRadius: BorderRadius.circular(7),
+                        ),
+                      ),
+                    if (hint != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: Text(hint,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: color, fontSize: 20)),
+                      ),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 72,
+                      child: FilledButton.icon(
+                        onPressed: s._running || s._counting ? s._press : null,
+                        style: FilledButton.styleFrom(
+                          backgroundColor:
+                              s._counting ? Colors.orange : Colors.redAccent,
+                          textStyle: const TextStyle(
+                              fontSize: 24, fontWeight: FontWeight.w700),
+                        ),
+                        icon: Icon(s._counting ? Icons.close : Icons.stop,
+                            size: 32),
+                        label: Text(s._counting ? 'Annuler' : 'Arrêter'),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ),
     );
   }
 }

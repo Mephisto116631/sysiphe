@@ -1,10 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sysiphe/services/chrono_fx.dart';
 import 'package:sysiphe/theme.dart';
 import 'package:sysiphe/widgets/chrono.dart';
 
+class FakeFx implements ChronoFx {
+  final bips = <Bip>[];
+  final awake = <bool>[];
+  @override
+  void bip(Bip b) => bips.add(b);
+  @override
+  void keepAwake(bool on) => awake.add(on);
+}
+
 void main() {
+  late FakeFx fx;
+  setUp(() => fx = FakeFx());
+
   Future<void> pump(WidgetTester t, DateTime Function() now, List<int> got,
       {int pre = 0, Map<String, Object> extra = const {}, String? exo}) async {
     SharedPreferences.setMockInitialValues({kChronoPreKey: pre, ...extra});
@@ -12,7 +25,7 @@ void main() {
       theme: AppTheme.light,
       home: Scaffold(
           body: SingleChildScrollView(
-              child: Chrono(now: now, onStop: got.add, exercice: exo))),
+              child: Chrono(now: now, onStop: got.add, exercice: exo, fx: fx))),
     ));
     await t.pumpAndSettle(); // laisse charger le réglage
   }
@@ -152,5 +165,74 @@ void main() {
     await t.pumpAndSettle();
     expect(find.textContaining('Ex. 90'), findsOneWidget);
     expect((await SharedPreferences.getInstance()).getInt(kChronoPreKey), 5);
+  });
+
+  testWidgets('bips : 3 derniers tics de la préparation, départ, objectif',
+      (t) async {
+    var now = DateTime(2026, 11, 17, 10);
+    await pump(t, () => now, <int>[], pre: 5, extra: {kChronoTargetKey: 10});
+    await t.tap(find.text('Démarrer'));
+    await t.pump();
+    expect(fx.awake, [true]); // écran maintenu allumé
+    for (var i = 0; i < 16; i++) {
+      now = now.add(const Duration(seconds: 1));
+      await t.pump(const Duration(milliseconds: 100));
+    }
+    // préparation : 3, 2, 1 → départ ; objectif : 3, 2, 1 → atteint
+    expect(fx.bips, [
+      Bip.court, Bip.court, Bip.court, Bip.depart, //
+      Bip.court, Bip.court, Bip.court, Bip.objectif,
+    ]);
+    await t.tap(find.text('Arrêter'));
+    await t.pump(const Duration(seconds: 1));
+    expect(fx.awake, [true, false]);
+  });
+
+  testWidgets('bips coupés : aucun son, choix mémorisé', (t) async {
+    var now = DateTime(2026, 11, 17, 10);
+    await pump(t, () => now, <int>[], pre: 3);
+    await t.tap(find.byIcon(Icons.volume_up));
+    await t.pump();
+    expect(find.byIcon(Icons.volume_off), findsOneWidget);
+    expect((await SharedPreferences.getInstance()).getBool(kChronoSoundKey),
+        false);
+    await t.tap(find.text('Démarrer'));
+    await t.pump();
+    now = now.add(const Duration(seconds: 4));
+    await t.pump(const Duration(milliseconds: 100));
+    expect(fx.bips, isEmpty);
+  });
+
+  testWidgets('plein écran : gros chiffres, Arrêter ferme et renvoie le temps',
+      (t) async {
+    var now = DateTime(2026, 11, 17, 10);
+    final got = <int>[];
+    await pump(t, () => now, got);
+    await t.tap(find.text('Démarrer'));
+    await t.pump();
+    await t.tap(find.byIcon(Icons.fullscreen));
+    await t.pumpAndSettle();
+    expect(find.byKey(const ValueKey('chrono-full-time')), findsOneWidget);
+    now = now.add(const Duration(seconds: 42));
+    await t.pump(const Duration(milliseconds: 100));
+    expect(find.text('0:42.0'), findsWidgets);
+    await t.tap(find.text('Arrêter').last);
+    await t.pumpAndSettle();
+    expect(find.byKey(const ValueKey('chrono-full-time')), findsNothing);
+    expect(got, [42]);
+    // dernier choix repris : la série suivante s'ouvre en plein écran
+    expect(
+        (await SharedPreferences.getInstance()).getBool(kChronoFullKey), true);
+    await t.tap(find.text('Démarrer'));
+    await t.pumpAndSettle();
+    expect(find.byKey(const ValueKey('chrono-full-time')), findsOneWidget);
+    await t.tap(find.byTooltip('Réduire'));
+    await t.pumpAndSettle();
+    expect(find.byKey(const ValueKey('chrono-full-time')), findsNothing);
+    expect(find.text('Arrêter'), findsOneWidget); // la série continue
+    expect(
+        (await SharedPreferences.getInstance()).getBool(kChronoFullKey), false);
+    await t.tap(find.text('Arrêter'));
+    await t.pump();
   });
 }
