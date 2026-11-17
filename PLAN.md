@@ -204,7 +204,8 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
 - [x] **Annulé** (v2.9.0, 17/11) : le nom redevient **Sysiphe** partout (app, site, Release `sysiphe.apk`, export,
       sauvegardes, README). Les mises à jour depuis la v2.8.0 « Thésée » s'installent normalement (mêmes identifiants
       techniques) ; les anciens exports `thesee-export-*` sont toujours nettoyés
-- [ ] Découper `saisie_screen.dart` (1 865 lignes) en widgets plus petits
+- [x] Découper `saisie_screen.dart` (v2.9.1) : 1 884 → 1 115 lignes ; composants dans `lib/widgets/saisie/`,
+      repos dans `RestTimer`, calculs d'effort dans `EffortSettings`, dialogues partagés ; aucun changement visible
 
 ## Phase 7 — Retours de saisie (novembre 2026)
 
@@ -240,3 +241,9 @@ Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec 
 - [x] **Plein écran** (bouton ⛶ pendant la série) : temps en très gros chiffres, barre d'objectif, gros bouton
       Arrêter ; le dernier choix est repris à la série suivante, « réduire » ou retour pour revenir en petit
 - [ ] **Toi** : tester la v2.9.0 sur le téléphone (son, écran allumé, plein écran)
+
+## Prochains axes (décidés le 17/11)
+
+- [x] Découpage de la saisie (v2.9.1)
+- [ ] Rappels : inactivité (`inactivity_days`) et prochaine séance conseillée, en notifications locales (v2.10.0)
+- [ ] Associer un compte Google : profils retrouvés sur un autre téléphone ou sur le web sans PIN (v2.11.0)
