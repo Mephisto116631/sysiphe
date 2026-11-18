@@ -255,3 +255,10 @@ Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec 
       redémarrage. Réglages → Rappels. Le minuteur, le repos et le chrono n'effacent plus que leurs propres notifications
 - [ ] **Toi** : Réglages → Rappels, régler l'heure juste après l'heure actuelle pour voir arriver un rappel
 - [x] Associer un compte Google : profils retrouvés sur un autre téléphone ou sur le web sans PIN (v2.11.0)
+
+## Session de rattrapage — site web (mis de côté le 18/11, priorité à l'app)
+
+- [ ] « Se connecter avec Google » sur le site demande encore le PIN. Piste : à l'ouverture, le site présélectionne le
+      profil le plus récent et affiche directement l'écran PIN, qui masque le bouton Google (`auth.py`, repli « b »
+      avant l'étape « a bis »)
+- [ ] Rouvrir la **saisie** sur le site (en consultation seule depuis le 17/11, ce qui le rend peu utile pour toi)
