@@ -59,7 +59,11 @@ répondent **400**, et l'app reste bloquée sur un chargement infini.
         rattachés à l'appareil), `pin_hash` et `role` illisibles/non modifiables en direct, plus aucun accès sans session ;
         testée en transaction annulée (accès, refus, admin) puis appliquée
         ⚠ les anciennes versions de l'app (sans session anonyme, < v2.2.0) ne fonctionnent plus : mettre à jour
-  - [ ] Étape 3 : bouton « Associer mon compte Google » (app + web)
+  - [x] Étape 3 (v2.11.0, 18/11) : « Associer mon compte Google » (Réglages → Sécurité). Jeton à usage unique
+        (`create_link_token` / `redeem_link_token`, table `link_tokens`, migration testée en transaction annulée puis
+        appliquée) : le compte Google reçoit les profils du téléphone, existant ou non. Ailleurs : « Se connecter avec
+        Google » (écran des profils, site web) → profils associés sans PIN
+  - [ ] **Toi** : associer ton compte Google sur le téléphone, puis tester « Se connecter avec Google » sur le site
 - [ ] `user_settings.user_id` pointe sur `auth.users` : les profils « Dilbert 🐶 » et « Profil 3 » ne peuvent pas
       enregistrer de réglages (violation de clé étrangère). → Faire pointer la clé sur `profiles(id)`
       → correctif testé sur la base (17/11), **à appliquer par toi** : `supabase/a_appliquer/README.md`
@@ -130,7 +134,7 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
 - [ ] Période de graphe mémorisée (`graph_period`)
 
 **Connexion web à trancher** (lié à la RLS, phase 3)
-- [ ] Comptes Google : **option d'association** à un profil existant (retrouver son profil sur un autre appareil ou sur le web, sans reconnexion à chaque ouverture) — à faire avec la RLS, en attente de validation
+- [x] Comptes Google : **option d'association** à un profil existant (v2.11.0) (retrouver son profil sur un autre appareil ou sur le web, sans reconnexion à chaque ouverture) — à faire avec la RLS, en attente de validation
 
 ## Demandes du 9 novembre (v2.3.0)
 
@@ -250,4 +254,4 @@ Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec 
       Reprogrammés à chaque chargement de l'historique (ouverture, série enregistrée / supprimée), gardés après un
       redémarrage. Réglages → Rappels. Le minuteur, le repos et le chrono n'effacent plus que leurs propres notifications
 - [ ] **Toi** : Réglages → Rappels, régler l'heure juste après l'heure actuelle pour voir arriver un rappel
-- [ ] Associer un compte Google : profils retrouvés sur un autre téléphone ou sur le web sans PIN (v2.11.0)
+- [x] Associer un compte Google : profils retrouvés sur un autre téléphone ou sur le web sans PIN (v2.11.0)

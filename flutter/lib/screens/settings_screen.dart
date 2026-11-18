@@ -6,10 +6,12 @@ import '../models/profile.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
 import '../services/data_events.dart';
+import '../services/google_account.dart';
 import '../services/role.dart';
 import '../services/session_store.dart';
 import '../app_version.dart';
 import '../services/update_service.dart';
+import '../widgets/google_account_card.dart';
 import '../widgets/reminders_card.dart';
 import '../widgets/update_flow.dart';
 import 'model_screen.dart';
@@ -156,10 +158,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _logout() async {
     await SessionStore.clear();
-    // Fermer aussi la session Supabase : ce téléphone perd son rattachement
-    // aux profils, donc le PIN sera redemandé (sinon on pourrait revenir sur
-    // un profil protégé sans PIN). Une nouvelle session anonyme sera créée.
-    await SupabaseService.instance.signOut();
+    // Session anonyme : on la ferme, ce téléphone perd son rattachement aux
+    // profils et le PIN sera redemandé (une nouvelle session sera créée).
+    // Session Google : gardée (ses profils restent accessibles sans PIN) ;
+    // « Se déconnecter de Google » est à part, dans la carte Compte Google.
+    if (GoogleAccount.currentEmail == null) {
+      await SupabaseService.instance.signOut();
+    }
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const ProfileScreen()),
@@ -427,6 +432,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 20),
 
                 _SectionLabel('Sécurité'),
+                const GoogleAccountCard(),
+                const SizedBox(height: 8),
                 Card(
                   child: ListTile(
                     leading: const Icon(Icons.lock_outline,
