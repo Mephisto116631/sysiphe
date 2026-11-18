@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
-import 'package:intl/intl.dart';
 import '../models/perf.dart';
 import '../models/stats.dart';
 import '../services/data_events.dart';
@@ -8,6 +6,10 @@ import '../services/supabase_service.dart';
 import '../services/ui_prefs.dart';
 import '../theme.dart';
 import '../widgets/load_error.dart';
+import '../widgets/stats/category_bars.dart';
+import '../widgets/stats/multi_line_chart.dart';
+import '../widgets/stats/series_legend.dart';
+import '../widgets/stats/stat_cards.dart';
 
 /// Périodes proposées (mêmes choix que l'onglet Stats du web).
 enum _Period {
@@ -21,10 +23,19 @@ enum _Period {
   const _Period(this.label, this.days);
 }
 
+/// Nombre maximal d'exercices comparés (au-delà, illisible sur un téléphone).
+const kMaxCompared = 5;
+const _chartHeight = 260.0;
+
+/// Onglet Stats : un exercice (courbe, record, tendance ; planche par
+/// variante), comparaison de plusieurs exercices, séries par catégorie.
 class StatsScreen extends StatefulWidget {
   final String userId;
 
-  const StatsScreen({super.key, required this.userId});
+  /// Historique fourni directement (tests) : pas d'accès réseau.
+  final List<Perf>? initialPerfs;
+
+  const StatsScreen({super.key, required this.userId, this.initialPerfs});
 
   @override
   State<StatsScreen> createState() => _StatsScreenState();
@@ -32,10 +43,16 @@ class StatsScreen extends StatefulWidget {
 
 class _StatsScreenState extends State<StatsScreen> {
   List<Perf> _all = []; // tout l'historique, chargé une fois
-  List<String> _exercices = [];
+  List<String> _exercices = []; // ordre alphabétique (menu)
+  List<String> _recent = []; // du plus récent au plus ancien (comparaison)
   String? _selected;
   _Period _period = _Period.all;
   bool _plancheTime = false; // planche : effort (défaut) ou temps
+  bool _byVariante = false; // planche : une courbe par variante
+  final Set<String> _hiddenVariantes = {};
+  List<String> _compared = [];
+  bool _comparePct = true; // comparaison en % du record
+  final Set<String> _hiddenCategories = {};
   bool _loading = true;
   Object? _error;
 
@@ -57,17 +74,23 @@ class _StatsScreenState extends State<StatsScreen> {
     _load();
   }
 
-  /// Filtres mémorisés sur l'appareil : période et mode de la planche
-  /// (l'exercice est restauré au chargement, par profil).
+  String get _compareKey => 'stats_compare_${widget.userId}';
+
+  /// Filtres mémorisés sur l'appareil : période, mode de la planche, options
+  /// de comparaison (l'exercice est restauré au chargement, par profil).
   Future<void> _restorePrefs() async {
     final p = await UiPrefs.getString('stats_period');
     final t = await UiPrefs.getBool('stats_planche_time');
+    final v = await UiPrefs.getBool('stats_par_variante');
+    final pct = await UiPrefs.getBool('stats_compare_pct');
     if (!mounted) return;
     setState(() {
       for (final e in _Period.values) {
         if (e.name == p) _period = e;
       }
       _plancheTime = t ?? _plancheTime;
+      _byVariante = v ?? _byVariante;
+      _comparePct = pct ?? _comparePct;
     });
   }
 
@@ -77,18 +100,28 @@ class _StatsScreenState extends State<StatsScreen> {
       _error = null;
     });
     try {
-      final all = await SupabaseService.instance.getAllPerfs(widget.userId);
+      final all = widget.initialPerfs ??
+          await SupabaseService.instance.getAllPerfs(widget.userId);
       if (!mounted) return;
       final names = {
         for (final p in all)
           if (p.exercice.isNotEmpty) p.exercice
       }.toList()
         ..sort();
+      final lastDay = <String, DateTime>{};
+      for (final p in all) {
+        final d = lastDay[p.exercice];
+        if (d == null || p.date.isAfter(d)) lastDay[p.exercice] = p.date;
+      }
+      final recent = [...names]
+        ..sort((a, b) => lastDay[b]!.compareTo(lastDay[a]!));
       final saved = await UiPrefs.getString('stats_exercice_${widget.userId}');
+      final savedCompare = await UiPrefs.getString(_compareKey);
       if (!mounted) return;
       setState(() {
         _all = all;
         _exercices = names;
+        _recent = recent;
         if (_selected == null && saved != null && names.contains(saved)) {
           _selected = saved; // dernier exercice regardé
         }
@@ -98,8 +131,15 @@ class _StatsScreenState extends State<StatsScreen> {
           final planche = names.where(Perf.isPlancheName);
           _selected = planche.isNotEmpty
               ? planche.first
-              : (all.isNotEmpty ? all.first.exercice : null);
+              : (recent.isNotEmpty ? recent.first : null);
         }
+        final kept = (savedCompare ?? '')
+            .split('\n')
+            .where(names.contains)
+            .take(kMaxCompared)
+            .toList();
+        // Par défaut : les 3 exercices les plus récents.
+        _compared = kept.isNotEmpty ? kept : recent.take(3).toList();
         _loading = false;
       });
     } catch (e) {
@@ -111,84 +151,121 @@ class _StatsScreenState extends State<StatsScreen> {
     }
   }
 
-  List<Perf> get _filtered {
+  /// Séries de la période choisie (tous exercices).
+  List<Perf> get _inPeriod {
     final days = _period.days;
-    final from =
-        days == null ? null : DateTime.now().subtract(Duration(days: days));
-    return _all
-        .where((p) =>
-            p.exercice == _selected && (from == null || !p.date.isBefore(from)))
-        .toList();
+    if (days == null) return _all;
+    final from = DateTime.now().subtract(Duration(days: days));
+    return _all.where((p) => !p.date.isBefore(from)).toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Stats'),
-        actions: [
-          IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: _load,
-              tooltip: 'Actualiser'),
-        ],
+    return DefaultTabController(
+      length: 3,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Stats'),
+          actions: [
+            IconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: _load,
+                tooltip: 'Actualiser'),
+          ],
+          bottom: const TabBar(tabs: [
+            Tab(text: 'Exercice'),
+            Tab(text: 'Comparer'),
+            Tab(text: 'Catégories'),
+          ]),
+        ),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+                ? LoadError(error: _error!, onRetry: _load)
+                : _exercices.isEmpty
+                    ? Center(
+                        child: Text('Aucune donnée',
+                            style: Theme.of(context).textTheme.bodyMedium))
+                    : Column(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                            child: _periodSelector(),
+                          ),
+                          Expanded(
+                            child: TabBarView(children: [
+                              _exerciseTab(context),
+                              _compareTab(context),
+                              _categoriesTab(context),
+                            ]),
+                          ),
+                        ],
+                      ),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? LoadError(error: _error!, onRetry: _load)
-              : _exercices.isEmpty
-                  ? Center(
-                      child: Text('Aucune donnée',
-                          style: Theme.of(context).textTheme.bodyMedium))
-                  : _buildContent(context),
     );
   }
 
-  Widget _buildContent(BuildContext context) {
-    final perfs = _filtered;
+  Widget _periodSelector() => SizedBox(
+        width: double.infinity,
+        child: SegmentedButton<_Period>(
+          segments: [
+            for (final p in _Period.values)
+              ButtonSegment(value: p, label: Text(p.label)),
+          ],
+          selected: {_period},
+          showSelectedIcon: false,
+          onSelectionChanged: (s) {
+            setState(() => _period = s.first);
+            UiPrefs.setString('stats_period', s.first.name);
+          },
+        ),
+      );
+
+  Widget _empty(BuildContext context, String text) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 48),
+        child: Center(
+          child: Text(text,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium),
+        ),
+      );
+
+  // ─── Onglet Exercice ──────────────────────────────────────────────────────
+
+  Widget _exerciseTab(BuildContext context) {
+    final perfs = _inPeriod.where((p) => p.exercice == _selected).toList();
     final isPlanche = perfs.isNotEmpty && perfs.first.isPlanche;
     final metric =
         isPlanche && _plancheTime ? StatMetric.best : metricFor(perfs);
     final points = dailySeries(perfs, metric);
     final unit = metric.unit(perfs.isEmpty ? 'Sec' : perfs.first.unite);
+    final variantes = isPlanche && _byVariante
+        ? forwardFill(seriesByVariante(perfs, time: _plancheTime))
+        : null;
 
-    return Padding(
+    return ListView(
       padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          DropdownButtonFormField<String>(
-            value: _selected,
-            isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Exercice'),
-            items: _exercices
-                .map((e) => DropdownMenuItem(
-                    value: e, child: Text(e, overflow: TextOverflow.ellipsis)))
-                .toList(),
-            onChanged: (v) {
-              setState(() => _selected = v);
-              if (v != null) {
-                UiPrefs.setString('stats_exercice_${widget.userId}', v);
-              }
-            },
-          ),
-          const SizedBox(height: 12),
-          SegmentedButton<_Period>(
-            segments: [
-              for (final p in _Period.values)
-                ButtonSegment(value: p, label: Text(p.label)),
-            ],
-            selected: {_period},
-            showSelectedIcon: false,
-            onSelectionChanged: (s) {
-              setState(() => _period = s.first);
-              UiPrefs.setString('stats_period', s.first.name);
-            },
-          ),
-          if (isPlanche) ...[
-            const SizedBox(height: 8),
-            SegmentedButton<bool>(
+      children: [
+        DropdownButtonFormField<String>(
+          value: _selected,
+          isExpanded: true,
+          decoration: const InputDecoration(labelText: 'Exercice'),
+          items: _exercices
+              .map((e) => DropdownMenuItem(
+                  value: e, child: Text(e, overflow: TextOverflow.ellipsis)))
+              .toList(),
+          onChanged: (v) {
+            setState(() => _selected = v);
+            if (v != null) {
+              UiPrefs.setString('stats_exercice_${widget.userId}', v);
+            }
+          },
+        ),
+        if (isPlanche) ...[
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: SegmentedButton<bool>(
               segments: const [
                 ButtonSegment(
                     value: false,
@@ -205,242 +282,255 @@ class _StatsScreenState extends State<StatsScreen> {
                 UiPrefs.setBool('stats_planche_time', s.first);
               },
             ),
-          ],
-          const SizedBox(height: 16),
-          if (points.isEmpty)
-            Expanded(
-              child: Center(
-                child: Text('Aucune séance sur cette période',
-                    style: Theme.of(context).textTheme.bodyMedium),
-              ),
-            )
-          else ...[
-            _StatRow(points: points, unit: unit),
-            const SizedBox(height: 12),
-            _TrendBadge(result: detectPlateau(points)),
-            const SizedBox(height: 16),
-            Text(metric.label, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 12),
-            Expanded(child: _LineChart(points: points, unit: unit)),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-String _fmt(double v) =>
-    v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(1);
-
-class _StatRow extends StatelessWidget {
-  final List<DayPoint> points;
-  final String unit;
-
-  const _StatRow({required this.points, required this.unit});
-
-  @override
-  Widget build(BuildContext context) {
-    final best = points.map((p) => p.value).reduce((a, b) => a > b ? a : b);
-    final last = points.last;
-    return Row(
-      children: [
-        Expanded(
-            child: _StatCard(label: 'Record', value: '${_fmt(best)}$unit')),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _StatCard(
-            label:
-                'Dernière séance\n${DateFormat('d MMM', 'fr_FR').format(last.date)}',
-            value: '${_fmt(last.value)}$unit',
           ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(child: _StatCard(label: 'Séances', value: '${points.length}')),
-      ],
-    );
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _StatCard({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-        child: Column(
-          children: [
-            FittedBox(
-              child: Text(value,
-                  style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.primaryBlue)),
-            ),
-            const SizedBox(height: 2),
-            Text(label,
-                style: Theme.of(context).textTheme.bodySmall,
-                textAlign: TextAlign.center),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Tendance des 21 derniers jours de séance (port de detect_plateau).
-class _TrendBadge extends StatelessWidget {
-  final PlateauResult result;
-
-  const _TrendBadge({required this.result});
-
-  @override
-  Widget build(BuildContext context) {
-    final (IconData icon, Color color, String text) = switch (result.status) {
-      Trend.progress => (
-          Icons.trending_up,
-          Colors.green.shade700,
-          'En progression (+${(result.relativeSlope * 100).round()} % sur 21 j)'
-        ),
-      Trend.regression => (
-          Icons.trending_down,
-          Colors.red.shade700,
-          'En baisse (${(result.relativeSlope * 100).round()} % sur 21 j)'
-        ),
-      Trend.plateau => (
-          Icons.trending_flat,
-          Colors.orange.shade800,
-          'Plateau sur les 21 derniers jours'
-        ),
-      Trend.insufficientData => (
-          Icons.info_outline,
-          AppTheme.textSecondary,
-          'Pas assez de séances récentes pour une tendance'
-        ),
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(width: 8),
-          Expanded(
-              child: Text(text, style: TextStyle(color: color, fontSize: 13))),
-        ],
-      ),
-    );
-  }
-}
-
-class _LineChart extends StatelessWidget {
-  final List<DayPoint> points;
-  final String unit;
-
-  const _LineChart({required this.points, required this.unit});
-
-  @override
-  Widget build(BuildContext context) {
-    final origin = points.first.date;
-    final spots = [
-      for (final p in points)
-        FlSpot(p.date.difference(origin).inDays.toDouble(), p.value),
-    ];
-    final minX = spots.first.x;
-    final maxX = spots.last.x == minX ? minX + 1 : spots.last.x;
-    final ys = spots.map((s) => s.y);
-    final minY =
-        (ys.reduce((a, b) => a < b ? a : b) * 0.9).clamp(0.0, double.infinity);
-    var maxY = ys.reduce((a, b) => a > b ? a : b) * 1.1;
-    if (maxY <= minY) maxY = minY + 1;
-
-    return LineChart(
-      LineChartData(
-        minX: minX,
-        maxX: maxX,
-        minY: minY,
-        maxY: maxY,
-        lineBarsData: [
-          LineChartBarData(
-            spots: spots,
-            isCurved: true,
-            preventCurveOverShooting: true,
-            curveSmoothness: 0.25,
-            color: AppTheme.primaryBlue,
-            barWidth: 2.5,
-            dotData: FlDotData(
-              show: spots.length <= 30,
-              getDotPainter: (_, __, ___, ____) => FlDotCirclePainter(
-                radius: 3,
-                color: AppTheme.primaryBlue,
-                strokeWidth: 0,
-              ),
-            ),
-            belowBarData: BarAreaData(
-              show: true,
-              color: AppTheme.primaryBlue.withOpacity(0.08),
-            ),
-          ),
-        ],
-        gridData: FlGridData(
-          show: true,
-          drawVerticalLine: false,
-          horizontalInterval: (maxY - minY) / 4,
-          getDrawingHorizontalLine: (_) =>
-              const FlLine(color: AppTheme.borderColor, strokeWidth: 1),
-        ),
-        borderData: FlBorderData(show: false),
-        titlesData: FlTitlesData(
-          leftTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 40,
-              getTitlesWidget: (val, meta) => Text(
-                val.toInt().toString(),
-                style: const TextStyle(
-                    fontSize: 10, color: AppTheme.textSecondary),
-              ),
-            ),
-          ),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 24,
-              interval: ((maxX - minX) / 4).clamp(1, double.infinity),
-              getTitlesWidget: (val, meta) {
-                final date = origin.add(Duration(days: val.toInt()));
-                return Text(
-                  DateFormat('d/MM/yy').format(date),
-                  style: const TextStyle(
-                      fontSize: 10, color: AppTheme.textSecondary),
-                );
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilterChip(
+              avatar: const Icon(Icons.stacked_line_chart, size: 18),
+              label: const Text('Par variante'),
+              selected: _byVariante,
+              showCheckmark: false,
+              onSelected: (v) {
+                setState(() => _byVariante = v);
+                UiPrefs.setBool('stats_par_variante', v);
               },
             ),
           ),
-          topTitles:
-              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles:
-              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        ],
+        const SizedBox(height: 16),
+        if (points.isEmpty)
+          _empty(context, 'Aucune séance sur cette période')
+        else ...[
+          StatRow(points: points, unit: unit),
+          const SizedBox(height: 12),
+          TrendBadge(result: detectPlateau(points)),
+          const SizedBox(height: 16),
+          Text(
+              variantes == null ? metric.label : '${metric.label} par variante',
+              style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 12),
+          if (variantes == null)
+            SizedBox(
+              height: _chartHeight,
+              child: MultiLineChart(series: [
+                ChartSeries(_selected ?? '', points, AppTheme.primaryBlue)
+              ], unit: unit),
+            )
+          else ...[
+            SeriesLegend(
+              items: [
+                for (final (i, v) in variantes.keys.indexed)
+                  (v, AppTheme.seriesColor(i))
+              ],
+              hidden: _hiddenVariantes,
+              onToggle: (v) => setState(() => _hiddenVariantes.contains(v)
+                  ? _hiddenVariantes.remove(v)
+                  : _hiddenVariantes.add(v)),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: _chartHeight,
+              child: MultiLineChart(series: [
+                for (final (i, e) in variantes.entries.indexed)
+                  if (!_hiddenVariantes.contains(e.key))
+                    ChartSeries(e.key, e.value, AppTheme.seriesColor(i)),
+              ], unit: unit),
+            ),
+          ],
+        ],
+      ],
+    );
+  }
+
+  // ─── Onglet Comparer ──────────────────────────────────────────────────────
+
+  void _toggleCompared(String e) {
+    setState(() {
+      if (_compared.contains(e)) {
+        _compared = [..._compared]..remove(e);
+      } else if (_compared.length < kMaxCompared) {
+        _compared = [..._compared, e];
+      }
+    });
+    UiPrefs.setString(_compareKey, _compared.join('\n'));
+  }
+
+  Widget _compareTab(BuildContext context) {
+    final period = _inPeriod;
+    final raw = <String, List<DayPoint>>{};
+    final units = <String, String>{};
+    for (final e in _compared) {
+      final perfs = period.where((p) => p.exercice == e).toList();
+      final metric = metricFor(perfs);
+      raw[e] = dailySeries(perfs, metric);
+      units[e] = metric.unit(perfs.isEmpty ? 'Reps' : perfs.first.unite);
+    }
+    final lines = forwardFill({
+      for (final e in raw.entries)
+        e.key: _comparePct ? normalizeToBest(e.value) : e.value,
+    });
+    Color color(String e) => AppTheme.seriesColor(_compared.indexOf(e));
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text('Exercices (jusqu\'à $kMaxCompared)',
+            style: Theme.of(context).textTheme.bodySmall),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 6,
+          runSpacing: 4,
+          children: [
+            for (final e in _recent)
+              FilterChip(
+                avatar: _compared.contains(e)
+                    ? CircleAvatar(backgroundColor: color(e), radius: 6)
+                    : null,
+                label: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 160),
+                  child: Text(e, overflow: TextOverflow.ellipsis),
+                ),
+                selected: _compared.contains(e),
+                showCheckmark: false,
+                visualDensity: VisualDensity.compact,
+                onSelected:
+                    !_compared.contains(e) && _compared.length >= kMaxCompared
+                        ? null
+                        : (_) => _toggleCompared(e),
+              ),
+          ],
         ),
-        lineTouchData: LineTouchData(
-          touchTooltipData: LineTouchTooltipData(
-            getTooltipItems: (touched) => touched.map((s) {
-              final p = points[s.spotIndex];
-              return LineTooltipItem(
-                '${_fmt(p.value)}$unit\n${DateFormat('d MMM yyyy', 'fr_FR').format(p.date)}',
-                const TextStyle(color: Colors.white, fontSize: 12, height: 1.4),
-              );
-            }).toList(),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(value: true, label: Text('En % du record')),
+              ButtonSegment(value: false, label: Text('Valeurs brutes')),
+            ],
+            selected: {_comparePct},
+            showSelectedIcon: false,
+            onSelectionChanged: (s) {
+              setState(() => _comparePct = s.first);
+              UiPrefs.setBool('stats_compare_pct', s.first);
+            },
           ),
         ),
-      ),
+        const SizedBox(height: 16),
+        if (_compared.isEmpty)
+          _empty(context, 'Choisis des exercices à comparer')
+        else if (lines.values.every((l) => l.isEmpty))
+          _empty(context, 'Aucune séance sur cette période')
+        else ...[
+          Text(
+              _comparePct
+                  ? '100 % = meilleure séance de la période'
+                  : 'Volume, tonnage, effort ou meilleure valeur selon '
+                      'l\'exercice',
+              style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: _chartHeight,
+            child: MultiLineChart(
+              series: [
+                for (final e in _compared)
+                  ChartSeries(e, lines[e] ?? const [], color(e)),
+              ],
+              unitOf: (e) => _comparePct ? ' %' : units[e] ?? '',
+            ),
+          ),
+          const SizedBox(height: 16),
+          for (final e in _compared)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4, right: 8),
+                    child: CircleAvatar(backgroundColor: color(e), radius: 6),
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(e,
+                            overflow: TextOverflow.ellipsis,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 4),
+                        TrendBadge(result: detectPlateau(raw[e] ?? const [])),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+
+  // ─── Onglet Catégories ────────────────────────────────────────────────────
+
+  Widget _categoriesTab(BuildContext context) {
+    final bucket = _period == _Period.all ? Bucket.month : Bucket.week;
+    final buckets = setsByCategory(_inPeriod, bucket);
+    final totals = <String, int>{};
+    for (final (_, m) in buckets) {
+      m.forEach((c, n) => totals[c] = (totals[c] ?? 0) + n);
+    }
+    final categories = totals.keys.toList()
+      ..sort((a, b) => totals[b]!.compareTo(totals[a]!));
+    final shown = [
+      for (final (d, m) in buckets)
+        (
+          d,
+          {
+            for (final e in m.entries)
+              if (!_hiddenCategories.contains(e.key)) e.key: e.value
+          }
+        )
+    ];
+    final sum = totals.values.fold<int>(0, (a, b) => a + b);
+    String label(String c) => '$c · ${totals[c]}';
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text(
+            'Séries par catégorie, par '
+            '${bucket == Bucket.month ? 'mois' : 'semaine'}',
+            style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 12),
+        if (buckets.isEmpty)
+          _empty(context, 'Aucune séance sur cette période')
+        else ...[
+          SeriesLegend(
+            items: [
+              for (final (i, c) in categories.indexed)
+                (label(c), AppTheme.seriesColor(i))
+            ],
+            hidden: {for (final c in _hiddenCategories) label(c)},
+            onToggle: (l) {
+              final c = categories.firstWhere((c) => label(c) == l);
+              setState(() => _hiddenCategories.contains(c)
+                  ? _hiddenCategories.remove(c)
+                  : _hiddenCategories.add(c));
+            },
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: _chartHeight,
+            child: CategoryBars(
+                buckets: shown, categories: categories, bucket: bucket),
+          ),
+          const SizedBox(height: 12),
+          Text('$sum séries sur la période',
+              style: Theme.of(context).textTheme.bodySmall),
+        ],
+      ],
     );
   }
 }
