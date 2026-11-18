@@ -153,6 +153,22 @@ def check_oauth_callback(supabase, pkce_store: dict) -> None:
             # PIN demandé une dernière fois.
             st.session_state["_pending_profile"] = profil
 
+    # a bis) SESSION GOOGLE / E-MAIL (jetons repris des cookies) : le compte
+    #    donne accès aux profils qui lui ont été associés depuis l'app
+    #    (Réglages → Compte Google), sans PIN. Un seul → entrée directe ;
+    #    plusieurs → liste (entrée sans PIN) ; aucun → message d'aide.
+    user = _session_user(supabase)
+    if user is not None and not getattr(user, "is_anonymous", False) \
+            and not is_oauth_return:
+        members = [p for p in load_profiles() if p.get("is_member")]
+        if len(members) == 1:
+            _login_profile(controller, members[0])
+            return
+        if not members:
+            st.session_state["_google_without_profile"] = (
+                getattr(user, "email", None) or "ce compte")
+        return
+
     # b) Fallback Supabase : si le cookie est absent (cookie de session perdu
     #    quand Android tue Chrome), reconnecte au profil le plus récent.
     #    — Pas de PIN : connexion immédiate et transparente
@@ -171,14 +187,6 @@ def check_oauth_callback(supabase, pkce_store: dict) -> None:
                 if "_pending_profile" not in st.session_state:
                     st.session_state["_pending_profile"] = top
 
-    # 2. SESSION GOOGLE / E-MAIL DÉJÀ OUVERTE (jetons repris des cookies)
-    #    Une session anonyme n'ouvre rien : il faut choisir un profil + PIN.
-    user = _session_user(supabase)
-    if user is not None and not getattr(user, "is_anonymous", False):
-        st.session_state.user = user
-        st.session_state.auth_mode = "oauth"
-        return
-
     # 3. TRAITEMENT DU RETOUR OAUTH (GOOGLE)
     if not is_oauth_return:
         return
@@ -195,11 +203,13 @@ def check_oauth_callback(supabase, pkce_store: dict) -> None:
         res = supabase.auth.exchange_code_for_session({"auth_code": code})
         
         if res.user:
-            st.session_state.user = res.user
-            st.session_state.auth_mode = "oauth"
-            # SAUVEGARDE EN COOKIE (valable 30 jours)
-            controller.set("sys_acc_token", res.session.access_token, max_age=31536000)  # 1 an
-            controller.set("sys_ref_token", res.session.refresh_token, max_age=31536000)  # 1 an
+            # Session Google gardée en cookie (1 an). Au rechargement, ses
+            # profils associés s'ouvrent sans PIN (étape « a bis »).
+            controller.set("sys_acc_token", res.session.access_token, max_age=_ONE_YEAR)
+            controller.set("sys_ref_token", res.session.refresh_token, max_age=_ONE_YEAR)
+            st.session_state.pop("_manual_logout", None)
+            st.session_state.pop("_pending_profile", None)
+            _clear_profiles_cache()
             
             # Nettoyage manuel du store PKCE maintenant que le code est validé
             if intent_id in pkce_store:
@@ -255,6 +265,12 @@ def render_login_page(supabase, pkce_store: dict, app_url: str) -> None:
                     st.rerun()
             st.stop()
         # ─────────────────────────────────────────────────────────────────────
+
+        sans_profil = st.session_state.get("_google_without_profile")
+        if sans_profil:
+            st.info(f"🔵 Connecté avec Google ({sans_profil}), mais aucun profil "
+                    "n'est associé à ce compte. Associe-le depuis l'app Android : "
+                    "Réglages → Compte Google.")
 
         for p in profiles:
             if st.button(f"👤 {p['name']}", key=f"profile_btn_{p['id']}", width='stretch'):

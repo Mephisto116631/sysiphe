@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/profile.dart';
+import '../services/google_account.dart';
 import '../services/session_store.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
@@ -16,6 +17,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   List<Profile> _profiles = [];
   bool _loading = true;
+  bool _googleBusy = false;
   String? _error;
 
   @override
@@ -68,6 +70,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => HomeScreen(profile: profile)),
     );
+  }
+
+  /// « Se connecter avec Google » : les profils associés à ce compte
+  /// (Réglages → Compte Google sur un autre téléphone) s'ouvrent sans PIN.
+  Future<void> _google() async {
+    setState(() => _googleBusy = true);
+    final out = await GoogleAccount.supabase().connect(link: false);
+    if (!mounted) return;
+    setState(() => _googleBusy = false);
+    if (out.result != GoogleResult.signedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(out.result == GoogleResult.cancelled
+              ? 'Connexion Google annulée'
+              : 'Connexion Google impossible : ${out.message}'),
+          backgroundColor: Colors.red));
+      return;
+    }
+    await _load();
+    if (!mounted) return;
+    final members = _profiles.where((p) => p.isMember).toList();
+    if (members.length == 1) return _pick(members.first);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(members.isEmpty
+          ? 'Aucun profil n\'est associé à ce compte Google : choisis ton '
+              'profil (PIN), puis Réglages → Compte Google.'
+          : 'Connecté : tes profils s\'ouvrent sans PIN.'),
+    ));
   }
 
   /// « Créer un compte » : prénom + PIN facultatif, puis entrée directe.
@@ -179,6 +208,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                   ),
                 ),
+              if (!_loading && _error == null) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _googleBusy ? null : _google,
+                    icon: _googleBusy
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.account_circle_outlined),
+                    label: const Text('Se connecter avec Google'),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
