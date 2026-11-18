@@ -257,6 +257,16 @@ class SupabaseService {
         .eq('exercice', oldName);
   }
 
+  /// Range un exercice dans une catégorie, sur tout son historique.
+  Future<void> setExerciseCategory(
+      String userId, String exercice, String categorie) async {
+    await _db
+        .from('perfs')
+        .update({'categorie': categorie.trim()})
+        .eq('user_id', userId)
+        .eq('exercice', exercice);
+  }
+
   /// Insère plusieurs séries en une requête (saisie « 12 10 8 »).
   Future<void> savePerfs(List<Perf> perfs) async {
     if (perfs.isEmpty) return;

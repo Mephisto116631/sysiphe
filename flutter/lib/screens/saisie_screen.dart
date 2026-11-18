@@ -242,7 +242,11 @@ class _SaisieScreenState extends State<SaisieScreen>
     if (name.isEmpty) {
       final res = await showDialog<(String, String, String)>(
         context: context,
-        builder: (_) => NewExerciceDialog(existing: _exerciceNames),
+        builder: (_) => NewExerciceDialog(
+            existing: _exerciceNames,
+            categories: {
+              for (final e in _exerciceMeta.entries) e.key: e.value.$2
+            }),
       );
       if (res == null) return;
       name = res.$1;
@@ -556,7 +560,9 @@ class _SaisieScreenState extends State<SaisieScreen>
   Future<void> _newExercice() async {
     final res = await showDialog<(String, String, String)>(
       context: context,
-      builder: (_) => NewExerciceDialog(existing: _exerciceNames),
+      builder: (_) => NewExerciceDialog(existing: _exerciceNames, categories: {
+        for (final e in _exerciceMeta.entries) e.key: e.value.$2
+      }),
     );
     if (res == null) return;
     final (name, unite, categorie) = res;

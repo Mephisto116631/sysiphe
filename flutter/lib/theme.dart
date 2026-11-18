@@ -9,6 +9,18 @@ class AppTheme {
   static const Color borderColor = Color(0xFFE5E7EB);
   static const Color selectedChipText = Color(0xFF0D47A1); // bleu foncé
 
+  /// Couleurs des courbes / barres de plusieurs séries (lisibles sur fond
+  /// clair, distinctes entre elles).
+  static const List<Color> seriesColors = [
+    Color(0xFF1976D2), // bleu
+    Color(0xFFE65100), // orange
+    Color(0xFF2E7D32), // vert
+    Color(0xFF8E24AA), // violet
+    Color(0xFFC62828), // rouge
+    Color(0xFF00838F), // bleu-vert
+  ];
+  static Color seriesColor(int i) => seriesColors[i % seriesColors.length];
+
   static ThemeData get light => ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
@@ -40,7 +52,8 @@ class AppTheme {
           unselectedItemColor: textSecondary,
           type: BottomNavigationBarType.fixed,
           elevation: 8,
-          selectedLabelStyle: TextStyle(fontWeight: FontWeight.w600, fontSize: 11),
+          selectedLabelStyle:
+              TextStyle(fontWeight: FontWeight.w600, fontSize: 11),
           unselectedLabelStyle: TextStyle(fontSize: 11),
         ),
         cardTheme: CardTheme(
@@ -68,7 +81,8 @@ class AppTheme {
             borderRadius: BorderRadius.circular(10),
             borderSide: const BorderSide(color: primaryBlue, width: 2),
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           labelStyle: const TextStyle(color: textSecondary),
           hintStyle: const TextStyle(color: textSecondary),
         ),
@@ -77,8 +91,10 @@ class AppTheme {
             backgroundColor: primaryBlue,
             foregroundColor: Colors.white,
             minimumSize: const Size(double.infinity, 50),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            textStyle:
+                const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
             elevation: 0,
           ),
         ),
@@ -87,7 +103,8 @@ class AppTheme {
             foregroundColor: primaryBlue,
             side: const BorderSide(color: primaryBlue),
             minimumSize: const Size(double.infinity, 48),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         ),
         // Couleurs de texte explicites : sans couleur, le libellé était peint
@@ -98,7 +115,9 @@ class AppTheme {
           checkmarkColor: selectedChipText,
           labelStyle: const TextStyle(fontSize: 13, color: textPrimary),
           secondaryLabelStyle: const TextStyle(
-              fontSize: 13, color: selectedChipText, fontWeight: FontWeight.w600),
+              fontSize: 13,
+              color: selectedChipText,
+              fontWeight: FontWeight.w600),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           side: const BorderSide(color: borderColor),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -109,14 +128,14 @@ class AppTheme {
           space: 1,
         ),
         textTheme: const TextTheme(
-          headlineLarge:
-              TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: textPrimary),
-          headlineMedium:
-              TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: textPrimary),
-          titleLarge:
-              TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: textPrimary),
-          titleMedium:
-              TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: textPrimary),
+          headlineLarge: TextStyle(
+              fontSize: 28, fontWeight: FontWeight.bold, color: textPrimary),
+          headlineMedium: TextStyle(
+              fontSize: 22, fontWeight: FontWeight.bold, color: textPrimary),
+          titleLarge: TextStyle(
+              fontSize: 18, fontWeight: FontWeight.w600, color: textPrimary),
+          titleMedium: TextStyle(
+              fontSize: 15, fontWeight: FontWeight.w600, color: textPrimary),
           bodyLarge: TextStyle(fontSize: 15, color: textPrimary),
           bodyMedium: TextStyle(fontSize: 13, color: textSecondary),
           labelSmall: TextStyle(fontSize: 11, color: textSecondary),

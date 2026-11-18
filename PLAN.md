@@ -118,9 +118,9 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
 - [ ] Rappel de prochaine séance dans l'agenda (`.ics`)
 
 **Stats / Records**
-- [ ] Graphe « séries par catégorie »
-- [ ] Planche : une courbe par variante
-- [ ] Comparer plusieurs exercices sur un même graphe
+- [x] Graphe « séries par catégorie » (v2.12.0 : barres empilées par semaine, par mois sur « Tout »)
+- [x] Planche : une courbe par variante (v2.12.0 : option « Par variante », légende masquable)
+- [x] Comparer plusieurs exercices sur un même graphe (v2.12.0 : jusqu'à 5, en % du record ou valeurs brutes)
 - [x] Records planche par combinaison variante / élastique / tension (couleur d'intensité) ; records muscu = meilleure séance (volume ou tonnage) + meilleure série
 
 **Paramètres**
@@ -255,3 +255,26 @@ Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec 
       redémarrage. Réglages → Rappels. Le minuteur, le repos et le chrono n'effacent plus que leurs propres notifications
 - [ ] **Toi** : Réglages → Rappels, régler l'heure juste après l'heure actuelle pour voir arriver un rappel
 - [x] Associer un compte Google : profils retrouvés sur un autre téléphone ou sur le web sans PIN (v2.11.0)
+
+## Session de rattrapage — site web (mis de côté le 18/11, priorité à l'app)
+
+- [ ] « Se connecter avec Google » sur le site demande encore le PIN. Piste : à l'ouverture, le site présélectionne le
+      profil le plus récent et affiche directement l'écran PIN, qui masque le bouton Google (`auth.py`, repli « b »
+      avant l'étape « a bis »)
+- [ ] Rouvrir la **saisie** sur le site (en consultation seule depuis le 17/11, ce qui le rend peu utile pour toi)
+
+## Décidé pour plus tard — module Course GPS (18/11)
+
+- [ ] Pas dans tous les APK : la CI publie `sysiphe.apk` (sans course) et `sysiphe-course.apk` (avec). Réglages →
+      Mises à jour → « Activer le module Course » bascule vers la version course et la garde à chaque mise à jour
+      (même app, données conservées ; retour possible). Seule la version course demande la localisation.
+      (Une app installée hors Play Store ne peut pas télécharger un module de code après coup.)
+
+## Catégories des exercices (18/11, v2.13.0)
+
+- [x] Réglages → **Catégories des exercices** : ranger chaque exercice avec ses propres catégories (Planche,
+      Handstand…), appliqué à tout son historique ; exercices « mélangés » signalés (ex. Abdos : Gainage / Musculation)
+- [x] Création d'un exercice : catégorie **proposée pendant la frappe**, apprise du rangement de l'utilisateur (pas de
+      dictionnaire imposé) : le mot le plus caractéristique l'emporte (« Pompe de handstand » → Handstand), à égalité
+      le premier du nom (« Planche to handstand » → Planche) ; rien de connu → catégorie par défaut ; toujours modifiable
+- [ ] **Toi** : ranger tes exercices actuels (Réglages → Catégories des exercices) ; les propositions s'appuient dessus

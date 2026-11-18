@@ -16,10 +16,9 @@ import '../widgets/reminders_card.dart';
 import '../widgets/update_flow.dart';
 import 'model_screen.dart';
 import 'assistable_screen.dart';
+import 'categories_screen.dart';
 import 'manage_screen.dart';
 import 'profile_screen.dart' show ProfileScreen;
-
-
 
 class SettingsScreen extends StatefulWidget {
   final String userId;
@@ -134,8 +133,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               if (ctrl1.text.isEmpty || ctrl1.text != ctrl2.text) {
                 if (ctx.mounted) {
                   ScaffoldMessenger.of(ctx).showSnackBar(
-                    const SnackBar(
-                        content: Text('PINs ne correspondent pas')),
+                    const SnackBar(content: Text('PINs ne correspondent pas')),
                   );
                 }
                 return;
@@ -194,7 +192,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       final (csv, n) = await SupabaseService.instance.exportAllPerfsCsv();
       final d = DateTime.now();
-      final name = 'sysiphe-export-${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}.csv';
+      final name =
+          'sysiphe-export-${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}.csv';
       final file = File('${Directory.systemTemp.path}/$name');
       // BOM UTF-8 : Excel affiche correctement les accents.
       await file.writeAsString('\uFEFF$csv', flush: true);
@@ -257,7 +256,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         builder: (context, snap) {
                           final mo = (snap.data ?? 0) / 1048576;
                           return ListTile(
-                            leading: const Icon(Icons.cleaning_services_outlined,
+                            leading: const Icon(
+                                Icons.cleaning_services_outlined,
                                 color: AppTheme.primaryBlue),
                             title: const Text('Libérer de l\'espace'),
                             subtitle: Text(snap.hasData
@@ -270,16 +270,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               final freed = await UpdateService.cleanup();
                               if (!context.mounted) return;
                               setState(() => _cacheRefresh++);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                      content: Text(
-                                          '${(freed / 1048576).toStringAsFixed(0)} Mo libérés')));
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                  content: Text(
+                                      '${(freed / 1048576).toStringAsFixed(0)} Mo libérés')));
                             },
                           );
                         },
                       ),
                       SwitchListTile(
-                        secondary: const Icon(Icons.download_for_offline_outlined,
+                        secondary: const Icon(
+                            Icons.download_for_offline_outlined,
                             color: AppTheme.primaryBlue),
                         title: const Text('Télécharger automatiquement'),
                         subtitle: const Text(
@@ -335,8 +335,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   ? const SizedBox.square(
                                       dimension: 18,
                                       child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.white))
+                                          strokeWidth: 2, color: Colors.white))
                                   : const Text('OK'),
                             ),
                           ],
@@ -393,8 +392,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     trailing: const Icon(Icons.chevron_right,
                         color: AppTheme.textSecondary),
                     onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => ManageScreen(current: widget.profile))),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.category_outlined,
+                        color: AppTheme.primaryBlue),
+                    title: const Text('Catégories des exercices'),
+                    subtitle: const Text(
+                        'Ranger tes exercices avec tes propres catégories'),
+                    trailing: const Icon(Icons.chevron_right,
+                        color: AppTheme.textSecondary),
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
                         builder: (_) =>
-                            ManageScreen(current: widget.profile))),
+                            CategoriesScreen(userId: widget.profile.id))),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -449,8 +462,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _SectionLabel('Session'),
                 Card(
                   child: ListTile(
-                    leading:
-                        const Icon(Icons.logout, color: Colors.redAccent),
+                    leading: const Icon(Icons.logout, color: Colors.redAccent),
                     title: const Text('Changer de profil',
                         style: TextStyle(color: Colors.redAccent)),
                     onTap: _logout,

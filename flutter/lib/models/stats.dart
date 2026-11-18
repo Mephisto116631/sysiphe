@@ -55,7 +55,8 @@ List<DayPoint> dailySeries(List<Perf> perfs, StatMetric metric) {
     final v = switch (metric) {
       StatMetric.effort => (p.effortPondere ?? 0).toDouble(),
       // Une série sans lest compte pour sa valeur brute, comme sur le web.
-      StatMetric.tonnage => p.charge > 0 ? p.performance * p.charge : p.performance,
+      StatMetric.tonnage =>
+        p.charge > 0 ? p.performance * p.charge : p.performance,
       StatMetric.volume => p.performance,
       StatMetric.best => p.performance,
     };
@@ -80,7 +81,8 @@ class PlateauResult {
   final double slope;
   final double relativeSlope;
   final int nPoints;
-  const PlateauResult(this.status, this.slope, this.relativeSlope, this.nPoints);
+  const PlateauResult(
+      this.status, this.slope, this.relativeSlope, this.nPoints);
 }
 
 /// Port fidèle de `detect_plateau` (data.py) : régression linéaire sur les
@@ -172,10 +174,12 @@ RestStats? computeRest(Iterable<DateTime> sessionDates) {
     dist[g.restDays] = (dist[g.restDays] ?? 0) + 1;
   }
   final maxCount = dist.values.reduce((a, b) => a > b ? a : b);
-  final mode = (dist.entries.where((e) => e.value == maxCount).map((e) => e.key).toList()
-        ..sort())
-      .first;
-  final mean = gaps.map((g) => g.restDays).reduce((a, b) => a + b) / gaps.length;
+  final mode =
+      (dist.entries.where((e) => e.value == maxCount).map((e) => e.key).toList()
+            ..sort())
+          .first;
+  final mean =
+      gaps.map((g) => g.restDays).reduce((a, b) => a + b) / gaps.length;
   final longest = gaps.map((g) => g.restDays).reduce((a, b) => a > b ? a : b);
   final last = days.last;
   final next = DateTime(last.year, last.month, last.day + mode + 1);
@@ -254,9 +258,8 @@ class ExerciseInsight {
   /// (une séance plus courte compte pour son total). 0 sans historique.
   double avgVolumeAt(int nSets) {
     if (recent.isEmpty || nSets <= 0) return 0;
-    final sums = recent
-        .map((s) => s.take(nSets).fold(0.0, (a, b) => a + b))
-        .toList();
+    final sums =
+        recent.map((s) => s.take(nSets).fold(0.0, (a, b) => a + b)).toList();
     return sums.reduce((a, b) => a + b) / sums.length;
   }
 
@@ -324,7 +327,8 @@ List<PlancheRecord> plancheRecords(Iterable<Perf> perfs) {
     for (final p in best.values)
       PlancheRecord(p.variante, p.elastique, p.tension, p),
   ]..sort((a, b) {
-      final c = (b.best.effortPondere ?? 0).compareTo(a.best.effortPondere ?? 0);
+      final c =
+          (b.best.effortPondere ?? 0).compareTo(a.best.effortPondere ?? 0);
       return c != 0 ? c : b.best.performance.compareTo(a.best.performance);
     });
   return out;
@@ -371,5 +375,109 @@ List<DateTime> sessionDatesSince(Iterable<DateTime> dates, int? days,
   if (days == null) return dates.toList();
   final ref = _day(now ?? DateTime.now());
   final from = ref.subtract(Duration(days: days));
-  return [for (final d in dates) if (!_day(d).isBefore(from)) d];
+  return [
+    for (final d in dates)
+      if (!_day(d).isBefore(from)) d
+  ];
+}
+
+// ─── Stats enrichies : variantes, comparaison, catégories ──────────────────
+
+/// Une courbe par variante de planche : effort maximal du jour (ou meilleur
+/// temps si [time]), comme le graphe « Évolution Planche » du web.
+Map<String, List<DayPoint>> seriesByVariante(Iterable<Perf> perfs,
+    {bool time = false}) {
+  final byVar = <String, List<Perf>>{};
+  for (final p in perfs) {
+    final v = p.variante.trim().isEmpty ? 'Full' : p.variante.trim();
+    (byVar[v] ??= []).add(p);
+  }
+  final metric = time ? StatMetric.best : StatMetric.effort;
+  final out = <String, List<DayPoint>>{
+    for (final e in byVar.entries) e.key: dailySeries(e.value, metric),
+  };
+  // Variantes dans l'ordre de leur meilleure valeur (la plus dure d'abord).
+  double best(List<DayPoint> s) =>
+      s.isEmpty ? 0 : s.map((p) => p.value).reduce((a, b) => a > b ? a : b);
+  final keys = out.keys.toList()
+    ..sort((a, b) => best(out[b]!).compareTo(best(out[a]!)));
+  return {for (final k in keys) k: out[k]!};
+}
+
+/// Ramène une courbe en % de son meilleur jour (meilleur = 100).
+List<DayPoint> normalizeToBest(List<DayPoint> points) {
+  if (points.isEmpty) return const [];
+  final best = points.map((p) => p.value).reduce((a, b) => a > b ? a : b);
+  if (best <= 0) return [for (final p in points) DayPoint(p.date, 0)];
+  return [for (final p in points) DayPoint(p.date, p.value / best * 100)];
+}
+
+/// Aligne plusieurs courbes sur les mêmes dates en reportant la dernière
+/// valeur connue (équivalent du `ffill` du web). Avant le premier point d'une
+/// courbe, rien n'est inventé.
+Map<String, List<DayPoint>> forwardFill(Map<String, List<DayPoint>> series) {
+  final dates = <DateTime>{
+    for (final s in series.values)
+      for (final p in s) p.date
+  }.toList()
+    ..sort();
+  return {
+    for (final e in series.entries)
+      e.key: () {
+        final byDate = {for (final p in e.value) p.date: p.value};
+        final out = <DayPoint>[];
+        double? last;
+        for (final d in dates) {
+          last = byDate[d] ?? last;
+          if (last != null) out.add(DayPoint(d, last));
+        }
+        return out;
+      }(),
+  };
+}
+
+/// Catégorie affichée : les écritures d'une même catégorie sont regroupées
+/// (« Force isométrique » → « Force Iso », comme la migration en attente).
+String normalizeCategory(String raw) {
+  final c = raw.trim();
+  if (c.isEmpty) return 'Autre';
+  final l = c.toLowerCase();
+  if (l == 'force iso' ||
+      l == 'force isométrique' ||
+      l == 'force isometrique') {
+    return 'Force Iso';
+  }
+  return c[0].toUpperCase() + c.substring(1);
+}
+
+enum Bucket { week, month }
+
+/// Début de la semaine (lundi) ou du mois contenant [d].
+DateTime bucketStart(DateTime d, Bucket b) => b == Bucket.month
+    ? DateTime(d.year, d.month)
+    : DateTime(d.year, d.month, d.day - (d.weekday - DateTime.monday));
+
+/// Nombre de séries par catégorie, par semaine ou par mois, dans l'ordre
+/// chronologique. Les semaines / mois sans séance de la plage sont inclus
+/// (barres vides) pour ne pas tasser l'axe du temps.
+List<(DateTime, Map<String, int>)> setsByCategory(
+    Iterable<Perf> perfs, Bucket bucket) {
+  final counts = <DateTime, Map<String, int>>{};
+  for (final p in perfs) {
+    final k = bucketStart(p.date, bucket);
+    final m = counts[k] ??= {};
+    final c = normalizeCategory(p.categorie);
+    m[c] = (m[c] ?? 0) + 1;
+  }
+  if (counts.isEmpty) return const [];
+  final keys = counts.keys.toList()..sort();
+  final out = <(DateTime, Map<String, int>)>[];
+  var k = keys.first;
+  while (!k.isAfter(keys.last)) {
+    out.add((k, counts[k] ?? const {}));
+    k = bucket == Bucket.month
+        ? DateTime(k.year, k.month + 1)
+        : DateTime(k.year, k.month, k.day + 7);
+  }
+  return out;
 }
