@@ -269,3 +269,12 @@ Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec 
       Mises à jour → « Activer le module Course » bascule vers la version course et la garde à chaque mise à jour
       (même app, données conservées ; retour possible). Seule la version course demande la localisation.
       (Une app installée hors Play Store ne peut pas télécharger un module de code après coup.)
+
+## Catégories des exercices (18/11, v2.13.0)
+
+- [x] Réglages → **Catégories des exercices** : ranger chaque exercice avec ses propres catégories (Planche,
+      Handstand…), appliqué à tout son historique ; exercices « mélangés » signalés (ex. Abdos : Gainage / Musculation)
+- [x] Création d'un exercice : catégorie **proposée pendant la frappe**, apprise du rangement de l'utilisateur (pas de
+      dictionnaire imposé) : le mot le plus caractéristique l'emporte (« Pompe de handstand » → Handstand), à égalité
+      le premier du nom (« Planche to handstand » → Planche) ; rien de connu → catégorie par défaut ; toujours modifiable
+- [ ] **Toi** : ranger tes exercices actuels (Réglages → Catégories des exercices) ; les propositions s'appuient dessus

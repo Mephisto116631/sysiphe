@@ -15,7 +15,7 @@ class Perf {
   final double performance;
   final double charge;
   final String unite; // "Sec" | "Reps" | "Kg"
-  final String categorie; // "Force Iso" | "Musculation"
+  final String categorie; // libre (rangement de l'utilisateur)
   final String elastique;
   final String tension;
   final String ecartement; // écart des mains (exercices assistables)
@@ -39,12 +39,32 @@ class Perf {
     this.effortPondere,
   });
 
+  /// Même série rangée dans une autre catégorie.
+  Perf copyWithCategorie(String c) => Perf(
+        id: id,
+        userId: userId,
+        date: date,
+        exercice: exercice,
+        variante: variante,
+        forme: forme,
+        serie: serie,
+        performance: performance,
+        charge: charge,
+        unite: unite,
+        categorie: c,
+        elastique: elastique,
+        tension: tension,
+        ecartement: ecartement,
+        effortPondere: effortPondere,
+      );
+
   factory Perf.fromJson(Map<String, dynamic> json) => Perf(
         id: (json['id'] as num?)?.toInt(),
         userId: json['user_id'] as String,
         date: DateTime.parse(json['date'] as String),
         exercice: (json['exercice'] as String?)?.trim() ?? '',
-        variante: (json['variante'] as String?)?.trim() ?? 'Tuck', // comme load_data()
+        variante: (json['variante'] as String?)?.trim() ??
+            'Tuck', // comme load_data()
         forme: (json['forme'] as String?)?.trim() ?? 'Normal',
         serie: (json['serie'] as num?)?.toInt() ?? 1,
         performance: (json['performance'] as num?)?.toDouble() ?? 0.0,

@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
+import '../../models/categorize.dart';
 import '../../models/session.dart';
 
 /// « Nouvel exercice » : renvoie (nom, unité, catégorie).
+/// La catégorie est proposée pendant la frappe du nom, d'après la façon dont
+/// l'utilisateur a rangé ses exercices ([categories] : exercice → catégorie),
+/// tant qu'il ne l'a pas choisie lui-même.
 class NewExerciceDialog extends StatefulWidget {
   final List<String> existing;
+  final Map<String, String> categories;
 
-  const NewExerciceDialog({super.key, required this.existing});
+  const NewExerciceDialog(
+      {super.key, required this.existing, this.categories = const {}});
 
   @override
   State<NewExerciceDialog> createState() => _NewExerciceDialogState();
@@ -16,6 +22,33 @@ class _NewExerciceDialogState extends State<NewExerciceDialog> {
   final _name = TextEditingController();
   final _cat = TextEditingController(text: 'Musculation');
   String _unite = 'Reps';
+  late final _learner = CategoryLearner(widget.categories);
+  bool _catChosen = false; // catégorie choisie à la main : plus de proposition
+  bool _suggested = false;
+
+  /// Catégories déjà utilisées, les plus fréquentes d'abord.
+  late final List<String> _known = () {
+    final n = <String, int>{};
+    for (final c in widget.categories.values) {
+      n[c] = (n[c] ?? 0) + 1;
+    }
+    return n.keys.toList()..sort((a, b) => n[b]!.compareTo(n[a]!));
+  }();
+
+  String get _defaultCat => _unite == 'Sec' ? 'Force Iso' : 'Musculation';
+
+  void _onName(String name) {
+    if (_catChosen) return;
+    final s = _learner.suggest(name);
+    _suggested = s != null;
+    _cat.text = s ?? _defaultCat;
+  }
+
+  void _pickCat(String c) {
+    _catChosen = true;
+    _suggested = false;
+    _cat.text = c;
+  }
 
   @override
   void dispose() {
@@ -61,7 +94,7 @@ class _NewExerciceDialogState extends State<NewExerciceDialog> {
                                 null
                             ? 'Existe déjà : il sera ouvert tel quel'
                             : null),
-                onChanged: (_) => setState(() {}),
+                onChanged: (v) => setState(() => _onName(v)),
                 validator: (v) => (v?.trim() ?? '').isEmpty ? 'Requis' : null,
               ),
               const SizedBox(height: 16),
@@ -77,21 +110,45 @@ class _NewExerciceDialogState extends State<NewExerciceDialog> {
                 showSelectedIcon: false,
                 onSelectionChanged: (v) => setState(() {
                   _unite = v.first;
-                  // Catégorie par défaut cohérente avec l'unité.
-                  if (_cat.text == 'Musculation' || _cat.text == 'Force Iso') {
-                    _cat.text = _unite == 'Sec' ? 'Force Iso' : 'Musculation';
-                  }
+                  // Catégorie par défaut cohérente avec l'unité (sauf si
+                  // proposée d'après le nom ou choisie).
+                  if (!_catChosen && !_suggested) _cat.text = _defaultCat;
                 }),
               ),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _cat,
                 textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                     labelText: 'Catégorie',
-                    hintText: 'Musculation, Force Iso, Gainage…'),
+                    hintText: 'Musculation, Force Iso, Gainage…',
+                    helperText:
+                        _suggested ? 'Proposée d\'après tes exercices' : null,
+                    prefixIcon: _suggested
+                        ? const Icon(Icons.auto_awesome, size: 18)
+                        : null),
+                onChanged: (_) => setState(() {
+                  _catChosen = true;
+                  _suggested = false;
+                }),
                 onFieldSubmitted: (_) => _submit(),
               ),
+              if (_known.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    for (final c in _known.take(8))
+                      ChoiceChip(
+                        label: Text(c),
+                        selected: _cat.text.trim() == c,
+                        visualDensity: VisualDensity.compact,
+                        onSelected: (_) => setState(() => _pickCat(c)),
+                      ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
