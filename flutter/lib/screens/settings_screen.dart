@@ -1,157 +1,99 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:share_plus/share_plus.dart';
+import '../app_version.dart';
 import '../models/profile.dart';
-import '../services/supabase_service.dart';
-import '../theme.dart';
-import '../services/data_events.dart';
 import '../services/google_account.dart';
+import '../services/reminders.dart';
 import '../services/role.dart';
 import '../services/session_store.dart';
-import '../app_version.dart';
-import '../services/update_service.dart';
-import '../widgets/google_account_card.dart';
-import '../widgets/reminders_card.dart';
-import '../widgets/update_flow.dart';
-import 'model_screen.dart';
-import 'assistable_screen.dart';
-import 'categories_screen.dart';
-import 'manage_screen.dart';
+import '../services/supabase_service.dart';
+import '../theme.dart';
 import 'profile_screen.dart' show ProfileScreen;
+import 'settings/account_page.dart';
+import 'settings/admin_page.dart';
+import 'settings/app_page.dart';
+import 'settings/common.dart';
+import 'settings/exercises_page.dart';
+import 'settings/reminders_page.dart';
+import 'settings/training_page.dart';
 
+/// État résumé affiché sous chaque entrée de l'écran principal.
+class SettingsSummary {
+  final double weight;
+  final bool enableCharges;
+  final bool remindersOn;
+  final int reminderHour;
+  final int inactivityDays;
+  final String? googleEmail;
+
+  const SettingsSummary({
+    this.weight = 97,
+    this.enableCharges = true,
+    this.remindersOn = true,
+    this.reminderHour = Reminders.defaultHour,
+    this.inactivityDays = 2,
+    this.googleEmail,
+  });
+
+  static Future<SettingsSummary> load(String userId) async {
+    final s = await SupabaseService.instance.getSettings(userId);
+    String? email;
+    try {
+      email = GoogleAccount.currentEmail;
+    } catch (_) {}
+    return SettingsSummary(
+      weight: (s['weight'] as num?)?.toDouble() ?? 97,
+      enableCharges: s['enable_charges'] as bool? ?? true,
+      remindersOn: await Reminders.enabled(),
+      reminderHour: await Reminders.hour(),
+      inactivityDays: (s['inactivity_days'] as num?)?.toInt() ?? 2,
+      googleEmail: email,
+    );
+  }
+}
+
+String _num(double v) => v % 1 == 0 ? v.toInt().toString() : '$v';
+
+/// Réglages : en-tête du profil, puis une entrée par thème (sous-pages).
 class SettingsScreen extends StatefulWidget {
   final String userId;
   final Profile profile;
 
+  /// Résumé fourni directement (tests) : pas d'accès réseau.
+  final Future<SettingsSummary> Function()? loadSummary;
+
   const SettingsScreen(
-      {super.key, required this.userId, required this.profile});
+      {super.key,
+      required this.userId,
+      required this.profile,
+      this.loadSummary});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final _weightCtrl = TextEditingController();
-  bool _saving = false;
-  bool _enableCharges = true; // user_settings.enable_charges
-  bool _loading = true;
-  int _cacheRefresh = 0; // relance le calcul de l'espace utilisé
-  bool _autoUpdate = false; // préférence de l'appareil (pas du profil)
+  SettingsSummary? _s;
 
   @override
   void initState() {
     super.initState();
     _load();
-    UpdateService.autoDownload().then((v) {
-      if (mounted) setState(() => _autoUpdate = v);
-    });
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
-    final s = await SupabaseService.instance.getSettings(widget.userId);
-    if (!mounted) return;
-    setState(() {
-      _weightCtrl.text = ((s['weight'] as num?)?.toString() ?? '97');
-      _enableCharges = s['enable_charges'] as bool? ?? true;
-      _loading = false;
-    });
-  }
-
-  /// Afficher ou masquer le champ « Lest (kg) » dans la saisie (réglage
-  /// enable_charges, partagé avec le web). Les lests déjà enregistrés
-  /// restent en base et comptent toujours dans les stats.
-  Future<void> _setEnableCharges(bool v) async {
-    setState(() => _enableCharges = v);
     try {
-      await SupabaseService.instance
-          .saveSettings(widget.userId, {'enable_charges': v});
-      notifyDataChanged(); // la Saisie relit le réglage
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _enableCharges = !v);
-      _snack('Erreur : $e', error: true);
+      final s = await (widget.loadSummary ??
+          () => SettingsSummary.load(widget.userId))();
+      if (mounted) setState(() => _s = s);
+    } catch (_) {
+      if (mounted) setState(() => _s ??= const SettingsSummary());
     }
   }
 
-  Future<void> _saveWeight() async {
-    final weight = double.tryParse(_weightCtrl.text.replaceAll(',', '.'));
-    if (weight == null || weight <= 0) {
-      _snack('Poids invalide', error: true);
-      return;
-    }
-    setState(() => _saving = true);
-    try {
-      await SupabaseService.instance
-          .saveSettings(widget.userId, {'weight': weight});
-      setState(() => _saving = false);
-      _snack('Poids enregistré');
-    } catch (e) {
-      setState(() => _saving = false);
-      _snack('Erreur : $e', error: true);
-    }
-  }
-
-  Future<void> _changePin() async {
-    final ctrl1 = TextEditingController();
-    final ctrl2 = TextEditingController();
-
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Changer le PIN'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: ctrl1,
-              obscureText: true,
-              keyboardType: TextInputType.number,
-              maxLength: 6,
-              decoration: const InputDecoration(
-                  labelText: 'Nouveau PIN', counterText: ''),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: ctrl2,
-              obscureText: true,
-              keyboardType: TextInputType.number,
-              maxLength: 6,
-              decoration: const InputDecoration(
-                  labelText: 'Confirmer le PIN', counterText: ''),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              if (ctrl1.text.isEmpty || ctrl1.text != ctrl2.text) {
-                if (ctx.mounted) {
-                  ScaffoldMessenger.of(ctx).showSnackBar(
-                    const SnackBar(content: Text('PINs ne correspondent pas')),
-                  );
-                }
-                return;
-              }
-              try {
-                await SupabaseService.instance
-                    .setPin(widget.userId, ctrl1.text);
-                if (ctx.mounted) Navigator.pop(ctx);
-                _snack('PIN mis à jour');
-              } catch (e) {
-                _snack('Erreur : $e', error: true);
-              }
-            },
-            child: const Text('Enregistrer'),
-          ),
-        ],
-      ),
-    );
+  /// Ouvre une sous-page puis rafraîchit les résumés au retour.
+  Future<void> _open(Widget page) async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+    _load();
   }
 
   Future<void> _logout() async {
@@ -159,7 +101,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // Session anonyme : on la ferme, ce téléphone perd son rattachement aux
     // profils et le PIN sera redemandé (une nouvelle session sera créée).
     // Session Google : gardée (ses profils restent accessibles sans PIN) ;
-    // « Se déconnecter de Google » est à part, dans la carte Compte Google.
+    // « Se déconnecter de Google » est dans Compte et sécurité.
     if (GoogleAccount.currentEmail == null) {
       await SupabaseService.instance.signOut();
     }
@@ -170,332 +112,105 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _snack(String msg, {bool error = false}) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg),
-      backgroundColor: error ? Colors.red : Colors.green,
-      behavior: SnackBarBehavior.floating,
-    ));
-  }
-
-  @override
-  void dispose() {
-    _weightCtrl.dispose();
-    super.dispose();
-  }
-
-  /// Export admin : crée un vrai fichier .csv (toutes les séries de tous les
-  /// profils, rôle vérifié côté serveur) et ouvre le partage Android
-  /// (Drive, Fichiers, e-mail…).
-  Future<void> _exportAll() async {
-    try {
-      final (csv, n) = await SupabaseService.instance.exportAllPerfsCsv();
-      final d = DateTime.now();
-      final name =
-          'sysiphe-export-${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}.csv';
-      final file = File('${Directory.systemTemp.path}/$name');
-      // BOM UTF-8 : Excel affiche correctement les accents.
-      await file.writeAsString('\uFEFF$csv', flush: true);
-      await Share.shareXFiles(
-        [XFile(file.path, mimeType: 'text/csv', name: name)],
-        subject: 'Export Sysiphe ($n séries)',
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Export impossible : $e'),
-        backgroundColor: Colors.red.shade700,
-        behavior: SnackBarBehavior.floating,
-      ));
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
+    final s = _s;
+    final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Paramètres')),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16),
+      appBar: AppBar(title: const Text('Réglages')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Card(
+            child: Column(
               children: [
-                _SectionLabel('Profil'),
-                Card(
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: AppTheme.primaryBlue,
-                      child: Text(widget.profile.initials,
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold)),
-                    ),
-                    title: Text(widget.profile.name,
-                        style: Theme.of(context).textTheme.titleMedium),
-                    subtitle: const Text('Profil actif'),
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: AppTheme.primaryBlue,
+                    child: Text(widget.profile.initials,
+                        style: const TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.bold)),
                   ),
+                  title: Text(widget.profile.name,
+                      style: theme.textTheme.titleMedium),
+                  subtitle: Text(s == null
+                      ? 'Profil actif'
+                      : 'Profil actif · ${_num(s.weight)} kg'),
                 ),
-                const SizedBox(height: 20),
-
-                _SectionLabel('Application'),
-                Card(
-                  child: Column(
-                    children: [
-                      ListTile(
-                        leading: const Icon(Icons.system_update,
-                            color: AppTheme.primaryBlue),
-                        title: const Text('Mises à jour'),
-                        subtitle: Text('Version $kAppVersion · vérifier'),
-                        trailing: const Icon(Icons.chevron_right,
-                            color: AppTheme.textSecondary),
-                        onTap: () => checkAndOfferUpdate(context),
-                      ),
-                      FutureBuilder<int>(
-                        key: ValueKey(_cacheRefresh),
-                        future: UpdateService.cacheBytes(),
-                        builder: (context, snap) {
-                          final mo = (snap.data ?? 0) / 1048576;
-                          return ListTile(
-                            leading: const Icon(
-                                Icons.cleaning_services_outlined,
-                                color: AppTheme.primaryBlue),
-                            title: const Text('Libérer de l\'espace'),
-                            subtitle: Text(snap.hasData
-                                ? 'Anciennes mises à jour et exports : '
-                                    '${mo.toStringAsFixed(mo < 10 ? 1 : 0)} Mo'
-                                : 'Calcul…'),
-                            trailing: const Icon(Icons.chevron_right,
-                                color: AppTheme.textSecondary),
-                            onTap: () async {
-                              final freed = await UpdateService.cleanup();
-                              if (!context.mounted) return;
-                              setState(() => _cacheRefresh++);
-                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                                  content: Text(
-                                      '${(freed / 1048576).toStringAsFixed(0)} Mo libérés')));
-                            },
-                          );
-                        },
-                      ),
-                      SwitchListTile(
-                        secondary: const Icon(
-                            Icons.download_for_offline_outlined,
-                            color: AppTheme.primaryBlue),
-                        title: const Text('Télécharger automatiquement'),
-                        subtitle: const Text(
-                            'Récupère la mise à jour au lancement ; il ne reste '
-                            'qu\'à confirmer l\'installation. Réglage de '
-                            'l\'appareil, commun à tous les profils.'),
-                        value: _autoUpdate,
-                        onChanged: (v) {
-                          setState(() => _autoUpdate = v);
-                          UpdateService.setAutoDownload(v);
-                        },
-                      ),
-                    ],
-                  ),
+                const Divider(height: 1),
+                ListTile(
+                  leading:
+                      const Icon(Icons.swap_horiz, color: Colors.redAccent),
+                  title: const Text('Changer de profil',
+                      style: TextStyle(color: Colors.redAccent)),
+                  onTap: _logout,
                 ),
-                const SizedBox(height: 20),
-
-                _SectionLabel('Entraînement'),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Poids corporel (kg)',
-                            style: Theme.of(context).textTheme.titleMedium),
-                        const SizedBox(height: 4),
-                        Text('Utilisé pour le calcul d\'effort planche.',
-                            style: Theme.of(context).textTheme.bodyMedium),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextFormField(
-                                controller: _weightCtrl,
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                        decimal: true),
-                                inputFormatters: [
-                                  FilteringTextInputFormatter.allow(
-                                      RegExp(r'[\d.,]')),
-                                ],
-                                decoration: const InputDecoration(
-                                    labelText: 'Poids', suffixText: 'kg'),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            ElevatedButton(
-                              onPressed: _saving ? null : _saveWeight,
-                              style: ElevatedButton.styleFrom(
-                                  minimumSize: const Size(80, 50)),
-                              child: _saving
-                                  ? const SizedBox.square(
-                                      dimension: 18,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2, color: Colors.white))
-                                  : const Text('OK'),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            child: Column(
+              children: [
+                NavTile(
+                  icon: Icons.fitness_center,
+                  title: 'Entraînement',
+                  subtitle: s == null
+                      ? 'Poids, champ lest'
+                      : 'Poids ${_num(s.weight)} kg · lest '
+                          '${s.enableCharges ? 'affiché' : 'masqué'}',
+                  onTap: () => _open(TrainingPage(userId: widget.userId)),
                 ),
-                const SizedBox(height: 8),
-                // Options d'administration : visibles seulement pour un admin.
+                NavTile(
+                  icon: Icons.list_alt,
+                  title: 'Exercices',
+                  subtitle: 'Nom, catégorie, assistable',
+                  onTap: () => _open(
+                      ExercisesPage(ops: ExerciseOps.supabase(widget.userId))),
+                ),
+                NavTile(
+                  icon: Icons.notifications_active_outlined,
+                  title: 'Rappels',
+                  subtitle: s == null
+                      ? 'Séance conseillée, inactivité'
+                      : s.remindersOn
+                          ? '${s.reminderHour.toString().padLeft(2, '0')}:00 · '
+                              'après ${s.inactivityDays} jour'
+                              '${s.inactivityDays > 1 ? 's' : ''} sans séance'
+                          : 'Désactivés',
+                  onTap: () => _open(RemindersPage(userId: widget.userId)),
+                ),
+                NavTile(
+                  icon: Icons.lock_outline,
+                  title: 'Compte et sécurité',
+                  subtitle: s?.googleEmail != null
+                      ? 'Google : ${s!.googleEmail} · PIN · profils'
+                      : 'Google, PIN, profils',
+                  onTap: () => _open(AccountPage(current: widget.profile)),
+                ),
+                NavTile(
+                  icon: Icons.phone_android,
+                  title: 'Application',
+                  subtitle: 'Mises à jour, espace',
+                  trailingText: 'v${kAppVersion.split('+').first}',
+                  onTap: () => _open(const AppPage()),
+                ),
+                // Visible seulement pour un profil admin.
                 ValueListenableBuilder<bool>(
                   valueListenable: isAdminNotifier,
                   builder: (_, admin, __) => !admin
                       ? const SizedBox.shrink()
-                      : Column(
-                          children: [
-                            Card(
-                              child: ListTile(
-                                leading: const Icon(Icons.tune,
-                                    color: AppTheme.primaryBlue),
-                                title: const Text('Calibration planche'),
-                                subtitle: const Text(
-                                    'Coefficients, grille des efforts, recalcul'),
-                                trailing: const Icon(Icons.chevron_right,
-                                    color: AppTheme.textSecondary),
-                                onTap: () => Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                        builder: (_) => ModelScreen(
-                                            userId: widget.userId))),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Card(
-                              child: ListTile(
-                                leading: const Icon(Icons.download_outlined,
-                                    color: AppTheme.primaryBlue),
-                                title: const Text('Exporter la base (admin)'),
-                                subtitle: const Text(
-                                    'Toutes les séries de tous les profils, en CSV copié'),
-                                onTap: _exportAll,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                          ],
+                      : NavTile(
+                          icon: Icons.admin_panel_settings_outlined,
+                          title: 'Admin',
+                          subtitle: 'Calibration planche, export',
+                          onTap: () => _open(AdminPage(userId: widget.userId)),
                         ),
-                ),
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.manage_accounts_outlined,
-                        color: AppTheme.primaryBlue),
-                    title: const Text('Profils et exercices'),
-                    subtitle:
-                        const Text('Créer, renommer, supprimer, corriger'),
-                    trailing: const Icon(Icons.chevron_right,
-                        color: AppTheme.textSecondary),
-                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => ManageScreen(current: widget.profile))),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.category_outlined,
-                        color: AppTheme.primaryBlue),
-                    title: const Text('Catégories des exercices'),
-                    subtitle: const Text(
-                        'Ranger tes exercices avec tes propres catégories'),
-                    trailing: const Icon(Icons.chevron_right,
-                        color: AppTheme.textSecondary),
-                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) =>
-                            CategoriesScreen(userId: widget.profile.id))),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.fitness_center_outlined,
-                        color: AppTheme.primaryBlue),
-                    title: const Text('Exercices assistables'),
-                    subtitle: const Text(
-                        'Élastique, tension et écartement (tractions…)'),
-                    trailing: const Icon(Icons.chevron_right,
-                        color: AppTheme.textSecondary),
-                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) =>
-                            AssistableScreen(userId: widget.profile.id))),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Card(
-                  child: SwitchListTile(
-                    secondary: const Icon(Icons.fitness_center,
-                        color: AppTheme.primaryBlue),
-                    title: const Text('Champ « Lest (kg) »'),
-                    subtitle: const Text(
-                        'Désactivé : masqué dans la saisie, les lests déjà '
-                        'enregistrés sont conservés'),
-                    value: _enableCharges,
-                    onChanged: _setEnableCharges,
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                _SectionLabel('Rappels'),
-                RemindersCard(userId: widget.userId),
-                const SizedBox(height: 20),
-
-                _SectionLabel('Sécurité'),
-                const GoogleAccountCard(),
-                const SizedBox(height: 8),
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.lock_outline,
-                        color: AppTheme.primaryBlue),
-                    title: const Text('Changer le PIN'),
-                    trailing: const Icon(Icons.chevron_right,
-                        color: AppTheme.textSecondary),
-                    onTap: _changePin,
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                _SectionLabel('Session'),
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.logout, color: Colors.redAccent),
-                    title: const Text('Changer de profil',
-                        style: TextStyle(color: Colors.redAccent)),
-                    onTap: _logout,
-                  ),
-                ),
-                const SizedBox(height: 40),
-                Center(
-                  child: Text('Sysiphe v$kAppVersion · Flutter',
-                      style: Theme.of(context).textTheme.bodyMedium),
                 ),
               ],
             ),
-    );
-  }
-}
-
-class _SectionLabel extends StatelessWidget {
-  final String label;
-
-  const _SectionLabel(this.label);
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(
-        label.toUpperCase(),
-        style: const TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: AppTheme.textSecondary,
-          letterSpacing: 1.1,
-        ),
+          ),
+        ],
       ),
     );
   }

@@ -277,4 +277,14 @@ Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec 
 - [x] Création d'un exercice : catégorie **proposée pendant la frappe**, apprise du rangement de l'utilisateur (pas de
       dictionnaire imposé) : le mot le plus caractéristique l'emporte (« Pompe de handstand » → Handstand), à égalité
       le premier du nom (« Planche to handstand » → Planche) ; rien de connu → catégorie par défaut ; toujours modifiable
-- [ ] **Toi** : ranger tes exercices actuels (Réglages → Catégories des exercices) ; les propositions s'appuient dessus
+- [ ] **Toi** : ranger tes exercices actuels (Réglages → Exercices) ; les propositions s'appuient dessus
+
+## Réglages simplifiés (18/11, v2.14.0)
+
+- [x] Écran principal court : en-tête du profil (poids, « Changer de profil ») + 5 entrées avec leur résumé —
+      Entraînement, Exercices, Rappels, Compte et sécurité, Application (+ Admin pour un admin). Aucun réglage retiré
+- [x] **Exercices** : une seule page (remplace « Profils et exercices », « Catégories » et « Assistables ») ; un appui
+      sur un exercice → renommer, catégorie (proposition apprise), assistable
+- [x] Correctif : les boîtes « Renommer » et « corriger une série » libéraient leur champ pendant leur fermeture
+      (erreur possible) — révélé par les tests
+- [ ] **Toi** : parcourir les Réglages ; chaque réglage d'avant doit se retrouver en 2 appuis au plus
