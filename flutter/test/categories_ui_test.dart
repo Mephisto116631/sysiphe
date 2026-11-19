@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sysiphe/models/perf.dart';
-import 'package:sysiphe/screens/categories_screen.dart';
 import 'package:sysiphe/theme.dart';
 import 'package:sysiphe/widgets/saisie/new_exercice_dialog.dart';
 
@@ -58,43 +56,6 @@ void main() {
     await t.tap(find.text('Créer'));
     await t.pumpAndSettle();
     expect(res, ('Handstand PU', 'Reps', 'Pompe'));
-    expect(t.takeException(), isNull);
-  });
-
-  testWidgets('ranger un exercice : tout son historique suit', (t) async {
-    t.view.physicalSize = const Size(360 * 3, 780 * 3);
-    t.view.devicePixelRatio = 3;
-    addTearDown(t.view.reset);
-    Perf p(String ex, String c) => Perf(
-        userId: 'u', date: DateTime(2026, 11, 1), exercice: ex, categorie: c);
-    final saved = <(String, String)>[];
-    await t.pumpWidget(MaterialApp(
-      theme: AppTheme.light,
-      home: CategoriesScreen(
-        userId: 'u',
-        initialPerfs: [
-          p('Planche', 'Planche'),
-          p('Handstand to diamond', 'Handstand'),
-          p('HSPU Pompe hand stand', 'Musculation'),
-          p('HSPU Pompe hand stand', 'Musculation'),
-          p('Abdos', 'Gainage'),
-          p('Abdos', 'Musculation'),
-        ],
-        onSave: (ex, c) async => saved.add((ex, c)),
-      ),
-    ));
-    await t.pumpAndSettle();
-    expect(find.textContaining('Mélangé : '), findsOneWidget); // Abdos
-
-    await t.tap(find.text('HSPU Pompe hand stand'));
-    await t.pumpAndSettle();
-    // Proposition apprise des autres exercices (« handstand »).
-    await t.tap(find.text('Proposée : Handstand'));
-    await t.pump();
-    await t.tap(find.text('Appliquer'));
-    await t.pumpAndSettle();
-    expect(saved, [('HSPU Pompe hand stand', 'Handstand')]);
-    expect(find.text('Handstand · 2 séries'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
 }

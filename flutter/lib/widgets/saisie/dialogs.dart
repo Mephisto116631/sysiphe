@@ -27,17 +27,38 @@ Future<bool> confirmDelete(BuildContext context,
 }
 
 /// Nouvelle valeur d'une série enregistrée (null si annulé ou invalide).
-Future<double?> askPerfValue(BuildContext context, Perf p) async {
-  final ctrl = TextEditingController(
-      text: p.performance % 1 == 0
-          ? p.performance.toInt().toString()
-          : p.performance.toString());
-  final v = await showDialog<double>(
-    context: context,
-    builder: (ctx) => AlertDialog(
+Future<double?> askPerfValue(BuildContext context, Perf p) =>
+    showDialog<double>(context: context, builder: (_) => _PerfValueDialog(p));
+
+/// Le champ appartient à la boîte : libéré seulement quand elle disparaît
+/// (pas pendant son animation de fermeture).
+class _PerfValueDialog extends StatefulWidget {
+  final Perf perf;
+  const _PerfValueDialog(this.perf);
+
+  @override
+  State<_PerfValueDialog> createState() => _PerfValueDialogState();
+}
+
+class _PerfValueDialogState extends State<_PerfValueDialog> {
+  late final _ctrl = TextEditingController(
+      text: widget.perf.performance % 1 == 0
+          ? widget.perf.performance.toInt().toString()
+          : widget.perf.performance.toString());
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.perf;
+    return AlertDialog(
       title: Text('${p.exercice} · S${p.serie}'),
       content: TextField(
-        controller: ctrl,
+        controller: _ctrl,
         autofocus: true,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))],
@@ -46,17 +67,16 @@ Future<double?> askPerfValue(BuildContext context, Perf p) async {
       ),
       actions: [
         TextButton(
-            onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annuler')),
         TextButton(
           onPressed: () => Navigator.pop(
-              ctx, double.tryParse(ctrl.text.replaceAll(',', '.'))),
+              context, double.tryParse(_ctrl.text.replaceAll(',', '.'))),
           child: const Text('Valider'),
         ),
       ],
-    ),
-  );
-  ctrl.dispose();
-  return v;
+    );
+  }
 }
 
 /// « + Ajouter un exercice » : liste des exercices connus, ou '' pour
