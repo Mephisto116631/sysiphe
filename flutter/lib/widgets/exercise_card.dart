@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/session.dart';
+import '../services/rest_timer.dart';
 import '../theme.dart';
 import 'chrono.dart';
 
@@ -46,6 +47,9 @@ class ExerciseCard extends StatefulWidget {
   final List<String> variantes, formes, elastiques, tensions, ecartements;
   final Future<bool> Function(CardEntry) onSave;
 
+  /// Repos de la Saisie : le chrono enchaîne la série suivante après lui.
+  final RestTimer? rest;
+
   const ExerciseCard({
     super.key,
     required this.exercice,
@@ -62,6 +66,7 @@ class ExerciseCard extends StatefulWidget {
     required this.tensions,
     required this.ecartements,
     required this.onSave,
+    this.rest,
   });
 
   @override
@@ -121,15 +126,16 @@ class _ExerciseCardState extends State<ExerciseCard> {
     return 'ex. ${_fmt(t.seriesFor(_serie).performance)}';
   }
 
-  Future<void> _save() async {
+  /// Enregistre la série ; true si réussi (enchaînement du chrono).
+  Future<bool> _save() async {
     _auto?.cancel();
-    if (_saving) return;
+    if (_saving) return false;
     final v = double.tryParse(_value.text.trim().replaceAll(',', '.'));
     if (v == null || v <= 0) {
       if (_value.text.trim().isNotEmpty) {
         setState(() => _error = 'Valeur invalide');
       }
-      return;
+      return false;
     }
     setState(() {
       _saving = true;
@@ -148,7 +154,7 @@ class _ExerciseCardState extends State<ExerciseCard> {
       tension: _tension,
       ecartement: _ecartement,
     ));
-    if (!mounted) return;
+    if (!mounted) return ok;
     setState(() {
       _saving = false;
       if (ok) {
@@ -156,6 +162,7 @@ class _ExerciseCardState extends State<ExerciseCard> {
         _serie++; // la mise à jour du parent (done) confirmera
       }
     });
+    return ok;
   }
 
   Widget _drop(String label, String value, Iterable<String> items,
@@ -167,7 +174,8 @@ class _ExerciseCardState extends State<ExerciseCard> {
       decoration: InputDecoration(labelText: label),
       items: [
         for (final i in list)
-          DropdownMenuItem(value: i, child: Text(i, overflow: TextOverflow.ellipsis))
+          DropdownMenuItem(
+              value: i, child: Text(i, overflow: TextOverflow.ellipsis))
       ],
       onChanged: (v) => v == null ? null : setState(() => onChanged(v)),
     );
@@ -175,7 +183,8 @@ class _ExerciseCardState extends State<ExerciseCard> {
 
   @override
   Widget build(BuildContext context) {
-    final label = switch (_unite) { 'Sec' => 'Temps (s)', 'Kg' => 'Kg', _ => 'Reps' };
+    final label =
+        switch (_unite) { 'Sec' => 'Temps (s)', 'Kg' => 'Kg', _ => 'Reps' };
     final k = widget.kind;
     return Card(
       child: Padding(
@@ -205,8 +214,9 @@ class _ExerciseCardState extends State<ExerciseCard> {
                     Row(
                       children: [
                         IconButton.filledTonal(
-                          onPressed:
-                              _serie > 1 ? () => setState(() => _serie--) : null,
+                          onPressed: _serie > 1
+                              ? () => setState(() => _serie--)
+                              : null,
                           icon: const Icon(Icons.remove),
                         ),
                         SizedBox(
@@ -273,7 +283,8 @@ class _ExerciseCardState extends State<ExerciseCard> {
                       ],
                       decoration: InputDecoration(
                           labelText: 'Lest (kg)',
-                          hintText: _lestHint == null ? null : 'ex. $_lestHint'),
+                          hintText:
+                              _lestHint == null ? null : 'ex. $_lestHint'),
                     ),
                   ),
                 ],
@@ -283,13 +294,19 @@ class _ExerciseCardState extends State<ExerciseCard> {
               const SizedBox(height: 10),
               Chrono(
                   exercice: widget.exercice,
+                  rest: widget.rest,
+                  onChainStop: (sec) async {
+                    _value.text = '$sec';
+                    _auto?.cancel();
+                    return _save();
+                  },
                   onStop: (sec) {
-                _value.text = '$sec';
-                _auto?.cancel();
-                _auto = Timer(const Duration(seconds: 3), () {
-                  if (mounted) _save();
-                });
-              }),
+                    _value.text = '$sec';
+                    _auto?.cancel();
+                    _auto = Timer(const Duration(seconds: 3), () {
+                      if (mounted) _save();
+                    });
+                  }),
             ],
             if (k == CardKind.planche) ...[
               InkWell(
@@ -302,10 +319,7 @@ class _ExerciseCardState extends State<ExerciseCard> {
                           style: TextStyle(
                               color: AppTheme.primaryBlue,
                               fontWeight: FontWeight.w600)),
-                      Icon(
-                          _showOptions
-                              ? Icons.expand_less
-                              : Icons.expand_more,
+                      Icon(_showOptions ? Icons.expand_less : Icons.expand_more,
                           color: AppTheme.primaryBlue),
                     ],
                   ),
@@ -314,8 +328,8 @@ class _ExerciseCardState extends State<ExerciseCard> {
               if (_showOptions) ...[
                 Row(children: [
                   Expanded(
-                      child: _drop('Variante', _variante,
-                          widget.variantes, (v) => _variante = v)),
+                      child: _drop('Variante', _variante, widget.variantes,
+                          (v) => _variante = v)),
                   const SizedBox(width: 10),
                   Expanded(
                       child: _drop(
@@ -324,8 +338,8 @@ class _ExerciseCardState extends State<ExerciseCard> {
                 const SizedBox(height: 10),
                 Row(children: [
                   Expanded(
-                      child: _drop('Élastique', _elastique,
-                          widget.elastiques, (v) => _elastique = v)),
+                      child: _drop('Élastique', _elastique, widget.elastiques,
+                          (v) => _elastique = v)),
                   const SizedBox(width: 10),
                   Expanded(
                       child: _drop('Tension', _tension, widget.tensions,
@@ -345,8 +359,8 @@ class _ExerciseCardState extends State<ExerciseCard> {
                         (v) => _tension = v)),
               ]),
               const SizedBox(height: 10),
-              _drop('Écartement des mains', _ecartement,
-                  widget.ecartements, (v) => _ecartement = v),
+              _drop('Écartement des mains', _ecartement, widget.ecartements,
+                  (v) => _ecartement = v),
             ],
             const SizedBox(height: 14),
             SizedBox(

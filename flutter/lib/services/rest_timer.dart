@@ -21,11 +21,16 @@ class RestTimer extends ChangeNotifier {
 
   int _seconds = 90; // 0 = sans repos automatique
   DateTime? _end;
+  Completer<void>? _done;
   Timer? _tick;
   int _beep = -1;
 
   int get seconds => _seconds;
   bool get running => _end != null;
+
+  /// Se termine à la fin du repos (écoulé ou passé) ; tout de suite s'il n'y
+  /// en a pas. Sert à enchaîner la série suivante du chrono.
+  Future<void> waitDone() => _done?.future ?? Future.value();
 
   /// Reprend la durée choisie la dernière fois.
   Future<void> load() async {
@@ -48,6 +53,7 @@ class RestTimer extends ChangeNotifier {
     if (_seconds <= 0) return;
     _end = _nowFn().add(Duration(seconds: _seconds));
     _beep = -1;
+    if (_done == null || _done!.isCompleted) _done = Completer<void>();
     _tick?.cancel();
     _tick = Timer.periodic(const Duration(milliseconds: 200), (_) => tick());
     tick();
@@ -78,6 +84,7 @@ class RestTimer extends ChangeNotifier {
     _end = null;
     left.value = null;
     TimerAlerts.cancelAll();
+    if (_done != null && !_done!.isCompleted) _done!.complete();
   }
 
   /// +15 s / −15 s pendant un repos.

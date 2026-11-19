@@ -288,3 +288,13 @@ Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec 
 - [x] Correctif : les boîtes « Renommer » et « corriger une série » libéraient leur champ pendant leur fermeture
       (erreur possible) — révélé par les tests
 - [ ] **Toi** : parcourir les Réglages ; chaque réglage d'avant doit se retrouver en 2 appuis au plus
+
+## Chrono : enchaînement, annonces vocales, arrêt au toucher (19/11, v2.15.0)
+
+- [x] **Enchaînement** : « Séries : 2 à 5 » (mémorisé par exercice). À chaque arrêt, la série est enregistrée tout de
+      suite, le repos démarre, puis la série suivante se relance seule (avec la préparation). « Passer » saute le
+      repos, ✕ arrête l'enchaînement. Dans la carte principale et les petites cartes
+- [x] **Annonces vocales** (`flutter_tts`) : « Série 2 sur 3 », « Partez », « 10 secondes », « Objectif atteint »,
+      chaque minute, « Repos », « Terminé, bravo ». Bouton son à 3 états : voix + bips (défaut) → bips → muet
+- [x] **Plein écran** : toucher n'importe où arrête la série (ou passe le repos) ; le repos s'affiche en plein écran
+- [ ] **Toi** : essayer une planche en 3 séries, téléphone posé au sol

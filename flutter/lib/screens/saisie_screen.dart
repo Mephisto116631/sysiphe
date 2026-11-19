@@ -301,6 +301,7 @@ class _SaisieScreenState extends State<SaisieScreen>
             tensions: (_cfg.tensions ?? kTensions).keys.toList(),
             ecartements: (_cfg.ecartements ?? kEcartements).keys.toList(),
             onSave: (e) => _saveEntry(ex, e),
+            rest: _rest,
           ),
         ),
       OutlinedButton.icon(
@@ -619,12 +620,13 @@ class _SaisieScreenState extends State<SaisieScreen>
     }
   }
 
-  Future<void> _save() async {
+  /// Enregistre la saisie ; true si réussi (enchaînement du chrono).
+  Future<bool> _save() async {
     _autoTimer?.cancel();
-    if (!_fb.currentState!.validate()) return;
+    if (!_fb.currentState!.validate()) return false;
     if (_exerciceCtrl.text.trim().isEmpty) {
       _snack('Renseignez un exercice', error: true);
-      return;
+      return false;
     }
     // Une ou plusieurs séries : « 12 » ou « 12 10 8 » (comme le web).
     List<double> valeurs;
@@ -632,11 +634,11 @@ class _SaisieScreenState extends State<SaisieScreen>
       valeurs = parseSeries(_chargeCtrl.text);
     } on FormatException catch (e) {
       _snack(e.message, error: true);
-      return;
+      return false;
     }
     if (valeurs.isEmpty || valeurs.any((v) => v <= 0)) {
       _snack('Valeur invalide', error: true);
-      return;
+      return false;
     }
 
     final exercice = _exerciceCtrl.text.trim();
@@ -692,9 +694,11 @@ class _SaisieScreenState extends State<SaisieScreen>
               ? '${perfs.length} séries enregistrées ✓'
               : 'Enregistré ✓');
       _startRest();
+      return true;
     } catch (e) {
       setState(() => _saving = false);
       _snack('Erreur : $e', error: true);
+      return false;
     }
   }
 
@@ -972,6 +976,11 @@ class _SaisieScreenState extends State<SaisieScreen>
         if (_unite == 'Sec') ...[
           Chrono(
               exercice: _exerciceCtrl.text,
+              rest: _rest,
+              onChainStop: (sec) async {
+                _chargeCtrl.text = '$sec';
+                return _save();
+              },
               onStop: (sec) {
                 _chargeCtrl.text = '$sec';
                 _scheduleAutoSave(_chargeCtrl.text);
