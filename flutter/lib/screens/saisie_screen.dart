@@ -204,6 +204,23 @@ class _SaisieScreenState extends State<SaisieScreen>
 
   /// Enregistre une série saisie dans une carte d'exercice.
   Future<bool> _saveEntry(String ex, CardEntry e) async {
+    // Série déjà faite (choisie avec − / +) : on corrige sa valeur.
+    final existing = e.existingId == null
+        ? null
+        : _todayPerfs.where((p) => p.id == e.existingId).firstOrNull;
+    if (existing != null) {
+      try {
+        await SupabaseService.instance.updatePerfValue(existing.id!, e.value,
+            effortPondere: _effortWith(existing, e.value));
+        await _loadTodayPerfs();
+        _loadHistory();
+        _snack('$ex · série ${existing.serie} corrigée ✓');
+        return true;
+      } catch (err) {
+        _snack('Erreur : $err', error: true);
+        return false;
+      }
+    }
     final last = _lastFor(ex)?.series.first;
     final meta = _newCardMeta[ex];
     final categorie = last?.categorie ??
@@ -311,6 +328,10 @@ class _SaisieScreenState extends State<SaisieScreen>
             helper: _cardHelper(ex),
             insight: _cardInsight(ex),
             done: _doneToday(ex),
+            todaySets: {
+              for (final p in _todayPerfs)
+                if (p.exercice == ex) p.serie: p
+            },
             enableCharges: _enableCharges,
             variantes: (_cfg.variantes ?? kVariantes).keys.toList(),
             formes: (_cfg.formes ?? kFormes).keys.toList(),
@@ -417,6 +438,28 @@ class _SaisieScreenState extends State<SaisieScreen>
 
   /// Pré-remplit le formulaire avec la série suivante de cet exercice, telle
   /// qu'elle a été faite à la séance précédente.
+  /// Numéro de série choisi avec − / + : une série déjà faite réapparaît
+  /// dans le champ (pour la corriger) au lieu de pouvoir être doublée.
+  void _setSerie(int s) {
+    _autoTimer?.cancel();
+    final ex = _exerciceCtrl.text.trim();
+    final e = _existingSet(ex, s);
+    setState(() {
+      _serie = s;
+      if (e != null) {
+        _chargeCtrl.text = _num(e.performance);
+        _lestCtrl.text = e.charge > 0 ? _num(e.charge) : '';
+        _showingExisting = true;
+      } else if (_showingExisting) {
+        _chargeCtrl.clear();
+        _lestCtrl.clear();
+        _showingExisting = false;
+      }
+    });
+  }
+
+  bool _showingExisting = false;
+
   void _applyTemplate(ExerciseTemplate t) {
     final serie = _doneToday(t.exercice) + 1;
     final model = t.seriesFor(serie);
@@ -424,6 +467,7 @@ class _SaisieScreenState extends State<SaisieScreen>
     _exerciceCtrl.text = t.exercice;
     // La dernière séance sert d'exemple (sous-texte), pas de valeur saisie.
     _chargeCtrl.clear();
+    _showingExisting = false;
     setState(() {
       _serie = serie;
       _categorie = model.categorie;
@@ -516,6 +560,11 @@ class _SaisieScreenState extends State<SaisieScreen>
   /// Synchronise le nom d'exercice et adapte le formulaire :
   /// « Planche » → options planche ouvertes et unité en secondes.
   void _onExerciceChanged(String text) {
+    if (_showingExisting && text.trim() != _exerciceCtrl.text.trim()) {
+      // Autre exercice : la valeur de la série affichée ne s'applique plus.
+      _chargeCtrl.clear();
+      _showingExisting = false;
+    }
     _exerciceCtrl.text = text;
     final planche = Perf.isPlancheName(text);
     if (planche && (!_showOptions || _unite != 'Sec')) {
@@ -668,6 +717,36 @@ class _SaisieScreenState extends State<SaisieScreen>
         ? (double.tryParse(_lestCtrl.text.replaceAll(',', '.')) ?? 0)
         : 0.0;
 
+    // Série déjà faite (choisie avec − / +) : on corrige sa valeur au lieu
+    // d'en enregistrer une deuxième sous le même numéro.
+    final existing =
+        valeurs.length == 1 ? _existingSet(exercice, _serie) : null;
+    if (existing != null) {
+      final v = valeurs.single;
+      if (v != existing.performance) {
+        setState(() => _saving = true);
+        try {
+          await SupabaseService.instance.updatePerfValue(existing.id!, v,
+              effortPondere: _effortWith(existing, v));
+          await _loadTodayPerfs();
+          _loadHistory();
+          _snack('Série ${existing.serie} corrigée ✓');
+        } catch (e) {
+          if (mounted) setState(() => _saving = false);
+          _snack('Erreur : $e', error: true);
+          return false;
+        }
+      }
+      if (!mounted) return true;
+      _chargeCtrl.clear();
+      setState(() {
+        _saving = false;
+        _showingExisting = false;
+        _serie = _doneToday(exercice) + 1; // retour à la prochaine série
+      });
+      return true;
+    }
+
     setState(() => _saving = true);
     final series = await _freeSeries(exercice, _serie, valeurs.length);
     if (!mounted) return false;
@@ -696,6 +775,7 @@ class _SaisieScreenState extends State<SaisieScreen>
     try {
       await SupabaseService.instance.savePerfs(perfs);
       _chargeCtrl.clear();
+      _showingExisting = false;
       setState(() => _saving = false);
       await _loadTodayPerfs();
       // Série suivante du même exercice, pré-remplie si l'exercice figurait
@@ -722,30 +802,38 @@ class _SaisieScreenState extends State<SaisieScreen>
   }
 
   /// Corrige une série déjà enregistrée (ex. rajouter des reps).
+  /// Effort d'une série enregistrée [p] avec la nouvelle valeur [v].
+  int? _effortWith(Perf p, double v) => _isAssistable(p.exercice)
+      ? _cfg.assiste(
+          reps: v,
+          lest: p.charge,
+          elastique: p.elastique,
+          tension: p.tension,
+          ecartement: p.ecartement)
+      : p.isPlanche
+          ? _cfg.planche(
+              variante: p.variante,
+              forme: p.forme,
+              elastique: p.elastique,
+              tension: p.tension,
+              temps: v)
+          : null;
+
+  /// Série déjà enregistrée aujourd'hui pour [ex] sous le numéro [serie].
+  Perf? _existingSet(String ex, int serie) {
+    for (final p in _todayPerfs) {
+      if (p.exercice == ex && p.serie == serie) return p;
+    }
+    return null;
+  }
+
   Future<void> _editPerf(Perf p) async {
     if (p.id == null) return;
     final v = await askPerfValue(context, p);
     if (v == null || v <= 0 || v == p.performance) return;
     try {
-      await SupabaseService.instance.updatePerfValue(
-        p.id!,
-        v,
-        effortPondere: _isAssistable(p.exercice)
-            ? _cfg.assiste(
-                reps: v,
-                lest: p.charge,
-                elastique: p.elastique,
-                tension: p.tension,
-                ecartement: p.ecartement)
-            : p.isPlanche
-                ? _cfg.planche(
-                    variante: p.variante,
-                    forme: p.forme,
-                    elastique: p.elastique,
-                    tension: p.tension,
-                    temps: v)
-                : null,
-      );
+      await SupabaseService.instance
+          .updatePerfValue(p.id!, v, effortPondere: _effortWith(p, v));
       await _loadTodayPerfs();
       _loadHistory();
     } catch (e) {
@@ -854,8 +942,11 @@ class _SaisieScreenState extends State<SaisieScreen>
                         child: CircularProgressIndicator(
                             strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.save),
-                label: Text(
-                    _saving ? 'Enregistrement…' : 'Enregistrer maintenant'),
+                label: Text(_saving
+                    ? 'Enregistrement…'
+                    : _existingSet(_exerciceCtrl.text.trim(), _serie) != null
+                        ? 'Corriger la série $_serie'
+                        : 'Enregistrer maintenant'),
               ),
             ],
           ),
@@ -934,7 +1025,7 @@ class _SaisieScreenState extends State<SaisieScreen>
           children: [
             SeriesStepper(
               serie: _serie,
-              onChanged: (v) => setState(() => _serie = v),
+              onChanged: _setSerie,
             ),
             const SizedBox(width: 16),
 
@@ -971,7 +1062,10 @@ class _SaisieScreenState extends State<SaisieScreen>
                   hintText: _exemple == null
                       ? 'ex. 12'
                       : 'ex. ${_num(_exemple!.performance)}',
-                  helperText: 'Enregistré après 3 s',
+                  helperText:
+                      _existingSet(_exerciceCtrl.text.trim(), _serie) != null
+                          ? 'S$_serie déjà faite · modifier la corrige'
+                          : 'Enregistré après 3 s',
                   helperStyle: const TextStyle(fontSize: 10),
                 ),
                 onChanged: _scheduleAutoSave,

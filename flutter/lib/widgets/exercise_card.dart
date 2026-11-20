@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../models/perf.dart';
 import '../models/session.dart';
 import '../services/rest_timer.dart';
 import '../theme.dart';
@@ -16,7 +17,12 @@ class CardEntry {
   final String unite;
   final double lest;
   final String variante, forme, elastique, tension, ecartement;
+
+  /// Série déjà enregistrée aujourd'hui sous ce numéro : on la corrige au
+  /// lieu d'en ajouter une deuxième.
+  final int? existingId;
   const CardEntry({
+    this.existingId,
     required this.value,
     required this.serie,
     required this.unite,
@@ -40,6 +46,9 @@ class ExerciseCard extends StatefulWidget {
   final String unite;
   final CardKind kind;
   final int done; // séries déjà enregistrées aujourd'hui
+
+  /// Séries déjà enregistrées aujourd'hui, par numéro (S1, S2…).
+  final Map<int, Perf> todaySets;
   final ExerciseTemplate? last; // dernière séance (indices + préremplissage)
   final String? helper; // ex. « Dernière fois le 10 nov. · record série 30 »
   final Widget? insight; // record, moyenne, % vs moyenne
@@ -67,6 +76,7 @@ class ExerciseCard extends StatefulWidget {
     required this.ecartements,
     required this.onSave,
     this.rest,
+    this.todaySets = const {},
   });
 
   @override
@@ -108,7 +118,37 @@ class _ExerciseCardState extends State<ExerciseCard> {
   @override
   void didUpdateWidget(ExerciseCard old) {
     super.didUpdateWidget(old);
-    if (old.done != widget.done) _serie = widget.done + 1;
+    if (old.done != widget.done) {
+      _serie = widget.done + 1;
+      _syncExisting();
+    }
+  }
+
+  /// Série affichée déjà enregistrée aujourd'hui (null sinon).
+  Perf? get _existing => widget.todaySets[_serie];
+  bool _showingExisting = false;
+
+  /// Une série déjà faite réapparaît dans le champ (pour la corriger) ;
+  /// en la quittant, le champ redevient vide.
+  void _syncExisting() {
+    final e = _existing;
+    if (e != null) {
+      _value.text = _fmt(e.performance);
+      _lest.text = e.charge > 0 ? _fmt(e.charge) : '';
+      _showingExisting = true;
+    } else if (_showingExisting) {
+      _value.clear();
+      _lest.clear();
+      _showingExisting = false;
+    }
+  }
+
+  void _setSerie(int s) {
+    _auto?.cancel();
+    setState(() {
+      _serie = s;
+      _syncExisting();
+    });
   }
 
   @override
@@ -137,11 +177,18 @@ class _ExerciseCardState extends State<ExerciseCard> {
       }
       return false;
     }
+    final existing = _existing;
+    if (existing != null && v == existing.performance) {
+      // Série déjà faite, inchangée : rien à enregistrer.
+      _setSerie(widget.done + 1);
+      return true;
+    }
     setState(() {
       _saving = true;
       _error = null;
     });
     final ok = await widget.onSave(CardEntry(
+      existingId: existing?.id,
       value: v,
       serie: _serie,
       unite: _unite,
@@ -159,7 +206,9 @@ class _ExerciseCardState extends State<ExerciseCard> {
       _saving = false;
       if (ok) {
         _value.clear();
-        _serie++; // la mise à jour du parent (done) confirmera
+        _showingExisting = false;
+        // Après une correction, retour à la prochaine série à faire.
+        _serie = existing != null ? widget.done + 1 : _serie + 1;
       }
     });
     return ok;
@@ -214,9 +263,8 @@ class _ExerciseCardState extends State<ExerciseCard> {
                     Row(
                       children: [
                         IconButton.filledTonal(
-                          onPressed: _serie > 1
-                              ? () => setState(() => _serie--)
-                              : null,
+                          onPressed:
+                              _serie > 1 ? () => _setSerie(_serie - 1) : null,
                           icon: const Icon(Icons.remove),
                         ),
                         SizedBox(
@@ -227,7 +275,7 @@ class _ExerciseCardState extends State<ExerciseCard> {
                                   fontSize: 22, fontWeight: FontWeight.w700)),
                         ),
                         IconButton.filledTonal(
-                          onPressed: () => setState(() => _serie++),
+                          onPressed: () => _setSerie(_serie + 1),
                           icon: const Icon(Icons.add),
                         ),
                       ],
@@ -256,7 +304,9 @@ class _ExerciseCardState extends State<ExerciseCard> {
                       labelText: label,
                       hintText: _hint,
                       errorText: _error,
-                      helperText: 'Enregistré après 3 s',
+                      helperText: _existing != null
+                          ? 'S$_serie déjà faite · modifier la corrige'
+                          : 'Enregistré après 3 s',
                       helperStyle: const TextStyle(fontSize: 10),
                     ),
                     onChanged: (_) {
@@ -373,7 +423,11 @@ class _ExerciseCardState extends State<ExerciseCard> {
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.save),
-                label: Text(_saving ? 'Enregistrement…' : 'Enregistrer'),
+                label: Text(_saving
+                    ? 'Enregistrement…'
+                    : _existing != null
+                        ? 'Corriger S$_serie'
+                        : 'Enregistrer'),
               ),
             ),
             if (widget.helper != null)

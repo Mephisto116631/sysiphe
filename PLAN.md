@@ -300,4 +300,7 @@ Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec 
 - [x] Correctif (20/11) : deux planches enregistrées en S1 le même jour. Le numéro de série est maintenant relu sur le
       serveur juste avant chaque enregistrement (numéro déjà pris → suivant libre) ; les petites cartes gardent leur
       état (chrono en cours, saisie en attente) quand elles changent d'ordre
+- [x] Correctif (20/11) : avec − / +, revenir sur une série déjà faite n'affichait pas sa valeur et permettait d'en
+      enregistrer une deuxième. Maintenant sa valeur réapparaît (« S1 déjà faite · modifier la corrige », bouton
+      « Corriger S1 ») et l'enregistrement corrige la série au lieu d'en ajouter une ; carte principale et petites cartes
 - [ ] **Toi** : essayer une planche en 3 séries, téléphone posé au sol
