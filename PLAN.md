@@ -77,7 +77,7 @@ répondent **400**, et l'app reste bloquée sur un chargement infini.
 
 Pages et fonctions présentes sur le web, absentes ou simplifiées dans Flutter :
 
-- [ ] **Saisie planche** multi-séries (S1 à S5) avec variante, forme, élastique et tension par série
+- [~] **Saisie planche** multi-séries (S1 à S5) avec variante, forme, élastique et tension par série — **abandonné (20/11)** : la saisie série par série (chrono, enchaînement) convient mieux
 - [x] **Saisie lestée** : champ « Lest (kg) » pour les séries en reps (enregistré dans `charge`)
 - [x] **Saisie** : options planche ouvertes automatiquement pour « Planche » ; bug du champ Exercice corrigé (curseur qui sautait)
 - [x] **Saisie** : carte « Séance précédente » — un appui pré-remplit l'exercice avec la série suivante telle que faite la dernière fois (valeur, lest, options planche) ; après chaque enregistrement, la série suivante s'enchaîne
@@ -112,7 +112,7 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
 - [x] Supprimer toute la séance du jour (avec confirmation)
 - [x] Par exercice : record en série, moyenne des N dernières séances, écart du jour en % et alerte « Nouveau record » à l'enregistrement
 - [x] Catégorie libre par exercice (choisie à la création, reprise de la séance précédente)
-- [ ] Planche : bloc S1 à S5 avec forme par série et couleur d'intensité
+- [~] Planche : bloc S1 à S5 avec forme par série et couleur d'intensité — **abandonné (20/11)** : la saisie série par série (chrono, enchaînement) convient mieux
 - [~] « Tout sauvegarder » en un appui — remplacé par l'enregistrement carte par carte (v2.6.0)
 - [x] Panneau du jour : séries ou effort du jour, séances du mois, reps de la semaine vs semaine précédente (port testé de `compute_period_comparison`)
 - [ ] Rappel de prochaine séance dans l'agenda (`.ics`)
