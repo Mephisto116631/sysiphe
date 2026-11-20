@@ -189,6 +189,19 @@ class _SaisieScreenState extends State<SaisieScreen>
     );
   }
 
+  /// Numéros de série libres pour [ex] ce jour-là, à partir de [first] :
+  /// relus sur le serveur juste avant l'enregistrement (l'état affiché peut
+  /// être en retard), pour ne jamais enregistrer deux fois la même série.
+  Future<List<int>> _freeSeries(String ex, int first, int count) async {
+    Iterable<Perf> today = _todayPerfs;
+    try {
+      today =
+          await SupabaseService.instance.getPerfsForDate(widget.userId, _date);
+    } catch (_) {/* hors ligne : on se fie à la liste affichée */}
+    return freeSeries(
+        today.where((p) => p.exercice == ex).map((p) => p.serie), first, count);
+  }
+
   /// Enregistre une série saisie dans une carte d'exercice.
   Future<bool> _saveEntry(String ex, CardEntry e) async {
     final last = _lastFor(ex)?.series.first;
@@ -200,10 +213,11 @@ class _SaisieScreenState extends State<SaisieScreen>
     final ins = _usesPoints(ex) ? null : _insight(ex);
     final newPr = ins != null && ins.prSerie > 0 && e.value > ins.prSerie;
     try {
+      final serie = (await _freeSeries(ex, e.serie, 1)).single;
       await SupabaseService.instance.savePerfs([
         _makePerf(
           exercice: ex,
-          serie: e.serie,
+          serie: serie,
           valeur: e.value,
           unite: e.unite,
           categorie: categorie,
@@ -219,7 +233,7 @@ class _SaisieScreenState extends State<SaisieScreen>
       _loadHistory();
       _snack(newPr
           ? '🏆 $ex : nouveau record en série (${_num(e.value)})'
-          : '$ex · série ${e.serie} enregistrée ✓');
+          : '$ex · série $serie enregistrée ✓');
       _startRest();
       return true;
     } catch (err) {
@@ -276,10 +290,13 @@ class _SaisieScreenState extends State<SaisieScreen>
     ];
     return [
       for (final ex in names)
+        // Clé sur l'élément de la liste : quand les cartes changent d'ordre
+        // (exercice terminé → en bas), chacune garde son état (chrono en
+        // cours, saisie en attente) au lieu d'être recréée.
         Padding(
+          key: ValueKey('card-$ex'),
           padding: const EdgeInsets.only(bottom: 10),
           child: ExerciseCard(
-            key: ValueKey('card-$ex'),
             exercice: ex,
             unite: _lastFor(ex)?.unite ??
                 _newCardMeta[ex]?.$1 ??
@@ -651,11 +668,14 @@ class _SaisieScreenState extends State<SaisieScreen>
         ? (double.tryParse(_lestCtrl.text.replaceAll(',', '.')) ?? 0)
         : 0.0;
 
+    setState(() => _saving = true);
+    final series = await _freeSeries(exercice, _serie, valeurs.length);
+    if (!mounted) return false;
     final perfs = [
       for (var i = 0; i < valeurs.length; i++)
         _makePerf(
           exercice: exercice,
-          serie: _serie + i,
+          serie: series[i],
           valeur: valeurs[i],
           unite: _unite,
           categorie: categorie,
@@ -673,7 +693,6 @@ class _SaisieScreenState extends State<SaisieScreen>
     final best = valeurs.reduce((a, b) => a > b ? a : b);
     final newPr = ins != null && ins.prSerie > 0 && best > ins.prSerie;
 
-    setState(() => _saving = true);
     try {
       await SupabaseService.instance.savePerfs(perfs);
       _chargeCtrl.clear();

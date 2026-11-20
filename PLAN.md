@@ -297,4 +297,7 @@ Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec 
 - [x] **Annonces vocales** (`flutter_tts`) : « Série 2 sur 3 », « Partez », « 10 secondes », « Objectif atteint »,
       chaque minute, « Repos », « Terminé, bravo ». Bouton son à 3 états : voix + bips (défaut) → bips → muet
 - [x] **Plein écran** : toucher n'importe où arrête la série (ou passe le repos) ; le repos s'affiche en plein écran
+- [x] Correctif (20/11) : deux planches enregistrées en S1 le même jour. Le numéro de série est maintenant relu sur le
+      serveur juste avant chaque enregistrement (numéro déjà pris → suivant libre) ; les petites cartes gardent leur
+      état (chrono en cours, saisie en attente) quand elles changent d'ordre
 - [ ] **Toi** : essayer une planche en 3 séries, téléphone posé au sol
