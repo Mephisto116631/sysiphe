@@ -174,3 +174,16 @@ String? findExistingExercise(Iterable<String> known, String typed) {
   }
   return null;
 }
+
+/// Numéros de série libres à partir de [first] : un numéro déjà enregistré ce
+/// jour-là pour l'exercice ([used]) est sauté, pour ne jamais avoir deux S1.
+List<int> freeSeries(Iterable<int> used, int first, int count) {
+  final taken = used.toSet();
+  final out = <int>[];
+  var s = first < 1 ? 1 : first;
+  while (out.length < count) {
+    if (taken.add(s)) out.add(s);
+    s++;
+  }
+  return out;
+}

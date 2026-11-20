@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../models/perf.dart';
 import '../models/session.dart';
+import '../services/rest_timer.dart';
 import '../theme.dart';
 import 'chrono.dart';
 
@@ -15,7 +17,12 @@ class CardEntry {
   final String unite;
   final double lest;
   final String variante, forme, elastique, tension, ecartement;
+
+  /// Série déjà enregistrée aujourd'hui sous ce numéro : on la corrige au
+  /// lieu d'en ajouter une deuxième.
+  final int? existingId;
   const CardEntry({
+    this.existingId,
     required this.value,
     required this.serie,
     required this.unite,
@@ -39,12 +46,18 @@ class ExerciseCard extends StatefulWidget {
   final String unite;
   final CardKind kind;
   final int done; // séries déjà enregistrées aujourd'hui
+
+  /// Séries déjà enregistrées aujourd'hui, par numéro (S1, S2…).
+  final Map<int, Perf> todaySets;
   final ExerciseTemplate? last; // dernière séance (indices + préremplissage)
   final String? helper; // ex. « Dernière fois le 10 nov. · record série 30 »
   final Widget? insight; // record, moyenne, % vs moyenne
   final bool enableCharges;
   final List<String> variantes, formes, elastiques, tensions, ecartements;
   final Future<bool> Function(CardEntry) onSave;
+
+  /// Repos de la Saisie : le chrono enchaîne la série suivante après lui.
+  final RestTimer? rest;
 
   const ExerciseCard({
     super.key,
@@ -62,6 +75,8 @@ class ExerciseCard extends StatefulWidget {
     required this.tensions,
     required this.ecartements,
     required this.onSave,
+    this.rest,
+    this.todaySets = const {},
   });
 
   @override
@@ -103,7 +118,37 @@ class _ExerciseCardState extends State<ExerciseCard> {
   @override
   void didUpdateWidget(ExerciseCard old) {
     super.didUpdateWidget(old);
-    if (old.done != widget.done) _serie = widget.done + 1;
+    if (old.done != widget.done) {
+      _serie = widget.done + 1;
+      _syncExisting();
+    }
+  }
+
+  /// Série affichée déjà enregistrée aujourd'hui (null sinon).
+  Perf? get _existing => widget.todaySets[_serie];
+  bool _showingExisting = false;
+
+  /// Une série déjà faite réapparaît dans le champ (pour la corriger) ;
+  /// en la quittant, le champ redevient vide.
+  void _syncExisting() {
+    final e = _existing;
+    if (e != null) {
+      _value.text = _fmt(e.performance);
+      _lest.text = e.charge > 0 ? _fmt(e.charge) : '';
+      _showingExisting = true;
+    } else if (_showingExisting) {
+      _value.clear();
+      _lest.clear();
+      _showingExisting = false;
+    }
+  }
+
+  void _setSerie(int s) {
+    _auto?.cancel();
+    setState(() {
+      _serie = s;
+      _syncExisting();
+    });
   }
 
   @override
@@ -121,21 +166,29 @@ class _ExerciseCardState extends State<ExerciseCard> {
     return 'ex. ${_fmt(t.seriesFor(_serie).performance)}';
   }
 
-  Future<void> _save() async {
+  /// Enregistre la série ; true si réussi (enchaînement du chrono).
+  Future<bool> _save() async {
     _auto?.cancel();
-    if (_saving) return;
+    if (_saving) return false;
     final v = double.tryParse(_value.text.trim().replaceAll(',', '.'));
     if (v == null || v <= 0) {
       if (_value.text.trim().isNotEmpty) {
         setState(() => _error = 'Valeur invalide');
       }
-      return;
+      return false;
+    }
+    final existing = _existing;
+    if (existing != null && v == existing.performance) {
+      // Série déjà faite, inchangée : rien à enregistrer.
+      _setSerie(widget.done + 1);
+      return true;
     }
     setState(() {
       _saving = true;
       _error = null;
     });
     final ok = await widget.onSave(CardEntry(
+      existingId: existing?.id,
       value: v,
       serie: _serie,
       unite: _unite,
@@ -148,14 +201,17 @@ class _ExerciseCardState extends State<ExerciseCard> {
       tension: _tension,
       ecartement: _ecartement,
     ));
-    if (!mounted) return;
+    if (!mounted) return ok;
     setState(() {
       _saving = false;
       if (ok) {
         _value.clear();
-        _serie++; // la mise à jour du parent (done) confirmera
+        _showingExisting = false;
+        // Après une correction, retour à la prochaine série à faire.
+        _serie = existing != null ? widget.done + 1 : _serie + 1;
       }
     });
+    return ok;
   }
 
   Widget _drop(String label, String value, Iterable<String> items,
@@ -167,7 +223,8 @@ class _ExerciseCardState extends State<ExerciseCard> {
       decoration: InputDecoration(labelText: label),
       items: [
         for (final i in list)
-          DropdownMenuItem(value: i, child: Text(i, overflow: TextOverflow.ellipsis))
+          DropdownMenuItem(
+              value: i, child: Text(i, overflow: TextOverflow.ellipsis))
       ],
       onChanged: (v) => v == null ? null : setState(() => onChanged(v)),
     );
@@ -175,7 +232,8 @@ class _ExerciseCardState extends State<ExerciseCard> {
 
   @override
   Widget build(BuildContext context) {
-    final label = switch (_unite) { 'Sec' => 'Temps (s)', 'Kg' => 'Kg', _ => 'Reps' };
+    final label =
+        switch (_unite) { 'Sec' => 'Temps (s)', 'Kg' => 'Kg', _ => 'Reps' };
     final k = widget.kind;
     return Card(
       child: Padding(
@@ -206,7 +264,7 @@ class _ExerciseCardState extends State<ExerciseCard> {
                       children: [
                         IconButton.filledTonal(
                           onPressed:
-                              _serie > 1 ? () => setState(() => _serie--) : null,
+                              _serie > 1 ? () => _setSerie(_serie - 1) : null,
                           icon: const Icon(Icons.remove),
                         ),
                         SizedBox(
@@ -217,7 +275,7 @@ class _ExerciseCardState extends State<ExerciseCard> {
                                   fontSize: 22, fontWeight: FontWeight.w700)),
                         ),
                         IconButton.filledTonal(
-                          onPressed: () => setState(() => _serie++),
+                          onPressed: () => _setSerie(_serie + 1),
                           icon: const Icon(Icons.add),
                         ),
                       ],
@@ -246,7 +304,9 @@ class _ExerciseCardState extends State<ExerciseCard> {
                       labelText: label,
                       hintText: _hint,
                       errorText: _error,
-                      helperText: 'Enregistré après 3 s',
+                      helperText: _existing != null
+                          ? 'S$_serie déjà faite · modifier la corrige'
+                          : 'Enregistré après 3 s',
                       helperStyle: const TextStyle(fontSize: 10),
                     ),
                     onChanged: (_) {
@@ -273,7 +333,8 @@ class _ExerciseCardState extends State<ExerciseCard> {
                       ],
                       decoration: InputDecoration(
                           labelText: 'Lest (kg)',
-                          hintText: _lestHint == null ? null : 'ex. $_lestHint'),
+                          hintText:
+                              _lestHint == null ? null : 'ex. $_lestHint'),
                     ),
                   ),
                 ],
@@ -283,13 +344,19 @@ class _ExerciseCardState extends State<ExerciseCard> {
               const SizedBox(height: 10),
               Chrono(
                   exercice: widget.exercice,
+                  rest: widget.rest,
+                  onChainStop: (sec) async {
+                    _value.text = '$sec';
+                    _auto?.cancel();
+                    return _save();
+                  },
                   onStop: (sec) {
-                _value.text = '$sec';
-                _auto?.cancel();
-                _auto = Timer(const Duration(seconds: 3), () {
-                  if (mounted) _save();
-                });
-              }),
+                    _value.text = '$sec';
+                    _auto?.cancel();
+                    _auto = Timer(const Duration(seconds: 3), () {
+                      if (mounted) _save();
+                    });
+                  }),
             ],
             if (k == CardKind.planche) ...[
               InkWell(
@@ -302,10 +369,7 @@ class _ExerciseCardState extends State<ExerciseCard> {
                           style: TextStyle(
                               color: AppTheme.primaryBlue,
                               fontWeight: FontWeight.w600)),
-                      Icon(
-                          _showOptions
-                              ? Icons.expand_less
-                              : Icons.expand_more,
+                      Icon(_showOptions ? Icons.expand_less : Icons.expand_more,
                           color: AppTheme.primaryBlue),
                     ],
                   ),
@@ -314,8 +378,8 @@ class _ExerciseCardState extends State<ExerciseCard> {
               if (_showOptions) ...[
                 Row(children: [
                   Expanded(
-                      child: _drop('Variante', _variante,
-                          widget.variantes, (v) => _variante = v)),
+                      child: _drop('Variante', _variante, widget.variantes,
+                          (v) => _variante = v)),
                   const SizedBox(width: 10),
                   Expanded(
                       child: _drop(
@@ -324,8 +388,8 @@ class _ExerciseCardState extends State<ExerciseCard> {
                 const SizedBox(height: 10),
                 Row(children: [
                   Expanded(
-                      child: _drop('Élastique', _elastique,
-                          widget.elastiques, (v) => _elastique = v)),
+                      child: _drop('Élastique', _elastique, widget.elastiques,
+                          (v) => _elastique = v)),
                   const SizedBox(width: 10),
                   Expanded(
                       child: _drop('Tension', _tension, widget.tensions,
@@ -345,8 +409,8 @@ class _ExerciseCardState extends State<ExerciseCard> {
                         (v) => _tension = v)),
               ]),
               const SizedBox(height: 10),
-              _drop('Écartement des mains', _ecartement,
-                  widget.ecartements, (v) => _ecartement = v),
+              _drop('Écartement des mains', _ecartement, widget.ecartements,
+                  (v) => _ecartement = v),
             ],
             const SizedBox(height: 14),
             SizedBox(
@@ -359,7 +423,11 @@ class _ExerciseCardState extends State<ExerciseCard> {
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.save),
-                label: Text(_saving ? 'Enregistrement…' : 'Enregistrer'),
+                label: Text(_saving
+                    ? 'Enregistrement…'
+                    : _existing != null
+                        ? 'Corriger S$_serie'
+                        : 'Enregistrer'),
               ),
             ),
             if (widget.helper != null)

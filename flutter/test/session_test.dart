@@ -141,4 +141,12 @@ void main() {
       expect(findExistingExercise(known, ''), isNull);
     });
   });
+
+  test('numéros de série libres : jamais deux S1', () {
+    expect(freeSeries([], 1, 1), [1]);
+    expect(freeSeries([1], 1, 1), [2]); // S1 déjà enregistrée → S2
+    expect(freeSeries([1, 2, 4], 1, 3), [3, 5, 6]);
+    expect(freeSeries([1], 3, 2), [3, 4]); // numéro choisi libre : gardé
+    expect(freeSeries([], 0, 1), [1]);
+  });
 }

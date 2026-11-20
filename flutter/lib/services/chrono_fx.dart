@@ -1,4 +1,5 @@
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 /// Les trois sons du chrono (fichiers dans `assets/`).
@@ -9,6 +10,9 @@ enum Bip { court, depart, objectif }
 abstract class ChronoFx {
   void bip(Bip b);
   void keepAwake(bool on);
+
+  /// Annonce vocale (« 10 secondes », « Objectif atteint »…).
+  void say(String text);
 }
 
 /// Version réelle : audioplayers en mode basse latence, la musique en cours
@@ -18,6 +22,26 @@ class DeviceChronoFx implements ChronoFx {
   static final instance = DeviceChronoFx._();
 
   final Map<Bip, AudioPlayer> _players = {};
+  FlutterTts? _tts;
+
+  Future<FlutterTts> _voice() async {
+    final t = _tts;
+    if (t != null) return t;
+    final n = FlutterTts();
+    await n.setLanguage('fr-FR');
+    await n.setSpeechRate(0.5);
+    await n.awaitSpeakCompletion(false);
+    return _tts = n;
+  }
+
+  @override
+  void say(String text) async {
+    try {
+      final t = await _voice();
+      await t.stop(); // la dernière annonce remplace la précédente
+      await t.speak(text);
+    } catch (_) {/* synthèse vocale indisponible : les bips suffisent */}
+  }
 
   static const _files = {
     Bip.court: 'bip_court.wav',

@@ -13,6 +13,13 @@
     <!-- Rappels de séance : reprogrammés après un redémarrage du téléphone -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
 
+    <!-- Annonces vocales du chrono : moteur de synthèse vocale (Android 11+) -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE"/>
+        </intent>
+    </queries>
+
     <application
         android:label="Sysiphe"
         android:name="${applicationName}"

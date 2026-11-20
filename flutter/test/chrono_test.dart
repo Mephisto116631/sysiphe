@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sysiphe/services/chrono_fx.dart';
+import 'package:sysiphe/services/rest_timer.dart';
 import 'package:sysiphe/theme.dart';
 import 'package:sysiphe/widgets/chrono.dart';
 
@@ -12,6 +13,9 @@ class FakeFx implements ChronoFx {
   void bip(Bip b) => bips.add(b);
   @override
   void keepAwake(bool on) => awake.add(on);
+  final said = <String>[];
+  @override
+  void say(String text) => said.add(text);
 }
 
 void main() {
@@ -188,19 +192,42 @@ void main() {
     expect(fx.awake, [true, false]);
   });
 
-  testWidgets('bips coupés : aucun son, choix mémorisé', (t) async {
+  testWidgets('son : voix → bips → muet, choix mémorisé', (t) async {
     var now = DateTime(2026, 11, 17, 10);
     await pump(t, () => now, <int>[], pre: 3);
-    await t.tap(find.byIcon(Icons.volume_up));
+    await t.tap(find.byIcon(Icons.record_voice_over)); // voix (défaut) → bips
+    await t.pump();
+    await t.tap(find.byIcon(Icons.volume_up)); // bips → muet
     await t.pump();
     expect(find.byIcon(Icons.volume_off), findsOneWidget);
-    expect((await SharedPreferences.getInstance()).getBool(kChronoSoundKey),
-        false);
+    expect(
+        (await SharedPreferences.getInstance()).getInt(kChronoSoundModeKey), 0);
     await t.tap(find.text('Démarrer'));
     await t.pump();
     now = now.add(const Duration(seconds: 4));
     await t.pump(const Duration(milliseconds: 100));
     expect(fx.bips, isEmpty);
+    expect(fx.said, isEmpty);
+  });
+
+  testWidgets('ancien réglage « bips coupés » repris en muet', (t) async {
+    final now = DateTime(2026, 11, 17, 10);
+    await pump(t, () => now, <int>[], extra: {kChronoSoundKey: false});
+    expect(find.byIcon(Icons.volume_off), findsOneWidget);
+  });
+
+  testWidgets('annonces vocales : 10 secondes, objectif, minutes', (t) async {
+    var now = DateTime(2026, 11, 17, 10);
+    await pump(t, () => now, <int>[], extra: {kChronoTargetKey: 30});
+    await t.tap(find.text('Démarrer'));
+    await t.pump();
+    for (var i = 0; i < 95; i++) {
+      now = now.add(const Duration(seconds: 1));
+      await t.pump(const Duration(milliseconds: 100));
+    }
+    expect(fx.said, ['10 secondes', 'Objectif atteint', '1 minute']);
+    await t.tap(find.text('Arrêter'));
+    await t.pump(const Duration(seconds: 1));
   });
 
   testWidgets('plein écran : gros chiffres, Arrêter ferme et renvoie le temps',
@@ -234,5 +261,93 @@ void main() {
         (await SharedPreferences.getInstance()).getBool(kChronoFullKey), false);
     await t.tap(find.text('Arrêter'));
     await t.pump();
+  });
+
+  group('enchaînement', () {
+    testWidgets('3 séries : enregistrement, repos, relance automatique',
+        (t) async {
+      var now = DateTime(2026, 11, 19, 10);
+      SharedPreferences.setMockInitialValues(
+          {kChronoPreKey: 0, chronoSetsKey('Planche'): 3});
+      final rest = RestTimer(now: () => now);
+      rest.setSeconds(60);
+      final saved = <int>[];
+      await t.pumpWidget(MaterialApp(
+        theme: AppTheme.light,
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: Chrono(
+              now: () => now,
+              exercice: 'Planche',
+              fx: fx,
+              rest: rest,
+              onStop: (_) => fail('pas d\'onStop en enchaînement'),
+              onChainStop: (sec) async {
+                saved.add(sec);
+                rest.start(); // la Saisie lance le repos après l'enregistrement
+                return true;
+              },
+            ),
+          ),
+        ),
+      ));
+      await t.pumpAndSettle();
+      expect(find.text('3'), findsOneWidget); // puce « Séries : 3 » choisie
+
+      Future<void> wait(int sec) async {
+        now = now.add(Duration(seconds: sec));
+        rest.tick();
+        await t.pump(const Duration(milliseconds: 100));
+      }
+
+      await t.tap(find.text('Démarrer'));
+      await t.pump();
+      expect(fx.said, ['Série 1 sur 3']);
+      await wait(20);
+      await t.tap(find.text('Arrêter'));
+      await t.pump();
+      await t.pump();
+      expect(saved, [20]);
+      expect(find.text('Passer'), findsOneWidget); // en repos
+      expect(find.textContaining('série 2/3 ensuite'), findsOneWidget);
+      await wait(61); // fin du repos → série 2 relancée seule
+      await t.pump();
+      expect(find.text('Arrêter'), findsOneWidget);
+      expect(fx.said.last, 'Série 2 sur 3');
+      await wait(25);
+      await t.tap(find.text('Arrêter'));
+      await t.pump();
+      await t.pump();
+      // « Passer » saute le repos.
+      await t.tap(find.text('Passer'));
+      await t.pump();
+      await t.pump();
+      expect(fx.said.last, 'Série 3 sur 3');
+      await wait(30);
+      await t.tap(find.text('Arrêter'));
+      await t.pump();
+      await t.pump();
+      expect(saved, [20, 25, 30]);
+      expect(fx.said.last, 'Terminé, bravo');
+      expect(find.text('Démarrer'), findsOneWidget);
+      expect(fx.awake.last, false);
+      rest.dispose();
+      await t.pump(const Duration(seconds: 1));
+    });
+
+    testWidgets('plein écran : toucher l\'écran arrête la série', (t) async {
+      var now = DateTime(2026, 11, 19, 10);
+      final got = <int>[];
+      await pump(t, () => now, got, extra: {kChronoFullKey: true});
+      await t.tap(find.text('Démarrer'));
+      await t.pumpAndSettle();
+      expect(find.text('Touche l\'écran pour arrêter'), findsOneWidget);
+      now = now.add(const Duration(seconds: 12));
+      await t.pump(const Duration(milliseconds: 100));
+      await t.tapAt(const Offset(200, 300)); // au milieu, pas sur un bouton
+      await t.pumpAndSettle();
+      expect(got, [12]);
+      expect(find.byKey(const ValueKey('chrono-full-time')), findsNothing);
+    });
   });
 }

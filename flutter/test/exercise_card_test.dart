@@ -9,7 +9,10 @@ import 'package:sysiphe/widgets/exercise_card.dart';
 
 void main() {
   Future<List<CardEntry>> pump(WidgetTester t,
-      {CardKind kind = CardKind.plain, int done = 0, bool ok = true}) async {
+      {CardKind kind = CardKind.plain,
+      int done = 0,
+      bool ok = true,
+      Map<int, Perf> todaySets = const {}}) async {
     final saved = <CardEntry>[];
     t.view.physicalSize = const Size(360 * 3, 900 * 3);
     t.view.devicePixelRatio = 3;
@@ -32,6 +35,7 @@ void main() {
             elastiques: const ['Aucun', 'Jaune'],
             tensions: const ['N/A', 'Normal'],
             ecartements: const ['Standard', 'Large'],
+            todaySets: todaySets,
             onSave: (e) async {
               saved.add(e);
               return ok;
@@ -43,14 +47,17 @@ void main() {
     return saved;
   }
 
-  testWidgets('série = séries faites + 1, saisie vide, aide affichée', (t) async {
+  testWidgets('série = séries faites + 1, saisie vide, aide affichée',
+      (t) async {
     await pump(t, done: 2);
     expect(find.text('3'), findsOneWidget);
-    expect(find.text('Dernière fois le 1 août · record série 60'), findsOneWidget);
+    expect(
+        find.text('Dernière fois le 1 août · record série 60'), findsOneWidget);
     expect(t.takeException(), isNull); // nom long : pas de débordement
   });
 
-  testWidgets('Enregistrer envoie une seule série puis vide le champ', (t) async {
+  testWidgets('Enregistrer envoie une seule série puis vide le champ',
+      (t) async {
     final saved = await pump(t);
     await t.enterText(find.byType(TextField).first, '12');
     await t.tap(find.text('Enregistrer'));
@@ -58,7 +65,8 @@ void main() {
     expect(saved.length, 1);
     expect(saved.first.value, 12);
     expect(saved.first.serie, 1);
-    expect(t.widget<TextField>(find.byType(TextField).first).controller!.text, isEmpty);
+    expect(t.widget<TextField>(find.byType(TextField).first).controller!.text,
+        isEmpty);
   });
 
   testWidgets('enregistrement automatique 3 s après la frappe', (t) async {
@@ -78,10 +86,12 @@ void main() {
     await t.tap(find.text('Enregistrer'));
     await t.pumpAndSettle();
     expect(saved.length, 1);
-    expect(t.widget<TextField>(find.byType(TextField).first).controller!.text, '9');
+    expect(t.widget<TextField>(find.byType(TextField).first).controller!.text,
+        '9');
   });
 
-  testWidgets('assistable : élastique, tension et écartement visibles', (t) async {
+  testWidgets('assistable : élastique, tension et écartement visibles',
+      (t) async {
     await pump(t, kind: CardKind.assist);
     expect(find.text('Écartement des mains'), findsOneWidget);
     expect(find.text('Élastique'), findsOneWidget);
@@ -132,7 +142,8 @@ void main() {
     expect(fields[1].decoration!.hintText, 'ex. 10');
   });
 
-  testWidgets('exercice en secondes : chronomètre qui remplit le champ', (t) async {
+  testWidgets('exercice en secondes : chronomètre qui remplit le champ',
+      (t) async {
     SharedPreferences.setMockInitialValues({kChronoPreKey: 0});
     t.view.physicalSize = const Size(360 * 3, 900 * 3);
     t.view.devicePixelRatio = 3;
@@ -167,8 +178,63 @@ void main() {
     await t.tap(find.text('Arrêter'));
     await t.pump();
     // ≥ 1 s écoulée (horloge réelle) : le champ de valeur est rempli
-    final txt = t.widget<TextField>(find.byType(TextField).first).controller!.text;
+    final txt =
+        t.widget<TextField>(find.byType(TextField).first).controller!.text;
     expect(txt.isEmpty || int.tryParse(txt) != null, isTrue);
     await t.pump(const Duration(seconds: 4)); // laisse l'autosave se terminer
+  });
+
+  testWidgets(
+      '− sur une série déjà faite : sa valeur réapparaît et est corrigée',
+      (t) async {
+    final s1 = Perf(
+        id: 41,
+        userId: 'u',
+        date: DateTime(2026, 11, 20),
+        exercice: 'Abdos ( dragon press bicyclette ou hold)',
+        serie: 1,
+        performance: 10,
+        unite: 'Reps');
+    final saved = await pump(t, done: 1, todaySets: {1: s1});
+    TextEditingController field() =>
+        t.widget<TextField>(find.byType(TextField).first).controller!;
+    expect(find.text('2'), findsOneWidget);
+    expect(field().text, isEmpty);
+
+    await t.tap(find.byIcon(Icons.remove));
+    await t.pump();
+    expect(field().text, '10'); // S1 déjà faite : elle réapparaît
+    expect(find.text('S1 déjà faite · modifier la corrige'), findsOneWidget);
+
+    await t.tap(find.byIcon(Icons.add)); // retour sur S2 : champ vidé
+    await t.pump();
+    expect(field().text, isEmpty);
+
+    await t.tap(find.byIcon(Icons.remove));
+    await t.pump();
+    await t.enterText(find.byType(TextField).first, '12');
+    await t.tap(find.text('Corriger S1'));
+    await t.pumpAndSettle();
+    expect(saved.single.existingId, 41); // corrige S1, n'en ajoute pas une
+    expect(saved.single.value, 12);
+    expect(find.text('2'), findsOneWidget); // retour à la prochaine série
+  });
+
+  testWidgets('série déjà faite inchangée : rien n\'est enregistré', (t) async {
+    final s1 = Perf(
+        id: 41,
+        userId: 'u',
+        date: DateTime(2026, 11, 20),
+        exercice: 'x',
+        serie: 1,
+        performance: 10,
+        unite: 'Reps');
+    final saved = await pump(t, done: 1, todaySets: {1: s1});
+    await t.tap(find.byIcon(Icons.remove));
+    await t.pump();
+    await t.tap(find.text('Corriger S1'));
+    await t.pumpAndSettle();
+    expect(saved, isEmpty);
+    expect(find.text('2'), findsOneWidget);
   });
 }

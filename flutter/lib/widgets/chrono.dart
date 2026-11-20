@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/chrono_fx.dart';
+import '../services/rest_timer.dart';
 import '../services/timer_alerts.dart';
 import '../theme.dart';
 
@@ -15,9 +16,25 @@ const kChronoPreChoices = [0, 5, 10, 15];
 const kChronoTargetKey = 'chrono_target_seconds';
 const kChronoTargetChoices = [0, 30, 45, 60, 90, 120]; // 0 = libre
 
-/// Bips activés (défaut oui) et plein écran à l'ouverture (dernier choix).
+/// Bips activés (ancien réglage, repris s'il existe) et plein écran à
+/// l'ouverture (dernier choix).
 const kChronoSoundKey = 'chrono_sound';
 const kChronoFullKey = 'chrono_fullscreen';
+
+/// Son : 0 = muet, 1 = bips, 2 = bips + annonces vocales (défaut).
+const kChronoSoundModeKey = 'chrono_sound_mode';
+
+/// Nombre de séries enchaînées (1 = une seule), mémorisé par exercice.
+const kChronoSetsKey = 'chrono_sets';
+const kChronoSetsChoices = [1, 2, 3, 4, 5];
+
+String chronoSetsKey(String? exercice) {
+  final e = exercice?.trim().toLowerCase() ?? '';
+  return e.isEmpty ? kChronoSetsKey : '$kChronoSetsKey:$e';
+}
+
+/// « 1 minute », « 2 minutes ».
+String minutesFr(int m) => m == 1 ? '1 minute' : '$m minutes';
 
 String chronoTargetKey(String? exercice) {
   final e = exercice?.trim().toLowerCase() ?? '';
@@ -58,11 +75,26 @@ String formatDuree(int s) =>
 /// pendant la série, et le temps peut s'afficher en plein écran (lisible
 /// depuis le sol en planche) ; le dernier choix est repris à la série suivante.
 ///
+/// **Annonces vocales** (réglables avec le bouton son : voix, bips, muet) :
+/// « 10 secondes », « Objectif atteint », chaque minute en chrono libre,
+/// numéro de série et repos en enchaînement.
+///
+/// **Enchaînement** ([onChainStop] fourni) : « Séries : 3 » → à chaque arrêt
+/// la série est enregistrée tout de suite, le repos de la Saisie ([rest])
+/// démarre, puis la série suivante se relance seule (avec la préparation).
+/// En plein écran, toucher n'importe où arrête la série (ou passe le repos).
+///
 /// Basé sur l'horloge (pas sur un compteur) : reste juste même si l'app passe
 /// en arrière-plan. Dans ce cas, avant l'objectif, une notification est
 /// programmée pour l'heure de fin.
 class Chrono extends StatefulWidget {
   final ValueChanged<int> onStop;
+
+  /// Enregistre la série tout de suite (enchaînement) ; true si réussi.
+  final Future<bool> Function(int seconds)? onChainStop;
+
+  /// Repos entre les séries : la série suivante attend sa fin.
+  final RestTimer? rest;
   final DateTime Function()? now; // injectable pour les tests
   /// Exercice en cours : l'objectif est mémorisé par exercice.
   final String? exercice;
@@ -70,8 +102,15 @@ class Chrono extends StatefulWidget {
   /// Sons et écran allumé (injectable pour les tests).
   final ChronoFx? fx;
 
-  const Chrono(
-      {super.key, required this.onStop, this.now, this.exercice, this.fx});
+  const Chrono({
+    super.key,
+    required this.onStop,
+    this.now,
+    this.exercice,
+    this.fx,
+    this.onChainStop,
+    this.rest,
+  });
 
   @override
   State<Chrono> createState() => _ChronoState();
@@ -87,8 +126,14 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
   int _lastBeep = -1;
   bool _reached = false; // objectif atteint pendant cette série
   bool _alertsOn = false;
-  bool _sound = true;
+  int _soundMode = 2; // 0 muet, 1 bips, 2 bips + voix
   bool _fullPref = false;
+  int _sets = 1; // séries à enchaîner
+  int _setIdx = 1; // série en cours (enchaînement)
+  bool _chain = false; // enchaînement en cours
+  bool _waitingRest = false; // entre deux séries
+  bool _saving = false;
+  int _lastSpoken = -1; // dernière annonce (secondes restantes / minutes)
   Route<void>? _fullRoute;
   final _rev = ValueNotifier<int>(0); // redessine la vue plein écran
 
@@ -101,8 +146,19 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
     _rev.value++;
   }
 
+  bool get _sound => _soundMode >= 1;
+  bool get _voice => _soundMode == 2;
+
   void _bip(Bip b) {
     if (_sound) _fx.bip(b);
+  }
+
+  void _say(String text) {
+    if (_voice) _fx.say(text);
+  }
+
+  void _onRestTick() {
+    if (_waitingRest && mounted) setState(() {});
   }
 
   bool get _running => _start != null;
@@ -112,12 +168,17 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    widget.rest?.left.addListener(_onRestTick);
     _load();
   }
 
   @override
   void didUpdateWidget(Chrono old) {
     super.didUpdateWidget(old);
+    if (old.rest != widget.rest) {
+      old.rest?.left.removeListener(_onRestTick);
+      widget.rest?.left.addListener(_onRestTick);
+    }
     if (chronoTargetKey(old.exercice) != chronoTargetKey(widget.exercice) &&
         !_running &&
         !_counting) {
@@ -132,11 +193,14 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
       final t = p.getInt(chronoTargetKey(widget.exercice)) ??
           p.getInt(kChronoTargetKey) ??
           0;
-      final sound = p.getBool(kChronoSoundKey) ?? true;
+      final mode = p.getInt(kChronoSoundModeKey) ??
+          (p.getBool(kChronoSoundKey) == false ? 0 : 2);
       final full = p.getBool(kChronoFullKey) ?? false;
+      final sets = p.getInt(chronoSetsKey(widget.exercice)) ?? 1;
       if (!mounted) return;
       setState(() {
-        _sound = sound;
+        _soundMode = mode.clamp(0, 2);
+        _sets = sets.clamp(1, 20);
         _fullPref = full;
         _pre = pre.clamp(0, 600);
         _target = t.clamp(0, 9999);
@@ -157,9 +221,20 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
     } catch (_) {}
   }
 
+  /// Voix → bips → muet → voix.
   void _toggleSound() {
-    setState(() => _sound = !_sound);
-    _savePref(kChronoSoundKey, _sound);
+    setState(() => _soundMode = (_soundMode + 2) % 3);
+    SharedPreferences.getInstance()
+        .then((p) => p.setInt(kChronoSoundModeKey, _soundMode))
+        .catchError((_) => true);
+  }
+
+  Future<void> _setSets(int v) async {
+    setState(() => _sets = v);
+    try {
+      (await SharedPreferences.getInstance())
+          .setInt(chronoSetsKey(widget.exercice), v);
+    } catch (_) {}
   }
 
   // ---------------------------------------------------------- plein écran
@@ -257,13 +332,36 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
     if (v != null && mounted) _setTarget(v);
   }
 
+  bool get _canChain => widget.onChainStop != null;
+
   void _press() {
+    if (_saving) return;
     if (_running) return _end();
     if (_counting) return _cancel();
+    if (_waitingRest) return _skipRest();
+    _chain = _canChain && _sets > 1;
+    _setIdx = 1;
+    _startSet();
+  }
+
+  void _startSet() {
     _reached = false;
+    _lastSpoken = -1;
     _fx.keepAwake(true);
+    if (_chain) _say('Série $_setIdx sur $_sets');
     _pre == 0 ? _begin(_now()) : _countdown();
     if (_fullPref) _openFull();
+  }
+
+  /// Passe le repos : la série suivante démarre.
+  void _skipRest() => widget.rest?.stop();
+
+  /// Arrête l'enchaînement (pendant le repos).
+  void _stopChain() {
+    _chain = false;
+    _fx.keepAwake(false);
+    _closeFull();
+    setState(() => _waitingRest = false);
   }
 
   void _countdown() {
@@ -280,6 +378,7 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
       _tick?.cancel();
       HapticFeedback.heavyImpact(); // top départ
       _bip(Bip.depart);
+      _say('Partez');
       _begin(_goAt!); // l'heure de départ est celle prévue, pas celle du tick
       return;
     }
@@ -294,6 +393,7 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
 
   void _cancel() {
     _tick?.cancel();
+    _chain = false;
     _cancelAlerts();
     _fx.keepAwake(false);
     _closeFull();
@@ -313,6 +413,7 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
       if (!mounted) return;
       setState(() => _elapsed = _now().difference(_start!));
       _targetFeedback();
+      _announce();
     });
     setState(() {});
   }
@@ -324,6 +425,7 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
     if (leftMs <= 0) {
       _reached = true;
       _bip(Bip.objectif);
+      _say('Objectif atteint');
       HapticFeedback.heavyImpact();
       Future.delayed(
           const Duration(milliseconds: 180), HapticFeedback.heavyImpact);
@@ -339,18 +441,69 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
     }
   }
 
+  /// Annonces vocales pendant la série : « 10 secondes » avant l'objectif,
+  /// puis chaque minute (chrono libre, ou au-delà de l'objectif).
+  void _announce() {
+    if (!_voice) return;
+    final sec = _elapsed.inSeconds;
+    if (_target >= 20 && !_reached) {
+      final left = _target - sec;
+      if (left == 10 && _lastSpoken != -10) {
+        _lastSpoken = -10;
+        _say('10 secondes');
+      }
+      return;
+    }
+    final min = sec ~/ 60;
+    if (min >= 1 && sec % 60 == 0 && _lastSpoken != min) {
+      _lastSpoken = min;
+      _say(minutesFr(min));
+    }
+  }
+
   void _end() {
     _tick?.cancel();
     _cancelAlerts();
-    _fx.keepAwake(false);
-    _closeFull();
     final e = _now().difference(_start!);
     setState(() {
       _start = null;
       _elapsed = e;
     });
     final s = (e.inMilliseconds / 1000).round();
+    if (_chain && s > 0) {
+      _continueChain(s);
+      return;
+    }
+    _chain = false;
+    _fx.keepAwake(false);
+    _closeFull();
     if (s > 0) widget.onStop(s);
+  }
+
+  /// Enchaînement : enregistre la série, attend la fin du repos, relance.
+  Future<void> _continueChain(int s) async {
+    final last = _setIdx >= _sets;
+    setState(() {
+      _saving = true;
+      _waitingRest = !last;
+    });
+    final ok = await widget.onChainStop!(s);
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (!ok || last) {
+      if (ok) _say('Terminé, bravo');
+      _stopChain();
+      return;
+    }
+    _say('Repos');
+    await (widget.rest?.waitDone() ?? Future<void>.value());
+    if (!mounted || !_chain) return;
+    setState(() {
+      _waitingRest = false;
+      _setIdx++;
+      _elapsed = Duration.zero;
+    });
+    _startSet();
   }
 
   void _reset() => setState(() {
@@ -384,9 +537,10 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    widget.rest?.left.removeListener(_onRestTick);
     _tick?.cancel();
     _cancelAlerts();
-    if (_running || _counting) _fx.keepAwake(false);
+    if (_running || _counting || _chain) _fx.keepAwake(false);
     _closeFull();
     _rev.dispose();
     super.dispose();
@@ -403,6 +557,12 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
   bool get _over => _target > 0 && _elapsed.inMilliseconds >= _target * 1000;
 
   String get _label {
+    if (_waitingRest) {
+      final l = widget.rest?.left.value;
+      return l == null
+          ? '…'
+          : _fmt(((l.inMilliseconds + 999) ~/ 1000) * 1000, tenths: false);
+    }
     if (_counting) {
       final left = _goAt!.difference(_now());
       return '${(left.inMilliseconds / 1000).ceil().clamp(1, 999)}';
@@ -418,16 +578,25 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
     return _fmt(ms);
   }
 
+  String get _setTag => _chain ? 'Série $_setIdx/$_sets · ' : '';
+
   String? get _hint {
+    if (_waitingRest) {
+      return 'Repos · série ${_setIdx + 1}/$_sets ensuite';
+    }
     if (_counting) {
       return _target > 0
-          ? 'Mets-toi en position… objectif ${formatDuree(_target)}'
-          : 'Mets-toi en position…';
+          ? '${_setTag}Mets-toi en position… objectif ${formatDuree(_target)}'
+          : '${_setTag}Mets-toi en position…';
     }
     if (_running && _over) {
-      return 'Objectif atteint 🎯 — total ${_fmt(_elapsed.inMilliseconds, tenths: false)}';
+      return '${_setTag}Objectif atteint 🎯 — total '
+          '${_fmt(_elapsed.inMilliseconds, tenths: false)}';
     }
-    if (_running && _target > 0) return 'Objectif ${formatDuree(_target)}';
+    if (_running && _target > 0) {
+      return '${_setTag}Objectif ${formatDuree(_target)}';
+    }
+    if (_running && _chain) return 'Série $_setIdx/$_sets';
     return null;
   }
 
@@ -436,6 +605,7 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
       : null;
 
   Color? get _color {
+    if (_waitingRest) return Colors.teal;
     if (_counting) return Colors.orange;
     if (_running) return _over ? Colors.green : AppTheme.primaryBlue;
     return null;
@@ -479,7 +649,7 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final idle = !_running && !_counting;
+    final idle = !_running && !_counting && !_waitingRest;
     final showBar = _target > 0 && _running;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -487,16 +657,20 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
         Row(
           children: [
             Icon(
-                _counting
-                    ? Icons.hourglass_top
-                    : _target > 0
-                        ? Icons.flag_outlined
-                        : Icons.timer_outlined,
-                color: _counting
-                    ? Colors.orange
-                    : _over && _running
-                        ? Colors.green
-                        : AppTheme.textSecondary),
+                _waitingRest
+                    ? Icons.self_improvement
+                    : _counting
+                        ? Icons.hourglass_top
+                        : _target > 0
+                            ? Icons.flag_outlined
+                            : Icons.timer_outlined,
+                color: _waitingRest
+                    ? Colors.teal
+                    : _counting
+                        ? Colors.orange
+                        : _over && _running
+                            ? Colors.green
+                            : AppTheme.textSecondary),
             const SizedBox(width: 8),
             // Le temps rétrécit au besoin : la ligne ne déborde jamais, même
             // dans une carte étroite avec le bouton « remettre à zéro ».
@@ -520,16 +694,31 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
             ),
             if (idle)
               IconButton(
-                tooltip: _sound ? 'Couper les bips' : 'Activer les bips',
+                tooltip: switch (_soundMode) {
+                  2 => 'Voix et bips (appuyer : bips seuls)',
+                  1 => 'Bips seuls (appuyer : muet)',
+                  _ => 'Muet (appuyer : voix et bips)',
+                },
                 onPressed: _toggleSound,
-                icon: Icon(_sound ? Icons.volume_up : Icons.volume_off),
+                icon: Icon(switch (_soundMode) {
+                  2 => Icons.record_voice_over,
+                  1 => Icons.volume_up,
+                  _ => Icons.volume_off,
+                }),
               )
-            else
+            else ...[
+              if (_waitingRest)
+                IconButton(
+                  tooltip: 'Arrêter l\'enchaînement',
+                  onPressed: _stopChain,
+                  icon: const Icon(Icons.close),
+                ),
               IconButton(
                 tooltip: 'Plein écran',
                 onPressed: _openFull,
                 icon: const Icon(Icons.fullscreen),
               ),
+            ],
             if (idle && _elapsed > Duration.zero)
               IconButton(
                 tooltip: 'Remettre à zéro',
@@ -537,17 +726,21 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
                 icon: const Icon(Icons.restart_alt),
               ),
             FilledButton.icon(
-              onPressed: _press,
-              icon: Icon(_running
-                  ? Icons.stop
-                  : _counting
-                      ? Icons.close
-                      : Icons.play_arrow),
-              label: Text(_running
-                  ? 'Arrêter'
-                  : _counting
-                      ? 'Annuler'
-                      : 'Démarrer'),
+              onPressed: _saving ? null : _press,
+              icon: Icon(_waitingRest
+                  ? Icons.skip_next
+                  : _running
+                      ? Icons.stop
+                      : _counting
+                          ? Icons.close
+                          : Icons.play_arrow),
+              label: Text(_waitingRest
+                  ? 'Passer'
+                  : _running
+                      ? 'Arrêter'
+                      : _counting
+                          ? 'Annuler'
+                          : 'Démarrer'),
             ),
           ],
         ),
@@ -586,15 +779,39 @@ class _ChronoState extends State<Chrono> with WidgetsBindingObserver {
             onPick: _setTarget,
             onCustom: _customTarget,
           ),
+          if (_canChain)
+            Wrap(
+              spacing: 6,
+              runSpacing: 2,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                const Text('Séries',
+                    style:
+                        TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                for (final c in kChronoSetsChoices)
+                  ChoiceChip(
+                    label: Text(c == 1 ? 'Une' : '$c'),
+                    tooltip: c == 1
+                        ? 'Une série à la fois'
+                        : '$c séries enchaînées avec le repos',
+                    selected: _sets == c,
+                    visualDensity: VisualDensity.compact,
+                    onSelected: (_) => _setSets(c),
+                  ),
+              ],
+            ),
         ],
-        if (_counting)
+        if (_counting || _waitingRest || (_running && _chain && !_over))
           Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: Text(
-                _target > 0
-                    ? 'Mets-toi en position… objectif ${formatDuree(_target)}'
-                    : 'Mets-toi en position…',
-                style: const TextStyle(color: Colors.orange, fontSize: 12)),
+            child: Text(_hint ?? '',
+                style: TextStyle(
+                    color: _waitingRest
+                        ? Colors.teal
+                        : _counting
+                            ? Colors.orange
+                            : AppTheme.textSecondary,
+                    fontSize: 12)),
           ),
       ],
     );
@@ -624,74 +841,114 @@ class _FullView extends StatelessWidget {
               final color = s._color ?? Colors.white;
               final hint = s._hint;
               final progress = s._progress;
-              return Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    Align(
-                      alignment: Alignment.topLeft,
-                      child: IconButton(
-                        tooltip: 'Réduire',
-                        onPressed: s._shrink,
-                        color: Colors.white70,
-                        iconSize: 32,
-                        icon: const Icon(Icons.fullscreen_exit),
+              final touch = s._running
+                  ? 'Touche l\'écran pour arrêter'
+                  : s._waitingRest
+                      ? 'Touche l\'écran pour passer le repos'
+                      : null;
+              // Toucher n'importe où : arrête la série (ou passe le repos),
+              // sans viser le bouton depuis la position de planche.
+              return GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: s._running || s._waitingRest ? s._press : null,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      Align(
+                        alignment: Alignment.topLeft,
+                        child: IconButton(
+                          tooltip: 'Réduire',
+                          onPressed: s._shrink,
+                          color: Colors.white70,
+                          iconSize: 32,
+                          icon: const Icon(Icons.fullscreen_exit),
+                        ),
                       ),
-                    ),
-                    Expanded(
-                      child: Center(
-                        child: FittedBox(
-                          fit: BoxFit.contain,
-                          child: Text(
-                            s._label,
-                            key: const ValueKey('chrono-full-time'),
-                            style: TextStyle(
-                              fontSize: 200,
-                              fontWeight: FontWeight.w800,
-                              fontFeatures: const [
-                                FontFeature.tabularFigures()
-                              ],
-                              color: color,
+                      Expanded(
+                        child: Center(
+                          child: FittedBox(
+                            fit: BoxFit.contain,
+                            child: Text(
+                              s._label,
+                              key: const ValueKey('chrono-full-time'),
+                              style: TextStyle(
+                                fontSize: 200,
+                                fontWeight: FontWeight.w800,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures()
+                                ],
+                                color: color,
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                    if (progress != null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 16),
-                        child: LinearProgressIndicator(
-                          value: progress,
-                          minHeight: 14,
-                          color: color,
-                          backgroundColor: Colors.white12,
-                          borderRadius: BorderRadius.circular(7),
+                      if (progress != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: LinearProgressIndicator(
+                            value: progress,
+                            minHeight: 14,
+                            color: color,
+                            backgroundColor: Colors.white12,
+                            borderRadius: BorderRadius.circular(7),
+                          ),
+                        ),
+                      if (hint != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(hint,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: color, fontSize: 20)),
+                        ),
+                      if (touch != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: Text(touch,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                  color: Colors.white54, fontSize: 15)),
+                        ),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 72,
+                        child: FilledButton.icon(
+                          onPressed: !s._saving &&
+                                  (s._running || s._counting || s._waitingRest)
+                              ? s._press
+                              : null,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: s._waitingRest
+                                ? Colors.teal
+                                : s._counting
+                                    ? Colors.orange
+                                    : Colors.redAccent,
+                            textStyle: const TextStyle(
+                                fontSize: 24, fontWeight: FontWeight.w700),
+                          ),
+                          icon: Icon(
+                              s._waitingRest
+                                  ? Icons.skip_next
+                                  : s._counting
+                                      ? Icons.close
+                                      : Icons.stop,
+                              size: 32),
+                          label: Text(s._waitingRest
+                              ? 'Passer le repos'
+                              : s._counting
+                                  ? 'Annuler'
+                                  : 'Arrêter'),
                         ),
                       ),
-                    if (hint != null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 16),
-                        child: Text(hint,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: color, fontSize: 20)),
-                      ),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 72,
-                      child: FilledButton.icon(
-                        onPressed: s._running || s._counting ? s._press : null,
-                        style: FilledButton.styleFrom(
-                          backgroundColor:
-                              s._counting ? Colors.orange : Colors.redAccent,
-                          textStyle: const TextStyle(
-                              fontSize: 24, fontWeight: FontWeight.w700),
+                      if (s._waitingRest)
+                        TextButton(
+                          onPressed: s._stopChain,
+                          child: const Text('Arrêter l\'enchaînement',
+                              style: TextStyle(color: Colors.white70)),
                         ),
-                        icon: Icon(s._counting ? Icons.close : Icons.stop,
-                            size: 32),
-                        label: Text(s._counting ? 'Annuler' : 'Arrêter'),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               );
             },

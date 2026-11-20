@@ -77,7 +77,7 @@ répondent **400**, et l'app reste bloquée sur un chargement infini.
 
 Pages et fonctions présentes sur le web, absentes ou simplifiées dans Flutter :
 
-- [ ] **Saisie planche** multi-séries (S1 à S5) avec variante, forme, élastique et tension par série
+- [~] **Saisie planche** multi-séries (S1 à S5) avec variante, forme, élastique et tension par série — **abandonné (20/11)** : la saisie série par série (chrono, enchaînement) convient mieux
 - [x] **Saisie lestée** : champ « Lest (kg) » pour les séries en reps (enregistré dans `charge`)
 - [x] **Saisie** : options planche ouvertes automatiquement pour « Planche » ; bug du champ Exercice corrigé (curseur qui sautait)
 - [x] **Saisie** : carte « Séance précédente » — un appui pré-remplit l'exercice avec la série suivante telle que faite la dernière fois (valeur, lest, options planche) ; après chaque enregistrement, la série suivante s'enchaîne
@@ -112,7 +112,7 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
 - [x] Supprimer toute la séance du jour (avec confirmation)
 - [x] Par exercice : record en série, moyenne des N dernières séances, écart du jour en % et alerte « Nouveau record » à l'enregistrement
 - [x] Catégorie libre par exercice (choisie à la création, reprise de la séance précédente)
-- [ ] Planche : bloc S1 à S5 avec forme par série et couleur d'intensité
+- [~] Planche : bloc S1 à S5 avec forme par série et couleur d'intensité — **abandonné (20/11)** : la saisie série par série (chrono, enchaînement) convient mieux
 - [~] « Tout sauvegarder » en un appui — remplacé par l'enregistrement carte par carte (v2.6.0)
 - [x] Panneau du jour : séries ou effort du jour, séances du mois, reps de la semaine vs semaine précédente (port testé de `compute_period_comparison`)
 - [ ] Rappel de prochaine séance dans l'agenda (`.ics`)
@@ -288,3 +288,22 @@ Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec 
 - [x] Correctif : les boîtes « Renommer » et « corriger une série » libéraient leur champ pendant leur fermeture
       (erreur possible) — révélé par les tests
 - [ ] **Toi** : parcourir les Réglages ; chaque réglage d'avant doit se retrouver en 2 appuis au plus
+
+## Chrono : enchaînement, annonces vocales, arrêt au toucher (19/11, v2.15.0)
+
+- [x] **Enchaînement** : « Séries : 2 à 5 » (mémorisé par exercice). À chaque arrêt, la série est enregistrée tout de
+      suite, le repos démarre, puis la série suivante se relance seule (avec la préparation). « Passer » saute le
+      repos, ✕ arrête l'enchaînement. Dans la carte principale et les petites cartes
+- [x] **Annonces vocales** (`flutter_tts`) : « Série 2 sur 3 », « Partez », « 10 secondes », « Objectif atteint »,
+      chaque minute, « Repos », « Terminé, bravo ». Bouton son à 3 états : voix + bips (défaut) → bips → muet
+- [x] **Plein écran** : toucher n'importe où arrête la série (ou passe le repos) ; le repos s'affiche en plein écran
+- [x] Correctif (20/11) : deux planches enregistrées en S1 le même jour. Le numéro de série est maintenant relu sur le
+      serveur juste avant chaque enregistrement (numéro déjà pris → suivant libre) ; les petites cartes gardent leur
+      état (chrono en cours, saisie en attente) quand elles changent d'ordre
+- [x] Correctif (20/11) : avec − / +, revenir sur une série déjà faite n'affichait pas sa valeur et permettait d'en
+      enregistrer une deuxième. Maintenant sa valeur réapparaît (« S1 déjà faite · modifier la corrige », bouton
+      « Corriger S1 ») et l'enregistrement corrige la série au lieu d'en ajouter une ; carte principale et petites cartes
+- [x] Supprimer un profil réservé aux admins (20/11) : bouton caché hors admin ; côté base, suppression directe
+      retirée, RPC `admin_delete_profile` (admin requis, profil admin non supprimable, séries conservées)
+- [ ] **Toi** : appliquer `supabase/migrations/20261120120000_admin_delete_profile.sql` (après le test annulé)
+- [ ] **Toi** : essayer une planche en 3 séries, téléphone posé au sol
