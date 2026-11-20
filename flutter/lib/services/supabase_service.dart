@@ -171,9 +171,10 @@ class SupabaseService {
         .update({'name': name.trim()}).eq('id', profileId);
   }
 
-  /// Supprime le profil ; ses séries restent en base (comme le web).
+  /// Supprime le profil (admin seulement, vérifié par le serveur) ; ses
+  /// séries restent en base. Erreurs : forbidden, admin_profile, not_found.
   Future<void> deleteProfile(String profileId) async {
-    await _db.from('profiles').delete().eq('id', profileId);
+    await _db.rpc('admin_delete_profile', params: {'p_profile': profileId});
   }
 
   Future<void> touchLogin(String profileId) async {

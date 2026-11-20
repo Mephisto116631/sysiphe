@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sysiphe/models/perf.dart';
 import 'package:sysiphe/models/profile.dart';
+import 'package:sysiphe/screens/settings/account_page.dart';
 import 'package:sysiphe/screens/settings/exercises_page.dart';
 import 'package:sysiphe/screens/settings_screen.dart';
 import 'package:sysiphe/services/role.dart';
@@ -163,6 +164,36 @@ void main() {
       await t.tap(find.text('Planche'));
       await t.pumpAndSettle();
       expect(find.text('Assistable'), findsNothing);
+    });
+  });
+
+  group('Compte et sécurité', () {
+    const moi = Profile(id: 'a', name: 'Médhi', hasPin: true);
+    const autre = Profile(id: 'b', name: 'Dilbert', hasPin: false);
+
+    Future<void> pump(WidgetTester t, {required bool admin}) async {
+      phone(t);
+      isAdminNotifier.value = admin;
+      addTearDown(() => isAdminNotifier.value = false);
+      await t.pumpWidget(MaterialApp(
+        theme: AppTheme.light,
+        home: AccountPage(
+            current: moi, loadProfiles: () async => const [moi, autre]),
+      ));
+      await t.pumpAndSettle();
+    }
+
+    testWidgets('suppression de profil cachée hors admin', (t) async {
+      await pump(t, admin: false);
+      expect(find.text('Dilbert'), findsOneWidget);
+      expect(find.byTooltip('Supprimer'), findsNothing);
+      expect(find.byTooltip('Renommer'), findsNWidgets(2));
+    });
+
+    testWidgets('admin : suppression proposée, sauf pour le profil actif',
+        (t) async {
+      await pump(t, admin: true);
+      expect(find.byTooltip('Supprimer'), findsOneWidget);
     });
   });
 }

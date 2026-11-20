@@ -303,4 +303,7 @@ Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec 
 - [x] Correctif (20/11) : avec − / +, revenir sur une série déjà faite n'affichait pas sa valeur et permettait d'en
       enregistrer une deuxième. Maintenant sa valeur réapparaît (« S1 déjà faite · modifier la corrige », bouton
       « Corriger S1 ») et l'enregistrement corrige la série au lieu d'en ajouter une ; carte principale et petites cartes
+- [x] Supprimer un profil réservé aux admins (20/11) : bouton caché hors admin ; côté base, suppression directe
+      retirée, RPC `admin_delete_profile` (admin requis, profil admin non supprimable, séries conservées)
+- [ ] **Toi** : appliquer `supabase/migrations/20261120120000_admin_delete_profile.sql` (après le test annulé)
 - [ ] **Toi** : essayer une planche en 3 séries, téléphone posé au sol

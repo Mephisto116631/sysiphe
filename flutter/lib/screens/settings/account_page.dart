@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/profile.dart';
+import '../../services/role.dart';
 import '../../services/session_store.dart';
 import '../../services/supabase_service.dart';
 import '../../theme.dart';
@@ -9,16 +10,21 @@ import 'common.dart';
 
 /// Réglages → Compte et sécurité : compte Google, PIN, profils (créer,
 /// renommer, supprimer).
+/// Supprimer un profil est réservé aux admins (aussi vérifié par le serveur).
 class AccountPage extends StatefulWidget {
   final Profile current;
-  const AccountPage({super.key, required this.current});
+
+  /// Liste des profils fournie directement (tests) : pas d'accès réseau.
+  final Future<List<Profile>> Function()? loadProfiles;
+
+  const AccountPage({super.key, required this.current, this.loadProfiles});
 
   @override
   State<AccountPage> createState() => _AccountPageState();
 }
 
 class _AccountPageState extends State<AccountPage> {
-  final _svc = SupabaseService.instance;
+  SupabaseService get _svc => SupabaseService.instance;
   List<Profile> _profiles = [];
   bool _loading = true;
   Object? _error;
@@ -35,7 +41,7 @@ class _AccountPageState extends State<AccountPage> {
       _error = null;
     });
     try {
-      final p = await _svc.getProfiles();
+      final p = await (widget.loadProfiles ?? _svc.getProfiles)();
       if (!mounted) return;
       setState(() {
         _profiles = p;
@@ -56,8 +62,16 @@ class _AccountPageState extends State<AccountPage> {
       if (mounted) showSnack(context, ok);
     } catch (e) {
       if (!mounted) return;
-      final dup = '$e'.contains('duplicate') || '$e'.contains('23505');
-      showSnack(context, dup ? 'Ce nom existe déjà' : 'Erreur : $e',
+      final m = '$e';
+      showSnack(
+          context,
+          m.contains('duplicate') || m.contains('23505')
+              ? 'Ce nom existe déjà'
+              : m.contains('forbidden')
+                  ? 'Suppression réservée aux admins'
+                  : m.contains('admin_profile')
+                      ? 'Un profil admin ne peut pas être supprimé'
+                      : 'Erreur : $e',
           error: true);
     }
     await _load();
@@ -200,8 +214,9 @@ class _AccountPageState extends State<AccountPage> {
                             tooltip: 'Renommer',
                             onPressed: () => _renameProfile(p),
                           ),
-                          // On ne supprime pas le profil en cours.
-                          if (p.id != widget.current.id)
+                          // Admin seulement, et jamais le profil en cours.
+                          if (isAdminNotifier.value &&
+                              p.id != widget.current.id)
                             IconButton(
                               icon: const Icon(Icons.delete_outline,
                                   color: Colors.redAccent),
