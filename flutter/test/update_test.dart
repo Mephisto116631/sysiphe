@@ -17,7 +17,7 @@ void main() {
   };
 
   test('lecture de la Release GitHub', () {
-    final u = parseRelease(release)!;
+    final u = parseRelease(release, apkName: 'sysiphe.apk')!;
     expect(u.version, '2.2.0');
     expect(u.build, 10);
     expect(u.label, '2.2.0+10');
@@ -31,7 +31,7 @@ void main() {
   });
 
   test('comparaison sur le numéro de build', () {
-    final u = parseRelease(release)!; // +10
+    final u = parseRelease(release, apkName: 'sysiphe.apk')!; // +10
     expect(isNewer(u, '2.1.0+9'), isTrue);
     expect(isNewer(u, '2.2.0+10'), isFalse);
     expect(isNewer(u, '2.3.0+12'), isFalse);

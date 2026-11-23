@@ -35,6 +35,8 @@ jobs:
       # Échoue sur les erreurs et avertissements, pas sur les remarques de style.
       - run: flutter analyze --no-fatal-infos
       - run: flutter test
+      # Mêmes tests dans la version course (sysiphe-course.apk).
+      - run: flutter test --dart-define=COURSE=true
 
   apk:
     name: Flutter — build APK (vérification Android)
@@ -64,8 +66,23 @@ jobs:
           echo "flutter.sdk=$FLUTTER_ROOT"  >> android/local.properties
 
       - run: flutter pub get
-      - run: flutter build apk --debug --dart-define=APP_VERSION=0.0.0+0
+      # Deux versions : sysiphe.apk (standard) et sysiphe-course.apk (course).
+      - run: flutter build apk --debug --flavor standard --dart-define=APP_VERSION=0.0.0+0
         timeout-minutes: 20
+      - run: flutter build apk --debug --flavor course --dart-define=COURSE=true --dart-define=APP_VERSION=0.0.0+0
+        timeout-minutes: 20
+      # La version standard ne doit jamais demander la localisation ; la
+      # version course, si.
+      - name: Permissions de localisation
+        run: |
+          AAPT=$(find "$ANDROID_SDK_ROOT/build-tools" -name aapt | sort -V | tail -n1)
+          std=$("$AAPT" dump permissions build/app/outputs/flutter-apk/app-standard-debug.apk)
+          crs=$("$AAPT" dump permissions build/app/outputs/flutter-apk/app-course-debug.apk)
+          if echo "$std" | grep -q LOCATION; then
+            echo "::error::sysiphe.apk (standard) demande la localisation"; echo "$std"; exit 1
+          fi
+          echo "$crs" | grep -q ACCESS_FINE_LOCATION || { echo "::error::sysiphe-course.apk sans localisation"; exit 1; }
+          echo "OK : standard sans localisation, course avec."
 
   version:
     name: Version de l'app augmentée

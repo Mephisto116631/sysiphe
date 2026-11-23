@@ -109,6 +109,9 @@ class SyncService {
           if (op.kind == 'insert' && row != null) {
             store.addPerfs(op.userId, [row]);
           }
+          if (op.kind == 'course_insert' && row != null) {
+            store.addCourse(op.userId, row);
+          }
           sent++;
         } catch (e) {
           if (isNetworkError(e)) {

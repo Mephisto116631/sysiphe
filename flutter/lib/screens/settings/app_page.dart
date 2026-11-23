@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../app_flavor.dart';
 import '../../app_version.dart';
 import '../../services/update_service.dart';
 import '../../theme.dart';
@@ -45,6 +46,22 @@ class _AppPageState extends State<AppPage> {
                       color: AppTheme.textSecondary),
                   onTap: () => checkAndOfferUpdate(context),
                 ),
+                ListTile(
+                  key: const ValueKey('switch-flavor'),
+                  leading: const Icon(Icons.directions_run,
+                      color: Colors.deepOrange),
+                  title: Text(kCourse
+                      ? 'Revenir à la version sans course'
+                      : 'Activer le module Course'),
+                  subtitle: Text(kCourse
+                      ? 'Module Course installé (GPS, carte). Les données '
+                          'restent.'
+                      : 'Suivi GPS des courses : installe la version avec '
+                          'course (même app, données gardées).'),
+                  trailing: const Icon(Icons.chevron_right,
+                      color: AppTheme.textSecondary),
+                  onTap: () => switchFlavor(context),
+                ),
                 SwitchListTile(
                   secondary: const Icon(Icons.download_for_offline_outlined,
                       color: AppTheme.primaryBlue),
@@ -89,7 +106,8 @@ class _AppPageState extends State<AppPage> {
           ),
           const SizedBox(height: 24),
           Center(
-            child: Text('Sysiphe v$kAppVersion · Flutter',
+            child: Text(
+                'Sysiphe v$kAppVersion${kCourse ? ' · Course' : ''} · Flutter',
                 style: Theme.of(context).textTheme.bodyMedium),
           ),
         ],

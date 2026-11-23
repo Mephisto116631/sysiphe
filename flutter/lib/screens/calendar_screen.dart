@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
+import '../app_flavor.dart';
 import '../services/data_events.dart';
 import '../services/supabase_service.dart';
 import '../services/ui_prefs.dart';
@@ -19,6 +20,7 @@ class CalendarScreen extends StatefulWidget {
 
 class _CalendarScreenState extends State<CalendarScreen> {
   Map<DateTime, int> _activeDays = {};
+  Set<DateTime> _runDays = {}; // jours de course (version course)
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
   bool _loading = true;
@@ -46,8 +48,21 @@ class _CalendarScreenState extends State<CalendarScreen> {
     try {
       final days = await SupabaseService.instance
           .getActiveDays(widget.userId); // tout l'historique
+      final runs = <DateTime>{};
+      if (kCourse) {
+        try {
+          for (final c
+              in await SupabaseService.instance.getCourses(widget.userId)) {
+            runs.add(c.date);
+          }
+        } catch (_) {/* courses indisponibles : calendrier des séries */}
+      }
+      // Un jour de course compte comme un jour d'entraînement.
+      for (final d in runs) {
+        days[d] = (days[d] ?? 0) + 1;
+      }
       if (!mounted) return;
-      setState(() { _activeDays = days; _loading = false; });
+      setState(() { _activeDays = days; _runDays = runs; _loading = false; });
     } catch (e) {
       if (!mounted) return;
       setState(() { _error = e; _loading = false; });
@@ -135,14 +150,29 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                 shape: BoxShape.circle,
                               ),
                               alignment: Alignment.center,
-                              child: Text(
-                                '${day.day}',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: count >= 4
-                                      ? Colors.white
-                                      : AppTheme.textPrimary,
-                                ),
+                              child: Stack(
+                                alignment: Alignment.center,
+                                clipBehavior: Clip.none,
+                                children: [
+                                  Text(
+                                    '${day.day}',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: count >= 4
+                                          ? Colors.white
+                                          : AppTheme.textPrimary,
+                                    ),
+                                  ),
+                                  if (_runDays.contains(DateTime(
+                                      day.year, day.month, day.day)))
+                                    const Positioned(
+                                      bottom: -9,
+                                      child: Icon(Icons.directions_run,
+                                          key: ValueKey('run-day'),
+                                          size: 11,
+                                          color: Colors.deepOrange),
+                                    ),
+                                ],
                               ),
                             );
                           },
@@ -176,6 +206,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                   color: AppTheme.primaryBlue, label: '5+'),
                             ],
                           ),
+                          if (kCourse) ...[
+                            const SizedBox(height: 8),
+                            const Row(children: [
+                              Icon(Icons.directions_run,
+                                  size: 14, color: Colors.deepOrange),
+                              SizedBox(width: 6),
+                              Text('Jour de course'),
+                            ]),
+                          ],
                         ],
                       ),
                     ),
