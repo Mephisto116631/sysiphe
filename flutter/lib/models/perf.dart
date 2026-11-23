@@ -21,6 +21,17 @@ class Perf {
   final String ecartement; // écart des mains (exercices assistables)
   final int? effortPondere;
 
+  /// Repos réellement pris avant cette série, en secondes (null : pas de
+  /// repos automatique). Plus court que prévu = repos passé ou raccourci.
+  final int? reposS;
+
+  /// Repos prévu à ce moment-là (réglage + ajustements ±15 s), en secondes.
+  final int? reposPrevuS;
+
+  /// Repos passé ou raccourci de plus de 10 s.
+  bool get reposPasse =>
+      reposS != null && reposPrevuS != null && reposPrevuS! - reposS! > 10;
+
   const Perf({
     this.id,
     required this.userId,
@@ -37,6 +48,8 @@ class Perf {
     this.tension = 'N/A',
     this.ecartement = 'N/A',
     this.effortPondere,
+    this.reposS,
+    this.reposPrevuS,
   });
 
   /// Même série rangée dans une autre catégorie.
@@ -56,6 +69,8 @@ class Perf {
         tension: tension,
         ecartement: ecartement,
         effortPondere: effortPondere,
+        reposS: reposS,
+        reposPrevuS: reposPrevuS,
       );
 
   factory Perf.fromJson(Map<String, dynamic> json) => Perf(
@@ -75,6 +90,8 @@ class Perf {
         tension: (json['tension'] as String?)?.trim() ?? 'N/A',
         ecartement: (json['ecartement'] as String?)?.trim() ?? 'N/A',
         effortPondere: (json['effort_pondere'] as num?)?.toInt(),
+        reposS: (json['repos_s'] as num?)?.toInt(),
+        reposPrevuS: (json['repos_prevu_s'] as num?)?.toInt(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -92,6 +109,10 @@ class Perf {
         'tension': tension,
         'ecartement': ecartement,
         'effort_pondere': effortPondere ?? 0,
+        // Envoyé seulement s'il est connu : une base sans la colonne
+        // repos_s accepte toujours les séries sans repos.
+        if (reposS != null) 'repos_s': reposS,
+        if (reposPrevuS != null) 'repos_prevu_s': reposPrevuS,
       };
 
   String get displayValue {
@@ -108,7 +129,16 @@ class Perf {
   /// Même règle que l'app Streamlit : la planche est identifiée par son nom.
   bool get isPlanche => isPlancheName(exercice);
 
+  /// Planche activée pour le profil actif (Réglages → Exercices → Planche,
+  /// user_settings.include_planche). Désactivée : la planche est un exercice
+  /// en secondes comme les autres (ni options, ni effort, ni Modèle).
+  static bool plancheEnabled = true;
+
   static bool isPlancheName(String exercice) =>
+      plancheEnabled && isPlancheRawName(exercice);
+
+  /// Nom de la planche, que la planche soit activée ou non (réglages).
+  static bool isPlancheRawName(String exercice) =>
       exercice.trim().toLowerCase() == 'planche';
 }
 

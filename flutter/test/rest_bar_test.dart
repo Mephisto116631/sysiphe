@@ -30,7 +30,7 @@ void main() {
       (t) async {
     final chosen = <int>[];
     await pump(t, ValueNotifier(null), onConfig: chosen.add);
-    expect(find.text('Repos après chaque série'), findsOneWidget);
+    expect(find.text('Repos'), findsOneWidget);
     for (final l in ['Sans', '1 min', '90 s', '2 min', '3 min']) {
       expect(find.text(l), findsOneWidget);
     }
@@ -56,7 +56,7 @@ void main() {
     expect(find.text('0:03'), findsOneWidget);
     left.value = null; // fin du repos : retour au choix de durée
     await t.pump();
-    expect(find.text('Repos après chaque série'), findsOneWidget);
+    expect(find.text('Repos'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
 

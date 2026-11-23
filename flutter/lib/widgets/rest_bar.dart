@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import '../models/interval_plan.dart' show clock;
 import '../theme.dart';
 
-/// Repos entre les séries. Au repos : gros décompte avec −15 s / +15 s /
-/// Passer. Sinon : le choix de la durée du repos automatique (« Sans »
-/// désactive), mémorisé sur l'appareil.
+/// Repos entre les séries. Au repos : une ligne bleue compacte (décompte,
+/// −15 s / +15 s, Passer). Sinon : le choix discret de la durée du repos
+/// automatique (« Sans » désactive), mémorisé sur l'appareil.
 class RestBar extends StatelessWidget {
   static const choices = [0, 60, 90, 120, 180];
 
@@ -30,84 +30,77 @@ class RestBar extends StatelessWidget {
           ? '${s ~/ 60} min'
           : '$s s';
 
+  Widget _small(String text, VoidCallback onTap) => TextButton(
+        onPressed: onTap,
+        style: TextButton.styleFrom(
+            visualDensity: VisualDensity.compact,
+            minimumSize: const Size(40, 36),
+            padding: const EdgeInsets.symmetric(horizontal: 6)),
+        child: Text(text, style: const TextStyle(color: Colors.white)),
+      );
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<Duration?>(
       valueListenable: left,
       builder: (context, d, _) {
         if (d != null) {
+          // Pendant le repos : une seule ligne bleue, compacte.
           return Card(
             color: Colors.blue.shade700,
+            margin: EdgeInsets.zero,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 8, 6),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              padding: const EdgeInsets.fromLTRB(12, 2, 6, 2),
+              child: Row(
                 children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.hourglass_bottom, color: Colors.white),
-                      const SizedBox(width: 8),
-                      const Text('Repos',
-                          style: TextStyle(color: Colors.white70, fontSize: 14)),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: Text(clock(d),
-                              key: const ValueKey('rest-time'),
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 34,
-                                  fontWeight: FontWeight.w700)),
-                        ),
-                      ),
-                    ],
-                  ),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Wrap(
-                      spacing: 4,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        TextButton(
-                            onPressed: () => onAdjust(-15),
-                            child: const Text('−15',
-                                style: TextStyle(color: Colors.white))),
-                        TextButton(
-                            onPressed: () => onAdjust(15),
-                            child: const Text('+15',
-                                style: TextStyle(color: Colors.white))),
-                        FilledButton.tonal(
-                            onPressed: onSkip, child: const Text('Passer')),
-                      ],
+                  const Icon(Icons.hourglass_bottom,
+                      color: Colors.white, size: 20),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(clock(d),
+                          key: const ValueKey('rest-time'),
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700)),
                     ),
+                  ),
+                  _small('−15', () => onAdjust(-15)),
+                  _small('+15', () => onAdjust(15)),
+                  const SizedBox(width: 4),
+                  FilledButton.tonal(
+                    onPressed: onSkip,
+                    style: FilledButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 12)),
+                    child: const Text('Passer'),
                   ),
                 ],
               ),
             ),
           );
         }
-        return Card(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                const Text('Repos après chaque série',
-                    style: TextStyle(
-                        color: AppTheme.textSecondary, fontSize: 13)),
-                for (final c in choices)
-                  ChoiceChip(
-                    label: Text(label(c)),
-                    selected: seconds == c,
-                    onSelected: (_) => onConfig(c),
-                  ),
-              ],
-            ),
-          ),
+        // Hors repos : choix discret de la durée.
+        return Wrap(
+          spacing: 6,
+          runSpacing: 2,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            const Icon(Icons.hourglass_empty,
+                size: 16, color: AppTheme.textSecondary),
+            const Text('Repos',
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+            for (final c in choices)
+              ChoiceChip(
+                label: Text(label(c)),
+                selected: seconds == c,
+                visualDensity: VisualDensity.compact,
+                onSelected: (_) => onConfig(c),
+              ),
+          ],
         );
       },
     );

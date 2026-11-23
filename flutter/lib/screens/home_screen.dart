@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/profile.dart';
+import '../services/profile_prefs.dart';
 import '../services/role.dart';
 import '../services/session_store.dart';
 import '../services/supabase_service.dart';
@@ -36,9 +37,11 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     // Après le premier affichage : jamais de latence à l'ouverture.
     isAdminNotifier.value = false;
+    plancheEnabledNotifier.addListener(_onPlancheChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _checkAccess();
       _loadRole();
+      _loadProfilePrefs();
       // Nouvelle version ? Signalée discrètement (rien si à jour ou hors ligne).
       if (mounted && !_updateChecked) {
         _updateChecked = true;
@@ -56,16 +59,38 @@ class _HomeScreenState extends State<HomeScreen> {
     ];
   }
 
-  /// Rôle du profil (admin / user) lu côté serveur : l'onglet Modèle et les
-  /// options d'administration n'apparaissent qu'aux admins.
+  /// Rôle du profil (admin / user) lu côté serveur : options
+  /// d'administration (export, suppression de profils).
   Future<void> _loadRole() async {
     final admin = await SupabaseService.instance.isAdmin(widget.profile.id);
     if (!mounted || admin == isAdminNotifier.value) return;
+    setState(() => isAdminNotifier.value = admin);
+  }
+
+  /// Planche activée et couleurs d'intensité du profil (user_settings).
+  Future<void> _loadProfilePrefs() async {
+    try {
+      applyProfilePrefs(
+          await SupabaseService.instance.getSettings(widget.profile.id));
+    } catch (_) {/* hors ligne : réglages par défaut */}
+  }
+
+  /// L'onglet Modèle (propre à chaque profil) n'existe que si la planche est
+  /// activée ; il s'insère avant Réglages : on garde l'onglet affiché.
+  bool _plancheShown = plancheEnabledNotifier.value;
+  void _onPlancheChanged() {
+    final on = plancheEnabledNotifier.value;
+    if (!mounted || on == _plancheShown) return;
     setState(() {
-      // L'onglet Modèle s'insère avant Réglages : on garde l'onglet affiché.
-      if (admin && _idx >= 4) _idx++;
-      isAdminNotifier.value = admin;
+      if (_idx >= 4) _idx += on ? 1 : -1;
+      _plancheShown = on;
     });
+  }
+
+  @override
+  void dispose() {
+    plancheEnabledNotifier.removeListener(_onPlancheChanged);
+    super.dispose();
   }
 
   /// Vérifie, en arrière-plan, que cet appareil est rattaché au profil
@@ -98,10 +123,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final admin = isAdminNotifier.value;
+    final model = _plancheShown;
     final screens = [
       ..._screens.sublist(0, 4),
-      if (admin) _screens[4],
+      if (model) _screens[4],
       _screens[5],
     ];
     final idx = _idx.clamp(0, screens.length - 1).toInt();
@@ -123,7 +148,7 @@ class _HomeScreenState extends State<HomeScreen> {
               icon: Icon(Icons.calendar_month), label: 'Calendrier'),
           const BottomNavigationBarItem(
               icon: Icon(Icons.emoji_events), label: 'Records'),
-          if (admin)
+          if (model)
             const BottomNavigationBarItem(
                 icon: Icon(Icons.functions), label: 'Modèle'),
           const BottomNavigationBarItem(

@@ -9,6 +9,7 @@ import '../models/stats.dart';
 import '../services/data_events.dart';
 import '../services/supabase_service.dart';
 import '../services/reminders.dart';
+import '../services/profile_prefs.dart';
 import '../services/rest_timer.dart';
 import '../theme.dart';
 import '../widgets/chrono.dart';
@@ -154,6 +155,7 @@ class _SaisieScreenState extends State<SaisieScreen>
     required String elastique,
     required String tension,
     required String ecartement,
+    RestTaken? repos,
   }) {
     final planche = Perf.isPlancheName(exercice);
     final assist = _isAssistable(exercice);
@@ -171,6 +173,8 @@ class _SaisieScreenState extends State<SaisieScreen>
       elastique: (planche || assist) ? elastique : 'Aucun',
       tension: (planche || assist) ? tension : 'N/A',
       ecartement: assist ? ecartement : 'N/A',
+      reposS: repos?.actual,
+      reposPrevuS: repos?.planned,
       effortPondere: assist
           ? _cfg.assiste(
               reps: valeur,
@@ -233,6 +237,7 @@ class _SaisieScreenState extends State<SaisieScreen>
       final serie = (await _freeSeries(ex, e.serie, 1)).single;
       await SupabaseService.instance.savePerfs([
         _makePerf(
+          repos: _rest.takeLastRest(),
           exercice: ex,
           serie: serie,
           valeur: e.value,
@@ -538,6 +543,7 @@ class _SaisieScreenState extends State<SaisieScreen>
 
   Future<void> _loadWeight() async {
     final settings = await SupabaseService.instance.getSettings(widget.userId);
+    applyProfilePrefs(settings); // planche activée, couleurs d'intensité
     if (mounted) {
       setState(() {
         _cfg = EffortSettings.fromSettings(settings);
@@ -750,9 +756,13 @@ class _SaisieScreenState extends State<SaisieScreen>
     setState(() => _saving = true);
     final series = await _freeSeries(exercice, _serie, valeurs.length);
     if (!mounted) return false;
+    // Repos pris avant la première série saisie (les suivantes de « 12 10 8 »
+    // n'ont pas de repos mesuré).
+    final repos = _rest.takeLastRest();
     final perfs = [
       for (var i = 0; i < valeurs.length; i++)
         _makePerf(
+          repos: i == 0 ? repos : null,
           exercice: exercice,
           serie: series[i],
           valeur: valeurs[i],
@@ -1196,19 +1206,6 @@ class _SaisieScreenState extends State<SaisieScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Repos entre les séries ────────────────────────────────────
-            ListenableBuilder(
-              listenable: _rest,
-              builder: (_, __) => RestBar(
-                seconds: _rest.seconds,
-                onConfig: _rest.setSeconds,
-                left: _rest.left,
-                onSkip: _rest.stop,
-                onAdjust: _rest.adjust,
-              ),
-            ),
-            const SizedBox(height: 12),
-
             // ── Résumé du jour ────────────────────────────────────────────
             if (_history.isNotEmpty || _todayPerfs.isNotEmpty) ...[
               KpiRow(
@@ -1231,6 +1228,19 @@ class _SaisieScreenState extends State<SaisieScreen>
               const SizedBox(height: 16),
             ],
 
+            // ── Repos entre les séries ────────────────────────────────────
+            ListenableBuilder(
+              listenable: _rest,
+              builder: (_, __) => RestBar(
+                seconds: _rest.seconds,
+                onConfig: _rest.setSeconds,
+                left: _rest.left,
+                onSkip: _rest.stop,
+                onAdjust: _rest.adjust,
+              ),
+            ),
+            const SizedBox(height: 8),
+
             // ── Formulaire ────────────────────────────────────────────────
             _buildForm(context),
             const SizedBox(height: 16),
@@ -1240,6 +1250,11 @@ class _SaisieScreenState extends State<SaisieScreen>
 
             // ── Perfs du jour ─────────────────────────────────────────────
             DayPerfList(
+              bestEffort: _history.fold<int>(
+                  0,
+                  (m, p) => p.isPlanche && (p.effortPondere ?? 0) > m
+                      ? p.effortPondere!
+                      : m),
               date: _date,
               loading: _loadingPerfs,
               perfs: _todayPerfs,
