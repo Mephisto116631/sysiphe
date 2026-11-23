@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import '../../models/categorize.dart';
 import '../../models/perf.dart';
 import '../../services/data_events.dart';
+import '../../services/profile_prefs.dart';
 import '../../services/supabase_service.dart';
 import '../../theme.dart';
 import '../../widgets/category_picker.dart';
+import '../../widgets/intensity_dialog.dart';
+import '../model_screen.dart';
 import '../../widgets/load_error.dart';
 import 'common.dart';
 
@@ -16,12 +19,20 @@ class ExerciseOps {
   final Future<void> Function(String exercice, String categorie) setCategory;
   final Future<void> Function(Set<String> assistables) saveAssistables;
 
+  /// Réglages du profil : planche activée, couleurs d'intensité.
+  final Future<void> Function(Map<String, dynamic> settings) saveSettings;
+
+  /// Profil, pour ouvrir son Modèle de la planche (null : pas de lien).
+  final String? userId;
+
   const ExerciseOps({
     required this.loadPerfs,
     required this.loadAssistables,
     required this.rename,
     required this.setCategory,
     required this.saveAssistables,
+    required this.saveSettings,
+    this.userId,
   });
 
   factory ExerciseOps.supabase(String userId) {
@@ -36,11 +47,13 @@ class ExerciseOps {
       setCategory: (ex, c) => s.setExerciseCategory(userId, ex, c),
       saveAssistables: (a) =>
           s.saveSettings(userId, {'assistable_exercises': a.toList()..sort()}),
+      saveSettings: (m) => s.saveSettings(userId, m),
+      userId: userId,
     );
   }
 }
 
-enum _Action { rename, category, assistable }
+enum _Action { rename, category, assistable, planche, model, intensity }
 
 /// Réglages → Exercices : une ligne par exercice ; un appui ouvre sa fiche
 /// (renommer, catégorie, assistable). Remplace les anciens écrans « Profils et
@@ -76,6 +89,13 @@ class _ExercisesPageState extends State<ExercisesPage> {
       if (!mounted) return;
       setState(() {
         _items = exerciseCategories(r[0] as List<Perf>);
+        // La fiche Planche est toujours là, pour pouvoir l'activer.
+        if (!_items.any((i) => Perf.isPlancheRawName(i.exercice))) {
+          _items = [
+            const ExerciseCategory('Planche', 'Planche', {}),
+            ..._items
+          ];
+        }
         _assistables = r[1] as Set<String>;
         _loading = false;
       });
@@ -97,6 +117,13 @@ class _ExercisesPageState extends State<ExercisesPage> {
   }
 
   String _subtitle(ExerciseCategory i) {
+    if (Perf.isPlancheRawName(i.exercice)) {
+      final on = plancheEnabledNotifier.value;
+      return [
+        on ? 'Planche activée' : 'Planche désactivée',
+        if (i.sets > 0) '${i.sets} série${i.sets > 1 ? 's' : ''}',
+      ].join(' · ');
+    }
     final cat = i.mixed
         ? 'Mélangé : ${(i.counts.entries.toList()..sort((a, b) => b.value.compareTo(a.value))).map((e) => '${e.key} ${e.value}').join(' · ')}'
         : i.main;
@@ -113,20 +140,24 @@ class _ExercisesPageState extends State<ExercisesPage> {
     } catch (e) {
       if (!mounted) return;
       final dup = '$e'.contains('duplicate') || '$e'.contains('23505');
-      showSnack(context, dup ? 'Ce nom existe déjà' : 'Erreur : $e',
+      showSnack(context, dup ? 'Ce nom existe déjà' : errorText(e),
           error: true);
     }
     await _load();
   }
 
   Future<void> _open(ExerciseCategory i) async {
-    final planche = Perf.isPlancheName(i.exercice);
+    final planche = Perf.isPlancheRawName(i.exercice);
+    final plancheOn = plancheEnabledNotifier.value;
+    final intensity = intensityNotifier.value;
     final assist = _assistables.contains(i.exercice);
     final action = await showModalBottomSheet<_Action>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true, // fiche Planche plus longue : défilante
       builder: (ctx) => SafeArea(
-        child: Column(
+        child: SingleChildScrollView(
+            child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Padding(
@@ -135,20 +166,53 @@ class _ExercisesPageState extends State<ExercisesPage> {
                   style: Theme.of(ctx).textTheme.titleMedium,
                   textAlign: TextAlign.center),
             ),
-            ListTile(
-              leading:
-                  const Icon(Icons.edit_outlined, color: AppTheme.primaryBlue),
-              title: const Text('Renommer'),
-              subtitle: const Text('Dans tout l\'historique'),
-              onTap: () => Navigator.pop(ctx, _Action.rename),
-            ),
-            ListTile(
-              leading: const Icon(Icons.category_outlined,
-                  color: AppTheme.primaryBlue),
-              title: const Text('Catégorie'),
-              subtitle: Text(i.mixed ? 'Mélangée' : i.main),
-              onTap: () => Navigator.pop(ctx, _Action.category),
-            ),
+            if (planche) ...[
+              // La planche est reconnue par son nom : pas de renommage.
+              SwitchListTile(
+                secondary: const Icon(Icons.accessibility_new,
+                    color: AppTheme.primaryBlue),
+                title: const Text('Activer la planche'),
+                subtitle: const Text(
+                    'Options, effort pondéré, stats et Modèle de la planche'),
+                value: plancheOn,
+                onChanged: (_) => Navigator.pop(ctx, _Action.planche),
+              ),
+              if (plancheOn && widget.ops.userId != null)
+                ListTile(
+                  leading:
+                      const Icon(Icons.functions, color: AppTheme.primaryBlue),
+                  title: const Text('Modèle de la planche'),
+                  subtitle:
+                      const Text('Tes coefficients, propres à ton profil'),
+                  onTap: () => Navigator.pop(ctx, _Action.model),
+                ),
+              if (plancheOn)
+                ListTile(
+                  leading: const Icon(Icons.palette_outlined,
+                      color: AppTheme.primaryBlue),
+                  title: const Text('Couleurs d\'intensité'),
+                  subtitle: Text(intensity.auto
+                      ? 'Automatique (relatif à ton meilleur effort)'
+                      : 'Orange dès ${intensity.orange} pts · '
+                          'rouge dès ${intensity.rouge} pts'),
+                  onTap: () => Navigator.pop(ctx, _Action.intensity),
+                ),
+            ] else
+              ListTile(
+                leading: const Icon(Icons.edit_outlined,
+                    color: AppTheme.primaryBlue),
+                title: const Text('Renommer'),
+                subtitle: const Text('Dans tout l\'historique'),
+                onTap: () => Navigator.pop(ctx, _Action.rename),
+              ),
+            if (i.sets > 0)
+              ListTile(
+                leading: const Icon(Icons.category_outlined,
+                    color: AppTheme.primaryBlue),
+                title: const Text('Catégorie'),
+                subtitle: Text(i.mixed ? 'Mélangée' : i.main),
+                onTap: () => Navigator.pop(ctx, _Action.category),
+              ),
             if (!planche)
               SwitchListTile(
                 secondary: const Icon(Icons.fitness_center_outlined,
@@ -161,7 +225,7 @@ class _ExercisesPageState extends State<ExercisesPage> {
               ),
             const SizedBox(height: 8),
           ],
-        ),
+        )),
       ),
     );
     if (action == null || !mounted) return;
@@ -170,6 +234,24 @@ class _ExercisesPageState extends State<ExercisesPage> {
         await _rename(i.exercice);
       case _Action.category:
         await _category(i);
+      case _Action.planche:
+        await _run(() async {
+          await widget.ops.saveSettings({'include_planche': !plancheOn});
+          applyProfilePrefs({
+            'include_planche': !plancheOn,
+            'intensity_config': intensity.toSettings(),
+          });
+        }, plancheOn ? 'Planche désactivée' : 'Planche activée');
+      case _Action.model:
+        await Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => ModelScreen(userId: widget.ops.userId!)));
+      case _Action.intensity:
+        final cfg = await askIntensity(context, intensity);
+        if (cfg == null || !mounted) return;
+        await _run(() async {
+          await widget.ops.saveSettings({'intensity_config': cfg.toSettings()});
+          intensityNotifier.value = cfg;
+        }, 'Couleurs d\'intensité enregistrées');
       case _Action.assistable:
         final next = assist
             ? _assistables.where((e) => e != i.exercice).toSet()

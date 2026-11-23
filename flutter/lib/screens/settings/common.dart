@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../services/sync_service.dart';
 import '../../theme.dart';
 
 /// Titre de section en petites capitales.
@@ -145,3 +146,9 @@ Future<bool> confirmAction(BuildContext context, String title, String body,
   );
   return r == true;
 }
+
+/// Message d'erreur lisible : sans réseau, « Connexion nécessaire » (ces
+/// réglages ne se modifient qu'en ligne) ; sinon le détail de l'erreur.
+String errorText(Object e) => isNetworkError(e)
+    ? 'Connexion nécessaire : réessaie quand le réseau sera revenu'
+    : 'Erreur : $e';

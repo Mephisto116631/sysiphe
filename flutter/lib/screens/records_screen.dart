@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../models/intensity.dart';
 import '../models/stats.dart';
 import '../services/data_events.dart';
+import '../services/profile_prefs.dart';
 import '../services/supabase_service.dart';
 import '../services/ui_prefs.dart';
 import '../theme.dart';
@@ -172,9 +174,11 @@ class _RecordsScreenState extends State<RecordsScreen> {
                       for (var i = 0; i < planche.length; i++)
                         _PlancheTile(
                           r: planche[i],
-                          // Intensité relative au meilleur effort global.
-                          ratio: (planche[i].best.effortPondere ?? 0) /
-                              (_planche.first.best.effortPondere ?? 1),
+                          // Couleur selon les seuils du profil (ou relative
+                          // au meilleur effort en mode automatique).
+                          ratio: intensityNotifier.value.ratio(
+                              planche[i].best.effortPondere ?? 0,
+                              best: _planche.first.best.effortPondere ?? 1),
                           first: identical(planche[i], _planche.first),
                         ),
                       const SizedBox(height: 20),
@@ -196,14 +200,6 @@ class _RecordsScreenState extends State<RecordsScreen> {
 
 String _fmt(double v) => v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(1);
 String _date(DateTime d) => DateFormat('d MMM yyyy', 'fr_FR').format(d);
-
-/// Vert → orange → rouge selon l'intensité (comme _intensity_color du web).
-Color intensityColor(double ratio) {
-  final r = ratio.clamp(0.0, 1.0);
-  return r < 0.5
-      ? Color.lerp(const Color(0xFF22C55E), const Color(0xFFF59E0B), r / 0.5)!
-      : Color.lerp(const Color(0xFFF59E0B), const Color(0xFFEF4444), (r - 0.5) / 0.5)!;
-}
 
 class _PlancheTile extends StatelessWidget {
   final PlancheRecord r;

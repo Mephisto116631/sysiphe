@@ -110,6 +110,7 @@ void main() {
             calls.add('assist ${(a.toList()..sort()).join(',')}');
             assist = a;
           },
+          saveSettings: (m) async => calls.add('settings $m'),
         );
 
     Future<void> pump(WidgetTester t) async {

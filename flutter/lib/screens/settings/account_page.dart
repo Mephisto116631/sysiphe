@@ -71,7 +71,7 @@ class _AccountPageState extends State<AccountPage> {
                   ? 'Suppression réservée aux admins'
                   : m.contains('admin_profile')
                       ? 'Un profil admin ne peut pas être supprimé'
-                      : 'Erreur : $e',
+                      : errorText(e),
           error: true);
     }
     await _load();
@@ -150,7 +150,7 @@ class _AccountPageState extends State<AccountPage> {
                 if (ctx.mounted) Navigator.pop(ctx);
                 if (mounted) showSnack(context, 'PIN mis à jour');
               } catch (e) {
-                if (mounted) showSnack(context, 'Erreur : $e', error: true);
+                if (mounted) showSnack(context, errorText(e), error: true);
               }
             },
             child: const Text('Enregistrer'),

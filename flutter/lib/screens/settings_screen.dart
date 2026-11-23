@@ -203,7 +203,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       : NavTile(
                           icon: Icons.admin_panel_settings_outlined,
                           title: 'Admin',
-                          subtitle: 'Calibration planche, export',
+                          subtitle: 'Export de la base',
                           onTap: () => _open(AdminPage(userId: widget.userId)),
                         ),
                 ),

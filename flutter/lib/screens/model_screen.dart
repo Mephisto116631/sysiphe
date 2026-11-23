@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import '../models/effort_model.dart';
 import '../models/perf.dart';
 import '../services/data_events.dart';
+import 'settings/common.dart' show errorText;
+import '../services/profile_prefs.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
 import '../widgets/load_error.dart';
@@ -10,7 +12,7 @@ import '../widgets/load_error.dart';
 /// Onglet « Modèle » : la vue d'ensemble de l'ancien tableur. On modifie
 /// les coefficients, et la grille d'efforts, le détail du calcul et
 /// l'impact sur l'historique se recalculent à chaque frappe. Rien n'est
-/// enregistré tant qu'on n'appuie pas sur « Appliquer partout ».
+/// enregistré tant qu'on n'appuie pas sur « Appliquer à mes séries ».
 /// Réglages + historique ; injectable pour les tests (sinon Supabase).
 typedef ModelLoader = Future<(Map<String, dynamic>, List<Perf>)> Function();
 
@@ -130,7 +132,7 @@ class _ModelScreenState extends State<ModelScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _applying = false);
-      _snack('Erreur : $e', error: true);
+      _snack(errorText(e), error: true);
     }
   }
 
@@ -187,7 +189,7 @@ class _ModelScreenState extends State<ModelScreen> {
                               strokeWidth: 2, color: Colors.white))
                       : const Icon(Icons.done_all),
                   label: Text(
-                      'Appliquer partout (${impactOn(_history, m!).changed} séries changent)'),
+                      'Appliquer à mes séries (${impactOn(_history, m!).changed} séries changent)'),
                 ),
               ),
             ),
@@ -216,7 +218,7 @@ class _ModelScreenState extends State<ModelScreen> {
             ),
             child: const Text(
                 'Brouillon : rien n\'est enregistré tant que tu n\'appuies pas sur '
-                '« Appliquer partout ».'),
+                '« Appliquer à mes séries ».'),
           ),
         _CoefficientsCard(
           key: const ValueKey('coefficients'),
@@ -339,7 +341,8 @@ class _ModelScreenState extends State<ModelScreen> {
 
   Widget _cell(String v, String f, int effort, int max) {
     final selected = v == _selVariante && f == _selForme;
-    final color = _intensity(effort / max);
+    // Seuils du profil, ou relatif au meilleur effort de la grille.
+    final color = intensityNotifier.value.colorFor(effort, best: max);
     return InkWell(
       onTap: () => setState(() {
         _selVariante = v;
@@ -490,14 +493,6 @@ String _exact(double v) {
 
 String _n(double v) =>
     v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(v < 1 ? 2 : 1);
-
-/// Vert → orange → rouge (même échelle que les Records).
-Color _intensity(double ratio) {
-  final r = ratio.clamp(0.0, 1.0);
-  return r < 0.5
-      ? Color.lerp(const Color(0xFF22C55E), const Color(0xFFF59E0B), r / 0.5)!
-      : Color.lerp(const Color(0xFFF59E0B), const Color(0xFFEF4444), (r - 0.5) / 0.5)!;
-}
 
 /// Tous les coefficients, modifiables ; chaque frappe recalcule le reste.
 class _CoefficientsCard extends StatelessWidget {

@@ -5,7 +5,9 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'models/profile.dart';
 import 'screens/home_screen.dart';
 import 'screens/profile_screen.dart';
+import 'services/offline_store.dart';
 import 'services/session_store.dart';
+import 'services/supabase_service.dart';
 import 'theme.dart';
 
 // Injectés à la compilation via --dart-define (GitHub Actions secrets)
@@ -27,6 +29,11 @@ Future<void> main() async {
     url: _supabaseUrl,
     anonKey: _supabaseAnonKey,
   );
+
+  // Mode hors ligne : copie locale et file d'attente, envoyée dès que le
+  // réseau revient.
+  await OfflineStore.instance.load();
+  SupabaseService.instance.startSync();
 
   // Profil mémorisé : on entre directement, sans liste ni PIN
   // (lu localement, fonctionne même sans réseau).

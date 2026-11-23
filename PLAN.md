@@ -178,7 +178,7 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
 - [ ] Installer la sauvegarde Drive (toi, sur ordi : clé `service_role` + script, `backup/README.md` option A)
 - [ ] (facultatif) Installer la sauvegarde NAS (`backup/README.md` option B)
 - [ ] Vérifier la 1re sauvegarde réelle (fichiers du jour dans Drive)
-- [ ] Mode hors ligne Flutter : cache local et saisie différée, synchronisée au retour du réseau
+- [x] Mode hors ligne Flutter : cache local et saisie différée, synchronisée au retour du réseau (v2.17.0)
 - [x] Numéro de version affiché dans l'app (bas de l'écran Paramètres, ex. `2.1.0+7`)
 - [x] Version incrémentée à chaque build (`versionCode` = numéro du run CI) et notes de version générées depuis les PR → passage en **v2.1.0**
 
@@ -307,3 +307,29 @@ Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec 
       retirée, RPC `admin_delete_profile` (admin requis, profil admin non supprimable, séries conservées)
 - [ ] **Toi** : appliquer `supabase/migrations/20261120120000_admin_delete_profile.sql` (après le test annulé)
 - [ ] **Toi** : essayer une planche en 3 séries, téléphone posé au sol
+
+## Repos, planche par profil, intensité (23/11, v2.16.0)
+
+- [x] **Son de fin de pause** : bips sur les 3 dernières secondes, bip long et « Repos terminé » (réglage son du chrono)
+- [x] **Bandeau de repos compact** (une ligne : temps, −15, +15, Passer), juste au-dessus de la carte de saisie
+- [x] **Durée de repos réelle** enregistrée avec chaque série (`perfs.repos_s`, `repos_prevu_s`) ; affichée sur la série,
+      « repos passé (0:20 / 1:30) » en orange quand il a été raccourci de plus de 10 s
+- [ ] Stats « à repos égal » (comparer les séries selon le repos pris), une fois des données collectées
+- [x] **Planche activable par profil** (Réglages → Exercices → Planche, `include_planche`) : désactivée = exercice
+      ordinaire (ni options, ni effort, ni stats planche, ni onglet Modèle)
+- [x] **Modèle de la planche propre à chaque profil** : onglet Modèle ouvert à tout profil dont la planche est activée
+      (avant : admins seulement) ; « Appliquer à mes séries »
+- [x] **Couleurs d'intensité par profil** (`user_settings.intensity_config`) : automatique ou seuils orange / rouge en
+      points ; appliquées aux Records, au Modèle et aux séries du jour
+- [ ] **Toi** : appliquer le script SQL (migrations `20261120120000_admin_delete_profile` et
+      `20261123120000_repos_intensite`) **avant** d'installer la v2.16
+
+## Mode hors ligne (23/11, v2.17.0)
+
+- [x] Copie locale (séries, réglages) relue sans réseau : Saisie, Stats, Calendrier, Records affichent les dernières
+      données connues
+- [x] Séries saisies sans réseau gardées sur le téléphone (« Enregistré hors ligne ✓ », icône ☁︎↑), corrigeables et
+      supprimables ; envoi automatique au démarrage, au retour dans l'app et toutes les 60 s ; « Réessayer »
+- [x] Pas de doublon au renvoi : `perfs.client_id` unique (migration `20261123180000_perfs_client_id`)
+- [x] Actions en ligne seulement (profils, Google, réglages, Modèle, renommer…) : « Connexion nécessaire »
+- [ ] **Toi** : appliquer la migration `client_id` avant d'installer la v2.17, puis tester en mode avion

@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../services/supabase_service.dart';
 import '../../theme.dart';
-import '../model_screen.dart';
 import 'common.dart';
 
-/// Réglages → Admin (profils admin seulement) : calibration planche et
-/// export de toute la base.
+/// Réglages → Admin (profils admin seulement) : export de toute la base.
+/// (Le Modèle de la planche est propre à chaque profil : onglet Modèle et
+/// Réglages → Exercices → Planche.)
 class AdminPage extends StatelessWidget {
   final String userId;
   const AdminPage({super.key, required this.userId});
@@ -45,13 +45,6 @@ class AdminPage extends StatelessWidget {
           Card(
             child: Column(
               children: [
-                NavTile(
-                  icon: Icons.tune,
-                  title: 'Calibration planche',
-                  subtitle: 'Coefficients, grille des efforts, recalcul',
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => ModelScreen(userId: userId))),
-                ),
                 ListTile(
                   leading: const Icon(Icons.download_outlined,
                       color: AppTheme.primaryBlue),

@@ -2,6 +2,26 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Bips activés (ancien réglage, repris s'il existe).
+const kChronoSoundKey = 'chrono_sound';
+
+/// Son du chrono et du repos : 0 = muet, 1 = bips, 2 = bips + voix (défaut).
+const kChronoSoundModeKey = 'chrono_sound_mode';
+
+/// Réglage son actuel (jamais bloquant : voix + bips par défaut).
+Future<int> chronoSoundMode() async {
+  try {
+    final p = await SharedPreferences.getInstance();
+    return (p.getInt(kChronoSoundModeKey) ??
+            (p.getBool(kChronoSoundKey) == false ? 0 : 2))
+        .clamp(0, 2);
+  } catch (_) {
+    return 2;
+  }
+}
+
 /// Les trois sons du chrono (fichiers dans `assets/`).
 enum Bip { court, depart, objectif }
 

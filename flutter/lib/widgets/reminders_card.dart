@@ -4,6 +4,7 @@ import '../services/reminders.dart';
 import '../services/supabase_service.dart';
 import '../services/timer_alerts.dart';
 import '../services/ui_prefs.dart';
+import '../screens/settings/common.dart' show errorText;
 import '../theme.dart';
 
 /// Réglages des rappels de séance : activés et heure (appareil), nombre de
@@ -76,7 +77,7 @@ class _RemindersCardState extends State<RemindersCard> {
       if (!mounted) return;
       setState(() => _days = old);
       ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur : $e'), backgroundColor: Colors.red));
+          SnackBar(content: Text(errorText(e)), backgroundColor: Colors.red));
     }
   }
 

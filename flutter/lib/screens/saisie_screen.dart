@@ -9,7 +9,9 @@ import '../models/stats.dart';
 import '../services/data_events.dart';
 import '../services/supabase_service.dart';
 import '../services/reminders.dart';
+import '../services/profile_prefs.dart';
 import '../services/rest_timer.dart';
+import '../services/sync_service.dart';
 import '../theme.dart';
 import '../widgets/chrono.dart';
 import '../widgets/exercise_card.dart';
@@ -19,6 +21,7 @@ import '../widgets/saisie/kpi.dart';
 import '../widgets/saisie/date_nav_row.dart';
 import '../widgets/saisie/dialogs.dart';
 import '../widgets/saisie/new_exercice_dialog.dart';
+import '../widgets/saisie/offline_banner.dart';
 import '../widgets/saisie/options_fields.dart';
 import '../widgets/saisie/recent_chips.dart';
 import '../widgets/saisie/perf_tile.dart';
@@ -154,6 +157,7 @@ class _SaisieScreenState extends State<SaisieScreen>
     required String elastique,
     required String tension,
     required String ecartement,
+    RestTaken? repos,
   }) {
     final planche = Perf.isPlancheName(exercice);
     final assist = _isAssistable(exercice);
@@ -171,6 +175,8 @@ class _SaisieScreenState extends State<SaisieScreen>
       elastique: (planche || assist) ? elastique : 'Aucun',
       tension: (planche || assist) ? tension : 'N/A',
       ecartement: assist ? ecartement : 'N/A',
+      reposS: repos?.actual,
+      reposPrevuS: repos?.planned,
       effortPondere: assist
           ? _cfg.assiste(
               reps: valeur,
@@ -231,8 +237,9 @@ class _SaisieScreenState extends State<SaisieScreen>
     final newPr = ins != null && ins.prSerie > 0 && e.value > ins.prSerie;
     try {
       final serie = (await _freeSeries(ex, e.serie, 1)).single;
-      await SupabaseService.instance.savePerfs([
+      final sent = await SupabaseService.instance.savePerfs([
         _makePerf(
+          repos: _rest.takeLastRest(),
           exercice: ex,
           serie: serie,
           valeur: e.value,
@@ -250,7 +257,10 @@ class _SaisieScreenState extends State<SaisieScreen>
       _loadHistory();
       _snack(newPr
           ? '🏆 $ex : nouveau record en série (${_num(e.value)})'
-          : '$ex · série $serie enregistrée ✓');
+          : sent
+              ? '$ex · série $serie enregistrée ✓'
+              : '$ex · série $serie enregistrée hors ligne ✓ (envoi '
+                  'automatique)');
       _startRest();
       return true;
     } catch (err) {
@@ -538,6 +548,7 @@ class _SaisieScreenState extends State<SaisieScreen>
 
   Future<void> _loadWeight() async {
     final settings = await SupabaseService.instance.getSettings(widget.userId);
+    applyProfilePrefs(settings); // planche activée, couleurs d'intensité
     if (mounted) {
       setState(() {
         _cfg = EffortSettings.fromSettings(settings);
@@ -750,9 +761,13 @@ class _SaisieScreenState extends State<SaisieScreen>
     setState(() => _saving = true);
     final series = await _freeSeries(exercice, _serie, valeurs.length);
     if (!mounted) return false;
+    // Repos pris avant la première série saisie (les suivantes de « 12 10 8 »
+    // n'ont pas de repos mesuré).
+    final repos = _rest.takeLastRest();
     final perfs = [
       for (var i = 0; i < valeurs.length; i++)
         _makePerf(
+          repos: i == 0 ? repos : null,
           exercice: exercice,
           serie: series[i],
           valeur: valeurs[i],
@@ -773,7 +788,7 @@ class _SaisieScreenState extends State<SaisieScreen>
     final newPr = ins != null && ins.prSerie > 0 && best > ins.prSerie;
 
     try {
-      await SupabaseService.instance.savePerfs(perfs);
+      final sent = await SupabaseService.instance.savePerfs(perfs);
       _chargeCtrl.clear();
       _showingExisting = false;
       setState(() => _saving = false);
@@ -789,9 +804,11 @@ class _SaisieScreenState extends State<SaisieScreen>
       _loadHistory();
       _snack(newPr
           ? '🏆 Nouveau record en série : ${_num(best)} (ancien : ${_num(ins.prSerie)})'
-          : perfs.length > 1
-              ? '${perfs.length} séries enregistrées ✓'
-              : 'Enregistré ✓');
+          : !sent
+              ? 'Enregistré hors ligne ✓ (envoi automatique)'
+              : perfs.length > 1
+                  ? '${perfs.length} séries enregistrées ✓'
+                  : 'Enregistré ✓');
       _startRest();
       return true;
     } catch (e) {
@@ -1196,19 +1213,6 @@ class _SaisieScreenState extends State<SaisieScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Repos entre les séries ────────────────────────────────────
-            ListenableBuilder(
-              listenable: _rest,
-              builder: (_, __) => RestBar(
-                seconds: _rest.seconds,
-                onConfig: _rest.setSeconds,
-                left: _rest.left,
-                onSkip: _rest.stop,
-                onAdjust: _rest.adjust,
-              ),
-            ),
-            const SizedBox(height: 12),
-
             // ── Résumé du jour ────────────────────────────────────────────
             if (_history.isNotEmpty || _todayPerfs.isNotEmpty) ...[
               KpiRow(
@@ -1231,6 +1235,22 @@ class _SaisieScreenState extends State<SaisieScreen>
               const SizedBox(height: 16),
             ],
 
+            // ── Hors ligne : séries en attente d'envoi ────────────────────
+            OfflineBanner(sync: SyncService.instance),
+
+            // ── Repos entre les séries ────────────────────────────────────
+            ListenableBuilder(
+              listenable: _rest,
+              builder: (_, __) => RestBar(
+                seconds: _rest.seconds,
+                onConfig: _rest.setSeconds,
+                left: _rest.left,
+                onSkip: _rest.stop,
+                onAdjust: _rest.adjust,
+              ),
+            ),
+            const SizedBox(height: 8),
+
             // ── Formulaire ────────────────────────────────────────────────
             _buildForm(context),
             const SizedBox(height: 16),
@@ -1240,6 +1260,11 @@ class _SaisieScreenState extends State<SaisieScreen>
 
             // ── Perfs du jour ─────────────────────────────────────────────
             DayPerfList(
+              bestEffort: _history.fold<int>(
+                  0,
+                  (m, p) => p.isPlanche && (p.effortPondere ?? 0) > m
+                      ? p.effortPondere!
+                      : m),
               date: _date,
               loading: _loadingPerfs,
               perfs: _todayPerfs,

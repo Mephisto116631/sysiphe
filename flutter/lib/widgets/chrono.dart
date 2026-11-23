@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/chrono_fx.dart';
+export '../services/chrono_fx.dart' show kChronoSoundKey, kChronoSoundModeKey;
 import '../services/rest_timer.dart';
 import '../services/timer_alerts.dart';
 import '../theme.dart';
@@ -16,13 +17,10 @@ const kChronoPreChoices = [0, 5, 10, 15];
 const kChronoTargetKey = 'chrono_target_seconds';
 const kChronoTargetChoices = [0, 30, 45, 60, 90, 120]; // 0 = libre
 
-/// Bips activés (ancien réglage, repris s'il existe) et plein écran à
-/// l'ouverture (dernier choix).
-const kChronoSoundKey = 'chrono_sound';
+/// Plein écran à l'ouverture (dernier choix). Les clés du son
+/// (kChronoSoundKey, kChronoSoundModeKey) sont dans chrono_fx.dart, partagées
+/// avec le repos.
 const kChronoFullKey = 'chrono_fullscreen';
-
-/// Son : 0 = muet, 1 = bips, 2 = bips + annonces vocales (défaut).
-const kChronoSoundModeKey = 'chrono_sound_mode';
 
 /// Nombre de séries enchaînées (1 = une seule), mémorisé par exercice.
 const kChronoSetsKey = 'chrono_sets';

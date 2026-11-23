@@ -4,6 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import '../models/profile.dart';
 import '../models/perf.dart';
+import 'offline_store.dart';
+import 'sync_service.dart';
 
 class SupabaseService {
   static SupabaseService? _instance;
@@ -11,6 +13,42 @@ class SupabaseService {
   SupabaseService._();
 
   final _db = Supabase.instance.client;
+
+  // ─── Mode hors ligne ──────────────────────────────────────────────────────
+  // Les lectures réussies sont copiées sur le téléphone (OfflineStore) ; sans
+  // réseau on relit cette copie. Les séries saisies sans réseau partent dans
+  // une file d'attente envoyée par SyncService au retour du réseau.
+
+  OfflineStore get _offline => OfflineStore.instance;
+  static const _timeout = Duration(seconds: 12);
+
+  /// Branche l'envoi de la file d'attente (appelé au démarrage).
+  void startSync() {
+    SyncService.instance.sender = sendPending;
+    SyncService.instance.start();
+  }
+
+  /// Envoie une opération en attente (insert idempotent grâce à client_id).
+  Future<Map<String, dynamic>?> sendPending(PendingOp op) async {
+    switch (op.kind) {
+      case 'insert':
+        final res = await _db
+            .from('perfs')
+            .upsert(op.data, onConflict: 'client_id', ignoreDuplicates: true)
+            .select()
+            .timeout(_timeout);
+        final rows = res as List;
+        return rows.isEmpty ? null : Map<String, dynamic>.from(rows.first);
+      case 'update':
+        final d = {...op.data}..remove('id');
+        await _db.from('perfs').update(d).eq('id', op.data['id']).timeout(_timeout);
+        return null;
+      case 'delete':
+        await _db.from('perfs').delete().eq('id', op.data['id']).timeout(_timeout);
+        return null;
+    }
+    return null;
+  }
 
   // ─── Session ──────────────────────────────────────────────────────────────
 
@@ -197,8 +235,20 @@ class SupabaseService {
     String? fromDate,
     String? onDate,
     bool ascending = false,
+  }) async =>
+      [
+        for (final r in await _fetchRows(userId,
+            fromDate: fromDate, onDate: onDate, ascending: ascending))
+          Perf.fromJson(r)
+      ];
+
+  Future<List<Map<String, dynamic>>> _fetchRows(
+    String userId, {
+    String? fromDate,
+    String? onDate,
+    bool ascending = false,
   }) async {
-    final out = <Perf>[];
+    final out = <Map<String, dynamic>>[];
     for (var start = 0;; start += _pageSize) {
       var q = _db.from('perfs').select('*').eq('user_id', userId);
       if (fromDate != null) q = q.gte('date', fromDate);
@@ -206,18 +256,48 @@ class SupabaseService {
       final res = await q
           .order('date', ascending: ascending)
           .order('id', ascending: ascending)
-          .range(start, start + _pageSize - 1);
+          .range(start, start + _pageSize - 1)
+          .timeout(_timeout);
       final rows = res as List;
-      out.addAll(rows.map((j) => Perf.fromJson(j as Map<String, dynamic>)));
+      out.addAll(rows.map((j) => Map<String, dynamic>.from(j as Map)));
       if (rows.length < _pageSize) break;
     }
     return out;
   }
 
-  Future<List<Perf>> getAllPerfs(String userId) => _fetchPerfs(userId);
+  /// Tout l'historique (copie locale + séries en attente si pas de réseau).
+  Future<List<Perf>> getAllPerfs(String userId) async {
+    try {
+      _offline.setAllPerfs(userId, await _fetchRows(userId));
+      SyncService.instance.markOnline();
+    } catch (e) {
+      if (!isNetworkError(e) || !_offline.hasCache(userId)) rethrow;
+      SyncService.instance.markOffline();
+    }
+    return _offline.view(userId);
+  }
 
-  Future<List<Perf>> getPerfsForDate(String userId, DateTime date) =>
-      _fetchPerfs(userId, onDate: DateFormat('yyyy-MM-dd').format(date));
+  /// Séries d'un jour, séries en attente comprises.
+  Future<List<Perf>> getPerfsForDate(String userId, DateTime date) async {
+    final day = DateFormat('yyyy-MM-dd').format(date);
+    bool sameDay(Perf p) => DateFormat('yyyy-MM-dd').format(p.date) == day;
+    try {
+      final rows = await _fetchRows(userId, onDate: day);
+      SyncService.instance.markOnline();
+      if (!_offline.hasCache(userId)) {
+        // Pas encore de copie complète : le jour lu + ses séries en attente.
+        return [
+          ..._offline.view(userId).where((p) => p.pending && sameDay(p)),
+          for (final r in rows) Perf.fromJson(r),
+        ];
+      }
+      _offline.setDayPerfs(userId, date, rows);
+    } catch (e) {
+      if (!isNetworkError(e)) rethrow;
+      SyncService.instance.markOffline();
+    }
+    return _offline.view(userId).where(sameDay).toList();
+  }
 
   Future<List<Perf>> getRecentPerfs(String userId, {int days = 90}) =>
       _fetchPerfs(
@@ -235,13 +315,30 @@ class SupabaseService {
   /// Séries de la dernière séance strictement avant [before] (vide s'il n'y
   /// en a pas) : sert à reprendre la séance précédente dans Saisie.
   Future<List<Perf>> getPreviousSession(String userId, DateTime before) async {
+    try {
+      return await _previousSessionOnline(userId, before);
+    } catch (e) {
+      if (!isNetworkError(e)) rethrow;
+      SyncService.instance.markOffline();
+      // Hors ligne : la dernière date avant [before] dans la copie locale.
+      final b = DateTime(before.year, before.month, before.day);
+      final older = _offline.view(userId).where((p) => p.date.isBefore(b));
+      if (older.isEmpty) return [];
+      final last = older.first.date; // vue du plus récent au plus ancien
+      return older.where((p) => p.date == last).toList().reversed.toList();
+    }
+  }
+
+  Future<List<Perf>> _previousSessionOnline(
+      String userId, DateTime before) async {
     final last = await _db
         .from('perfs')
         .select('date')
         .eq('user_id', userId)
         .lt('date', DateFormat('yyyy-MM-dd').format(before))
         .order('date', ascending: false)
-        .limit(1);
+        .limit(1)
+        .timeout(_timeout);
     if (last.isEmpty) return [];
     final perfs = await _fetchPerfs(userId,
         onDate: last.first['date'] as String, ascending: true);
@@ -269,18 +366,51 @@ class SupabaseService {
   }
 
   /// Insère plusieurs séries en une requête (saisie « 12 10 8 »).
-  Future<void> savePerfs(List<Perf> perfs) async {
-    if (perfs.isEmpty) return;
-    await _db.from('perfs').insert([for (final p in perfs) p.toJson()]);
+  /// Renvoie true si elles sont envoyées, false si elles attendent le réseau
+  /// (enregistrées sur le téléphone, envoyées automatiquement plus tard).
+  Future<bool> savePerfs(List<Perf> perfs) async {
+    if (perfs.isEmpty) return true;
+    final userId = perfs.first.userId;
+    final rows = [
+      for (final p in perfs)
+        {...p.toJson(), 'client_id': p.clientId ?? newClientId()}
+    ];
+    try {
+      final res = await _db
+          .from('perfs')
+          .upsert(rows, onConflict: 'client_id', ignoreDuplicates: true)
+          .select()
+          .timeout(_timeout);
+      _offline.addPerfs(userId,
+          [for (final r in res as List) Map<String, dynamic>.from(r as Map)]);
+      SyncService.instance.markOnline();
+      return true;
+    } catch (e) {
+      if (!isNetworkError(e)) rethrow;
+      _offline.enqueueInserts(userId, rows);
+      SyncService.instance.onQueued();
+      return false;
+    }
   }
 
   /// Corrige la valeur d'une série déjà enregistrée (et son effort).
+  /// Série en attente ou pas de réseau : corrigée sur le téléphone.
   Future<void> updatePerfValue(int id, double performance,
       {int? effortPondere}) async {
-    await _db.from('perfs').update({
-      'performance': performance,
-      if (effortPondere != null) 'effort_pondere': effortPondere,
-    }).eq('id', id);
+    if (id < 0) {
+      _offline.updateValue(id, performance, effortPondere: effortPondere);
+      return;
+    }
+    try {
+      await _db.from('perfs').update({
+        'performance': performance,
+        if (effortPondere != null) 'effort_pondere': effortPondere,
+      }).eq('id', id).timeout(_timeout);
+    } catch (e) {
+      if (!isNetworkError(e)) rethrow;
+      _offline.updateValue(id, performance, effortPondere: effortPondere);
+      SyncService.instance.onQueued();
+    }
   }
 
   /// Remplace les séries d'un exercice pour un jour (petites cartes de
@@ -298,19 +428,52 @@ class SupabaseService {
 
   /// Supprime toutes les séries d'un jour (« Supprimer la séance »).
   Future<void> deleteSession(String userId, DateTime date) async {
-    await _db
-        .from('perfs')
-        .delete()
-        .eq('user_id', userId)
-        .eq('date', DateFormat('yyyy-MM-dd').format(date));
+    final day = DateFormat('yyyy-MM-dd').format(date);
+    final ofDay = _offline
+        .view(userId)
+        .where((p) => DateFormat('yyyy-MM-dd').format(p.date) == day)
+        .toList();
+    // Les séries de ce jour encore en attente ne partiront pas.
+    for (final p in ofDay.where((p) => p.pending)) {
+      _offline.delete(p.id!);
+    }
+    try {
+      await _db
+          .from('perfs')
+          .delete()
+          .eq('user_id', userId)
+          .eq('date', day)
+          .timeout(_timeout);
+      _offline.setDayPerfs(userId, date, const []);
+    } catch (e) {
+      if (!isNetworkError(e)) rethrow;
+      for (final p in ofDay.where((p) => !p.pending)) {
+        _offline.delete(p.id!);
+      }
+      SyncService.instance.onQueued();
+    }
+    SyncService.instance.refresh();
   }
 
+  /// Supprime une série (en attente : retirée de la file ; sans réseau :
+  /// suppression mise en file).
   Future<void> deletePerf(int id) async {
-    await _db.from('perfs').delete().eq('id', id);
+    if (id < 0) {
+      _offline.delete(id);
+      SyncService.instance.refresh();
+      return;
+    }
+    try {
+      await _db.from('perfs').delete().eq('id', id).timeout(_timeout);
+    } catch (e) {
+      if (!isNetworkError(e)) rethrow;
+      _offline.delete(id);
+      SyncService.instance.onQueued();
+    }
   }
 
   Future<List<String>> getExerciceNames(String userId) async {
-    final perfs = await _fetchPerfs(userId);
+    final perfs = await getAllPerfs(userId);
     final set = <String>{
       for (final p in perfs)
         if (p.exercice.isNotEmpty) p.exercice,
@@ -321,7 +484,7 @@ class SupabaseService {
   /// Tous les exercices de l'historique avec leur dernière unité et catégorie
   /// (et pas seulement ceux des 90 derniers jours).
   Future<Map<String, (String, String)>> getExerciceMeta(String userId) async {
-    final perfs = await _fetchPerfs(userId); // du plus récent au plus ancien
+    final perfs = await getAllPerfs(userId); // du plus récent au plus ancien
     final out = <String, (String, String)>{};
     for (final p in perfs) {
       if (p.exercice.isNotEmpty) {
@@ -335,13 +498,12 @@ class SupabaseService {
 
   /// Nombre de séries par jour ; [months] null = tout l'historique.
   Future<Map<DateTime, int>> getActiveDays(String userId, {int? months}) async {
-    final perfs = await _fetchPerfs(
-      userId,
-      fromDate: months == null
-          ? null
-          : DateFormat('yyyy-MM-dd')
-              .format(DateTime.now().subtract(Duration(days: months * 30))),
-    );
+    // Tout l'historique (copie locale sans réseau), filtré sur la période.
+    final from = months == null
+        ? null
+        : DateTime.now().subtract(Duration(days: months * 30));
+    final perfs = (await getAllPerfs(userId))
+        .where((p) => from == null || !p.date.isBefore(from));
     final map = <DateTime, int>{};
     for (final p in perfs) {
       final key = DateTime(p.date.year, p.date.month, p.date.day);
@@ -358,11 +520,14 @@ class SupabaseService {
           .from('user_settings')
           .select('*')
           .eq('user_id', userId)
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(_timeout);
+      _offline.setSettings(userId, res ?? {});
       return res ?? {};
     } catch (_) {
-      // Table absente ou réseau : valeurs par défaut (même règle que Python).
-      return {};
+      // Réseau : derniers réglages connus ; sinon valeurs par défaut (même
+      // règle que Python).
+      return _offline.settings(userId) ?? {};
     }
   }
 
