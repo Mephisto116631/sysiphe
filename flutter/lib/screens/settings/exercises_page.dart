@@ -3,6 +3,7 @@ import '../../models/categorize.dart';
 import '../../models/perf.dart';
 import '../../services/data_events.dart';
 import '../../services/profile_prefs.dart';
+import '../../services/role.dart';
 import '../../services/supabase_service.dart';
 import '../../theme.dart';
 import '../../widgets/category_picker.dart';
@@ -173,17 +174,19 @@ class _ExercisesPageState extends State<ExercisesPage> {
                     color: AppTheme.primaryBlue),
                 title: const Text('Activer la planche'),
                 subtitle: const Text(
-                    'Options, effort pondéré, stats et Modèle de la planche'),
+                    'Options, effort pondéré et stats de la planche'),
                 value: plancheOn,
                 onChanged: (_) => Navigator.pop(ctx, _Action.planche),
               ),
-              if (plancheOn && widget.ops.userId != null)
+              // Modèle mathématique : réservé à l'admin ; les autres profils
+              // règlent seulement leur poids (Réglages → Entraînement).
+              if (plancheOn && widget.ops.userId != null && isAdminNotifier.value)
                 ListTile(
                   leading:
                       const Icon(Icons.functions, color: AppTheme.primaryBlue),
                   title: const Text('Modèle de la planche'),
                   subtitle:
-                      const Text('Tes coefficients, propres à ton profil'),
+                      const Text('Coefficients de l\'effort (admin)'),
                   onTap: () => Navigator.pop(ctx, _Action.model),
                 ),
               if (plancheOn)

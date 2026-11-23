@@ -291,6 +291,8 @@ class _ExerciseCardState extends State<ExerciseCard> {
             ),
             const SizedBox(height: 12),
             Row(
+              // En haut : le texte d'aide sous la valeur décalait le Lest.
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
                   child: TextField(
