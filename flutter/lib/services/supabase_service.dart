@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
+import '../models/course.dart';
 import '../models/profile.dart';
 import '../models/perf.dart';
 import 'offline_store.dart';
@@ -45,6 +46,21 @@ class SupabaseService {
         return null;
       case 'delete':
         await _db.from('perfs').delete().eq('id', op.data['id']).timeout(_timeout);
+        return null;
+      case 'course_insert':
+        final res = await _db
+            .from('courses')
+            .upsert(op.data, onConflict: 'client_id', ignoreDuplicates: true)
+            .select()
+            .timeout(_timeout);
+        final rows = res as List;
+        return rows.isEmpty ? null : Map<String, dynamic>.from(rows.first);
+      case 'course_delete':
+        await _db
+            .from('courses')
+            .delete()
+            .eq('id', op.data['id'])
+            .timeout(_timeout);
         return null;
     }
     return null;
@@ -220,6 +236,77 @@ class SupabaseService {
       await _db.from('profiles').update(
           {'last_login': DateTime.now().toIso8601String()}).eq('id', profileId);
     } catch (_) {}
+  }
+
+  // ─── Courses (module Course, version sysiphe-course.apk) ──────────────────
+
+  /// Toutes les courses du profil (copie locale + en attente sans réseau).
+  Future<List<Course>> getCourses(String userId) async {
+    try {
+      final out = <Map<String, dynamic>>[];
+      for (var start = 0;; start += _pageSize) {
+        final res = await _db
+            .from('courses')
+            .select('*')
+            .eq('user_id', userId)
+            .order('debut', ascending: false)
+            .range(start, start + _pageSize - 1)
+            .timeout(_timeout);
+        final rows = res as List;
+        out.addAll(rows.map((j) => Map<String, dynamic>.from(j as Map)));
+        if (rows.length < _pageSize) break;
+      }
+      _offline.setCourses(userId, out);
+      SyncService.instance.markOnline();
+    } catch (e) {
+      if (!isNetworkError(e) || !_offline.hasCourses(userId)) rethrow;
+      SyncService.instance.markOffline();
+    }
+    return _offline.courses(userId);
+  }
+
+  /// Enregistre une course ; sans réseau, elle part dans la file d'attente.
+  /// true : envoyée ; false : en attente (envoi automatique).
+  Future<bool> saveCourse(Course c) async {
+    final data = c.toJson();
+    if (data['client_id'] == null) data['client_id'] = newClientId();
+    try {
+      final res = await _db
+          .from('courses')
+          .upsert(data, onConflict: 'client_id', ignoreDuplicates: true)
+          .select()
+          .timeout(_timeout);
+      final rows = res as List;
+      if (rows.isNotEmpty) {
+        _offline.addCourse(c.userId, Map<String, dynamic>.from(rows.first));
+      }
+      SyncService.instance.markOnline();
+      return true;
+    } catch (e) {
+      if (!isNetworkError(e)) rethrow;
+      _offline.enqueueCourse(c.userId, data);
+      SyncService.instance.onQueued();
+      return false;
+    }
+  }
+
+  Future<void> deleteCourse(Course c) async {
+    final id = c.id;
+    if (id == null) return;
+    if (id < 0) {
+      _offline.deleteCourse(c.userId, id);
+      SyncService.instance.refresh();
+      return;
+    }
+    try {
+      await _db.from('courses').delete().eq('id', id).timeout(_timeout);
+      _offline.deleteCourse(c.userId, id, queue: false);
+      SyncService.instance.markOnline();
+    } catch (e) {
+      if (!isNetworkError(e)) rethrow;
+      _offline.deleteCourse(c.userId, id);
+      SyncService.instance.onQueued();
+    }
   }
 
   // ─── Performances ─────────────────────────────────────────────────────────

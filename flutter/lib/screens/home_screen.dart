@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../app_flavor.dart';
 import '../models/profile.dart';
 import '../services/profile_prefs.dart';
 import '../services/role.dart';
@@ -10,6 +11,7 @@ import 'profile_screen.dart';
 import 'saisie_screen.dart';
 import 'stats_screen.dart';
 import 'calendar_screen.dart';
+import 'course_screen.dart';
 import 'model_screen.dart';
 import 'records_screen.dart';
 import 'settings_screen.dart';
@@ -56,6 +58,7 @@ class _HomeScreenState extends State<HomeScreen> {
       RecordsScreen(userId: uid),
       ModelScreen(userId: uid),
       SettingsScreen(userId: uid, profile: widget.profile),
+      if (kCourse) CourseScreen(userId: uid),
     ];
   }
 
@@ -82,7 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final on = plancheEnabledNotifier.value;
     if (!mounted || on == _plancheShown) return;
     setState(() {
-      if (_idx >= 4) _idx += on ? 1 : -1;
+      if (_idx >= (kCourse ? 5 : 4)) _idx += on ? 1 : -1;
       _plancheShown = on;
     });
   }
@@ -124,8 +127,11 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final model = _plancheShown;
+    // Version course : onglet Course après Saisie.
     final screens = [
-      ..._screens.sublist(0, 4),
+      _screens[0],
+      if (kCourse) _screens[6],
+      ..._screens.sublist(1, 4),
       if (model) _screens[4],
       _screens[5],
     ];
@@ -142,6 +148,9 @@ class _HomeScreenState extends State<HomeScreen> {
         items: [
           const BottomNavigationBarItem(
               icon: Icon(Icons.fitness_center), label: 'Saisie'),
+          if (kCourse)
+            const BottomNavigationBarItem(
+                icon: Icon(Icons.directions_run), label: 'Course'),
           const BottomNavigationBarItem(
               icon: Icon(Icons.bar_chart), label: 'Stats'),
           const BottomNavigationBarItem(

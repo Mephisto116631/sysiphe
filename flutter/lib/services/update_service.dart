@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../app_flavor.dart';
 import '../app_version.dart';
 
 /// Version complète « 2.3.0+12 » → (nom, numéro de build).
@@ -15,22 +16,34 @@ class UpdateInfo {
   final int build; // numéro du run CI = versionCode Android
   final String apkUrl;
   final int size; // octets
-  const UpdateInfo(this.version, this.build, this.apkUrl, this.size);
+  final String apkName; // sysiphe.apk ou sysiphe-course.apk
+  const UpdateInfo(this.version, this.build, this.apkUrl, this.size,
+      {this.apkName = 'sysiphe.apk'});
 
   String get label => '$version+$build';
+
+  /// Nom du fichier téléchargé : « sysiphe-2.18.0+50.apk » ou
+  /// « sysiphe-course-2.18.0+50.apk » (jamais confondus).
+  String get fileName => apkName.replaceFirst('.apk', '-$label.apk');
 }
 
 /// Lit la réponse de l'API GitHub « dernière Release ». Le numéro de build
 /// est dans le texte de la Release (« Build 2.3.0+12 — commit … »), écrit
 /// par build-flutter.yml. null si la Release n'a pas d'APK ou pas de build.
-UpdateInfo? parseRelease(Map<String, dynamic> json) {
+///
+/// [apkName] : l'APK de la version voulue (`sysiphe.apk` sans course,
+/// `sysiphe-course.apk` avec). Anciennes Releases (un seul APK) : seul
+/// `sysiphe.apk` existe.
+UpdateInfo? parseRelease(Map<String, dynamic> json,
+    {String apkName = kApkName}) {
   final v = parseVersion((json['body'] as String?) ?? '');
-  final assets = (json['assets'] as List?) ?? const [];
-  final apk = assets.cast<Map<String, dynamic>>().where(
-      (a) => (a['name'] as String?)?.endsWith('.apk') ?? false);
+  final assets =
+      ((json['assets'] as List?) ?? const []).cast<Map<String, dynamic>>();
+  final apk = assets.where((a) => a['name'] == apkName);
   if (v == null || apk.isEmpty) return null;
   return UpdateInfo(v.$1, v.$2, apk.first['browser_download_url'] as String,
-      (apk.first['size'] as num?)?.toInt() ?? 0);
+      (apk.first['size'] as num?)?.toInt() ?? 0,
+      apkName: apkName);
 }
 
 /// Plus récente que la version installée ? Comparaison sur le numéro de
@@ -63,7 +76,7 @@ class UpdateService {
 
   /// Fichiers temporaires de l'appli : APK de mise à jour (jamais supprimés
   /// auparavant : ~58 Mo à chaque mise à jour) et anciens exports CSV.
-  static Future<List<File>> _tempFiles({String? keepLabel}) async {
+  static Future<List<File>> _tempFiles({String? keepFile}) async {
     final out = <File>[];
     try {
       final d = await _channel.invokeMethod<String>('updatesDir');
@@ -71,7 +84,7 @@ class UpdateService {
         await for (final e in Directory(d).list()) {
           if (e is! File) continue;
           final name = e.uri.pathSegments.last;
-          if (keepLabel != null && name == 'sysiphe-$keepLabel.apk') continue;
+          if (keepFile != null && name == keepFile) continue;
           out.add(e);
         }
       }
@@ -103,11 +116,11 @@ class UpdateService {
   }
 
   /// Supprime les APK obsolètes (déjà installés ou interrompus) et les
-  /// exports CSV ; garde seulement l'APK de [keepLabel] (mise à jour prête).
+  /// exports CSV ; garde seulement l'APK [keepFile] (mise à jour prête).
   /// Retourne les octets libérés.
-  static Future<int> cleanup({String? keepLabel}) async {
+  static Future<int> cleanup({String? keepFile}) async {
     var freed = 0;
-    for (final f in await _tempFiles(keepLabel: keepLabel)) {
+    for (final f in await _tempFiles(keepFile: keepFile)) {
       try {
         final len = await f.length();
         await f.delete();
@@ -121,7 +134,7 @@ class UpdateService {
   static Future<File?> cachedApk(UpdateInfo info) async {
     try {
       final dir = await _channel.invokeMethod<String>('updatesDir');
-      final f = File('$dir/sysiphe-${info.label}.apk');
+      final f = File('$dir/${info.fileName}');
       return await f.exists() && (info.size == 0 || await f.length() == info.size)
           ? f
           : null;
@@ -132,6 +145,16 @@ class UpdateService {
 
   /// Dernière Release si elle est plus récente que l'app, sinon null.
   static Future<UpdateInfo?> checkForUpdate() async {
+    final info = parseRelease(await _latestRelease());
+    return info != null && isNewer(info, kAppVersion) ? info : null;
+  }
+
+  /// L'autre version de l'app (avec ou sans le module Course), dans la
+  /// dernière Release ; null si elle n'y est pas.
+  static Future<UpdateInfo?> otherFlavor() async =>
+      parseRelease(await _latestRelease(), apkName: kOtherApkName);
+
+  static Future<Map<String, dynamic>> _latestRelease() async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
     try {
       final req = await client.getUrl(Uri.parse(_latestUrl));
@@ -143,8 +166,7 @@ class UpdateService {
         throw HttpException('GitHub a répondu ${res.statusCode}');
       }
       final body = await res.transform(utf8.decoder).join();
-      final info = parseRelease(jsonDecode(body) as Map<String, dynamic>);
-      return info != null && isNewer(info, kAppVersion) ? info : null;
+      return jsonDecode(body) as Map<String, dynamic>;
     } finally {
       client.close();
     }
@@ -154,7 +176,7 @@ class UpdateService {
   static Future<File> download(UpdateInfo info,
       {void Function(double)? onProgress}) async {
     final dir = await _channel.invokeMethod<String>('updatesDir');
-    final file = File('$dir/sysiphe-${info.label}.apk');
+    final file = File('$dir/${info.fileName}');
     final part = File('${file.path}.part'); // jamais d'APK à moitié écrit
     final client = HttpClient();
     try {

@@ -1,6 +1,6 @@
 name: sysiphe
 description: Sysiphe — suivi d'entraînement natif Flutter
-version: 2.17.0+1
+version: 2.18.0+1
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -33,6 +33,11 @@ dependencies:
   audioplayers: 6.1.0     # bips du chrono (versions récentes : Flutter plus récent)
   flutter_tts: 4.0.2      # annonces vocales du chrono
   path_provider: ^2.1.5
+
+  # Module Course (version sysiphe-course.apk) : GPS et carte OpenStreetMap
+  geolocator: 13.0.4      # versions récentes : Flutter plus récent
+  flutter_map: 7.0.2      # 8.x exige Flutter 3.27
+  latlong2: 0.9.1
 
 dev_dependencies:
   flutter_test:

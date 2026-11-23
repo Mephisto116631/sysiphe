@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../app_flavor.dart';
 import '../models/perf.dart';
 import '../models/stats.dart';
 import '../services/data_events.dart';
@@ -7,6 +8,7 @@ import '../services/ui_prefs.dart';
 import '../theme.dart';
 import '../widgets/load_error.dart';
 import '../widgets/stats/category_bars.dart';
+import '../widgets/stats/course_stats.dart';
 import '../widgets/stats/multi_line_chart.dart';
 import '../widgets/stats/series_legend.dart';
 import '../widgets/stats/stat_cards.dart';
@@ -162,7 +164,7 @@ class _StatsScreenState extends State<StatsScreen> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 3,
+      length: kCourse ? 4 : 3,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Stats'),
@@ -176,13 +178,14 @@ class _StatsScreenState extends State<StatsScreen> {
             Tab(text: 'Exercice'),
             Tab(text: 'Comparer'),
             Tab(text: 'Catégories'),
+            if (kCourse) Tab(text: 'Course'),
           ]),
         ),
         body: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
                 ? LoadError(error: _error!, onRetry: _load)
-                : _exercices.isEmpty
+                : _exercices.isEmpty && !kCourse
                     ? Center(
                         child: Text('Aucune donnée',
                             style: Theme.of(context).textTheme.bodyMedium))
@@ -197,6 +200,10 @@ class _StatsScreenState extends State<StatsScreen> {
                               _exerciseTab(context),
                               _compareTab(context),
                               _categoriesTab(context),
+                              if (kCourse)
+                                CourseStatsTab(
+                                    userId: widget.userId,
+                                    days: _period.days),
                             ]),
                           ),
                         ],

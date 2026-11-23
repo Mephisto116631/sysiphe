@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
+import '../models/course.dart';
 import '../models/perf.dart';
 
 /// Une opération en attente d'envoi (mode hors ligne).
@@ -10,6 +11,7 @@ import '../models/perf.dart';
 ///   [localId] (négatif) la désigne dans l'app tant qu'elle n'est pas envoyée.
 /// - `update` : [data] = `{id, performance, effort_pondere?}` (série envoyée).
 /// - `delete` : [data] = `{id}` (série envoyée).
+/// - `course_insert` / `course_delete` : même chose pour une course.
 class PendingOp {
   final String kind;
   final String userId;
@@ -65,6 +67,7 @@ class OfflineStore {
   final Future<File> Function() _fileFn;
   final Map<String, List<Map<String, dynamic>>> _perfs = {};
   final Map<String, Map<String, dynamic>> _settings = {};
+  final Map<String, List<Map<String, dynamic>>> _courses = {};
   final List<PendingOp> _outbox = [];
   int _nextLocal = -1;
   bool _loaded = false;
@@ -86,6 +89,9 @@ class OfflineStore {
           ]);
       (j['settings'] as Map? ?? {}).forEach(
           (k, v) => _settings['$k'] = Map<String, dynamic>.from(v as Map));
+      (j['courses'] as Map? ?? {}).forEach((k, v) => _courses['$k'] = [
+            for (final r in v as List) Map<String, dynamic>.from(r as Map)
+          ]);
       _outbox.addAll([
         for (final o in j['outbox'] as List? ?? [])
           PendingOp.fromJson(Map<String, dynamic>.from(o as Map))
@@ -112,6 +118,7 @@ class OfflineStore {
       await tmp.writeAsString(jsonEncode({
         'perfs': _perfs,
         'settings': _settings,
+        'courses': _courses,
         'outbox': [for (final o in _outbox) o.toJson()],
         'next_local': _nextLocal,
       }));
@@ -154,6 +161,61 @@ class OfflineStore {
   }
 
   Map<String, dynamic>? settings(String userId) => _settings[userId];
+
+  // ── Courses (module Course) ────────────────────────────────────────────
+
+  bool hasCourses(String userId) => _courses.containsKey(userId);
+
+  void setCourses(String userId, List<Map<String, dynamic>> rows) {
+    _courses[userId] = [for (final r in rows) Map<String, dynamic>.from(r)];
+    save();
+  }
+
+  /// Course envoyée avec succès : ajoutée à la copie.
+  void addCourse(String userId, Map<String, dynamic> row) {
+    final list = _courses[userId] ??= [];
+    list.removeWhere((r) => r['id'] == row['id']);
+    list.add(Map<String, dynamic>.from(row));
+    save();
+  }
+
+  /// Met une course en attente ; renvoie son identifiant local (< 0).
+  int enqueueCourse(String userId, Map<String, dynamic> row) {
+    final id = _nextLocal--;
+    _outbox.add(PendingOp('course_insert', userId,
+        Map<String, dynamic>.from(row), localId: id));
+    save();
+    return id;
+  }
+
+  /// Suppression d'une course (en attente : simplement retirée).
+  /// [queue] false : déjà supprimée sur le serveur, on retire la copie.
+  void deleteCourse(String userId, int id, {bool queue = true}) {
+    if (id < 0) {
+      _outbox.removeWhere((o) => o.kind == 'course_insert' && o.localId == id);
+    } else {
+      if (queue) _outbox.add(PendingOp('course_delete', userId, {'id': id}));
+      _courses[userId]?.removeWhere((r) => r['id'] == id);
+    }
+    save();
+  }
+
+  /// Courses du profil, en attente comprises, de la plus récente à la plus
+  /// ancienne.
+  List<Course> courses(String userId) {
+    final deleted = {
+      for (final o in _outbox)
+        if (o.kind == 'course_delete' && o.userId == userId) o.data['id']
+    };
+    final out = [
+      for (final r in _courses[userId] ?? const <Map<String, dynamic>>[])
+        if (!deleted.contains(r['id'])) Course.fromJson(r),
+      for (final o in _outbox)
+        if (o.kind == 'course_insert' && o.userId == userId)
+          Course.fromJson({...o.data, 'id': o.localId}),
+    ]..sort((a, b) => b.debut.compareTo(a.debut));
+    return out;
+  }
 
   // ── File d'attente ─────────────────────────────────────────────────────
 
@@ -267,6 +329,7 @@ class OfflineStore {
   void clearForTest() {
     _perfs.clear();
     _settings.clear();
+    _courses.clear();
     _outbox.clear();
     _nextLocal = -1;
     _loaded = true;

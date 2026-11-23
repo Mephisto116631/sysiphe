@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../app_flavor.dart';
 import '../app_version.dart';
 import '../services/update_service.dart';
 
@@ -20,7 +21,7 @@ Future<void> checkAndOfferUpdate(BuildContext context, {bool silent = false}) as
     return;
   }
   // Libère l'espace : on ne garde que l'APK de la mise à jour en attente.
-  await UpdateService.cleanup(keepLabel: info?.label);
+  await UpdateService.cleanup(keepFile: info?.fileName);
   if (!context.mounted) return;
   if (info == null) {
     if (!silent) {
@@ -51,8 +52,38 @@ Future<void> checkAndOfferUpdate(BuildContext context, {bool silent = false}) as
   await _confirmAndInstall(context, update);
 }
 
+/// Passe à l'autre version de l'app : avec le module Course
+/// (`sysiphe-course.apk`) ou sans. Même app : les données sont gardées.
+Future<void> switchFlavor(BuildContext context) async {
+  final messenger = ScaffoldMessenger.of(context);
+  UpdateInfo? info;
+  try {
+    info = await UpdateService.otherFlavor();
+  } catch (e) {
+    messenger.showSnackBar(SnackBar(
+        content: Text('Vérification impossible : $e'),
+        behavior: SnackBarBehavior.floating));
+    return;
+  }
+  if (!context.mounted) return;
+  if (info == null) {
+    messenger.showSnackBar(const SnackBar(
+        content: Text('Cette version n\'est pas encore publiée'),
+        behavior: SnackBarBehavior.floating));
+    return;
+  }
+  await _confirmAndInstall(context, info,
+      title: kCourse ? 'Version sans course' : 'Activer le module Course',
+      body: kCourse
+          ? 'Installe la version sans le module Course (sans localisation).'
+          : 'Installe la version avec le module Course : suivi GPS, carte, '
+              'annonces à chaque km. Elle demandera l\'accès à la '
+              'localisation au premier départ. Les mises à jour suivantes '
+              'gardent cette version.');
+}
+
 Future<void> _confirmAndInstall(BuildContext context, UpdateInfo info,
-    {bool offerSkip = false}) async {
+    {bool offerSkip = false, String? title, String? body}) async {
   if (!context.mounted) return;
   final cached = await UpdateService.cachedApk(info);
   if (!context.mounted) return;
@@ -61,8 +92,9 @@ Future<void> _confirmAndInstall(BuildContext context, UpdateInfo info,
   final choice = await showDialog<int>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: const Text('Mise à jour disponible'),
-      content: Text('Version ${info.label} '
+      title: Text(title ?? 'Mise à jour disponible'),
+      content: Text('${body == null ? '' : '$body\n\n'}'
+          'Version ${info.label} '
           '(${(info.size / 1048576).toStringAsFixed(0)} Mo).\n'
           'Installée : $kAppVersion.\n\n'
           '${cached != null ? 'Déjà téléchargée : prête à installer.\n\n' : ''}'

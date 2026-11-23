@@ -53,6 +53,21 @@ android {
         }
     }
 
+    // Deux versions de la même app (même applicationId, même signature : on
+    // passe de l'une à l'autre sans perdre de données) :
+    // - standard → sysiphe.apk, sans localisation ;
+    // - course   → sysiphe-course.apk, module Course (GPS).
+    //   Permissions de localisation dans src/course/AndroidManifest.xml.
+    flavorDimensions "module"
+    productFlavors {
+        standard {
+            dimension "module"
+        }
+        course {
+            dimension "module"
+        }
+    }
+
     buildTypes {
         release {
             // Signature gérée par CI via apksigner (étape séparée)

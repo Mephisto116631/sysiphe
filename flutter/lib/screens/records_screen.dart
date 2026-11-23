@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../app_flavor.dart';
+import '../models/course.dart';
 import '../models/intensity.dart';
 import '../models/stats.dart';
 import '../services/data_events.dart';
@@ -20,11 +22,12 @@ class RecordsScreen extends StatefulWidget {
   State<RecordsScreen> createState() => _RecordsScreenState();
 }
 
-enum _Filtre { tout, planche, muscu }
+enum _Filtre { tout, planche, muscu, course }
 
 class _RecordsScreenState extends State<RecordsScreen> {
   List<PlancheRecord> _planche = [];
   List<VolumeRecord> _volume = [];
+  List<CourseRecord> _course = []; // version course seulement
   _Filtre _filtre = _Filtre.tout;
   final _search = TextEditingController();
   bool _loading = true;
@@ -64,25 +67,41 @@ class _RecordsScreenState extends State<RecordsScreen> {
 
   /// Planche filtrée : la recherche porte sur variante, forme, élastique,
   /// tension.
-  List<PlancheRecord> get _plancheVisible => _filtre == _Filtre.muscu
+  List<PlancheRecord> get _plancheVisible =>
+      _filtre == _Filtre.muscu || _filtre == _Filtre.course
       ? const []
       : _planche
           .where((r) => _match(
               '${r.variante} ${r.best.forme} ${r.elastique} ${r.tension} planche'))
           .toList();
 
-  List<VolumeRecord> get _volumeVisible => _filtre == _Filtre.planche
-      ? const []
-      : _volume.where((r) => _match(r.exercice)).toList();
+  List<VolumeRecord> get _volumeVisible =>
+      _filtre == _Filtre.planche || _filtre == _Filtre.course
+          ? const []
+          : _volume.where((r) => _match(r.exercice)).toList();
+
+  List<CourseRecord> get _courseVisible =>
+      (_filtre == _Filtre.tout || _filtre == _Filtre.course) &&
+              _match('course ${_course.map((r) => r.label).join(' ')}')
+          ? _course
+          : const [];
 
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
     try {
       final all = await SupabaseService.instance.getAllPerfs(widget.userId);
+      var course = <CourseRecord>[];
+      if (kCourse) {
+        try {
+          final c = await SupabaseService.instance.getCourses(widget.userId);
+          if (c.isNotEmpty) course = courseRecords(c);
+        } catch (_) {/* courses indisponibles */}
+      }
       if (!mounted) return;
       setState(() {
         _planche = plancheRecords(all);
         _volume = volumeRecords(all);
+        _course = course;
         _loading = false;
       });
     } catch (e) {
@@ -108,7 +127,7 @@ class _RecordsScreenState extends State<RecordsScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? LoadError(error: _error!, onRetry: _load)
-              : _planche.isEmpty && _volume.isEmpty
+              : _planche.isEmpty && _volume.isEmpty && _course.isEmpty
                   ? Center(
                       child: Text('Aucun record',
                           style: theme.textTheme.bodyMedium))
@@ -119,6 +138,7 @@ class _RecordsScreenState extends State<RecordsScreen> {
   Widget _buildList(ThemeData theme) {
     final planche = _plancheVisible;
     final volume = _volumeVisible;
+    final course = _courseVisible;
     return Column(
       children: [
         Padding(
@@ -129,7 +149,12 @@ class _RecordsScreenState extends State<RecordsScreen> {
                 segments: const [
                   ButtonSegment(value: _Filtre.tout, label: Text('Tout')),
                   ButtonSegment(value: _Filtre.planche, label: Text('Planche')),
-                  ButtonSegment(value: _Filtre.muscu, label: Text('Musculation')),
+                  // 4 filtres dans la version course : libellé raccourci.
+                  ButtonSegment(
+                      value: _Filtre.muscu,
+                      label: Text(kCourse ? 'Muscu' : 'Musculation')),
+                  if (kCourse)
+                    ButtonSegment(value: _Filtre.course, label: Text('Course')),
                 ],
                 selected: {_filtre},
                 showSelectedIcon: false,
@@ -159,13 +184,21 @@ class _RecordsScreenState extends State<RecordsScreen> {
           ),
         ),
         Expanded(
-          child: planche.isEmpty && volume.isEmpty
+          child: planche.isEmpty && volume.isEmpty && course.isEmpty
               ? Center(
                   child: Text('Aucun record pour ce filtre',
                       style: theme.textTheme.bodyMedium))
               : ListView(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                   children: [
+                    if (course.isNotEmpty) ...[
+                      Text('Course', style: theme.textTheme.titleMedium),
+                      Text('Meilleur temps sur la distance, d\'un seul tenant',
+                          style: theme.textTheme.bodySmall),
+                      const SizedBox(height: 8),
+                      for (final r in course) _CourseTile(r: r),
+                      const SizedBox(height: 20),
+                    ],
                     if (planche.isNotEmpty) ...[
                       Text('Planche', style: theme.textTheme.titleMedium),
                       Text('Meilleure série par variante, élastique et tension',
@@ -261,6 +294,35 @@ class _VolumeTile extends StatelessWidget {
               fontWeight: FontWeight.bold,
               color: AppTheme.primaryBlue),
         ),
+      ),
+    );
+  }
+}
+
+class _CourseTile extends StatelessWidget {
+  final CourseRecord r;
+  const _CourseTile({required this.r});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = r.course;
+    final t = r.timeS;
+    final longest = r.label == 'Plus longue';
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.directions_run, color: Colors.deepOrange),
+        title: Text(r.label),
+        subtitle: Text(c == null
+            ? 'Pas encore de course aussi longue'
+            : longest
+                ? '${formatKm(r.meters)} · ${_date(c.debut)}'
+                : '${formatPace(t! / r.meters * 1000)} /km · ${_date(c.debut)}'),
+        trailing: Text(
+            c == null || t == null ? '—' : formatDuration(t.round()),
+            style: Theme.of(context)
+                .textTheme
+                .titleMedium
+                ?.copyWith(fontWeight: FontWeight.bold)),
       ),
     );
   }

@@ -222,7 +222,7 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
       avec `poids effectif = poids + lest − force élastique × ratio de tension` (même logique que la planche).
       Colonnes ajoutées : `perfs.ecartement`, `user_settings.assistable_exercises`, `user_settings.ecartements_config`.
 - [x] Rôles admin / user, validation avant modification de l'algo, export de la base, pop-up de mise à jour + maj auto (PR #21)
-- [ ] Passkey ; module course GPS (à décider)
+- [ ] Passkey ; ~~module course GPS~~ (fait en v2.18.0)
 
 ### Idée gardée pour plus tard — formule « reps équivalentes » (non retenue)
 
@@ -263,12 +263,20 @@ Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec 
       avant l'étape « a bis »)
 - [ ] Rouvrir la **saisie** sur le site (en consultation seule depuis le 17/11, ce qui le rend peu utile pour toi)
 
-## Décidé pour plus tard — module Course GPS (18/11)
+## Module Course GPS (24/11, v2.18.0)
 
-- [ ] Pas dans tous les APK : la CI publie `sysiphe.apk` (sans course) et `sysiphe-course.apk` (avec). Réglages →
-      Mises à jour → « Activer le module Course » bascule vers la version course et la garde à chaque mise à jour
-      (même app, données conservées ; retour possible). Seule la version course demande la localisation.
-      (Une app installée hors Play Store ne peut pas télécharger un module de code après coup.)
+- [x] **Deux APK** dans chaque Release : `sysiphe.apk` (sans course ni localisation) et `sysiphe-course.apk` (module
+      Course). Même app (même identifiant, même signature) : Réglages → Application → « Activer le module Course »
+      installe l'autre version, les données restent ; les mises à jour gardent la version installée. Variantes Android
+      `standard` / `course` ; la CI vérifie que la version standard ne demande jamais la localisation
+- [x] Onglet **Course** (version course) : objectif libre / distance / durée, pause automatique (feu rouge), suivi GPS
+      écran éteint (notification « Course en cours »), carte OpenStreetMap avec le tracé, annonce vocale à chaque km
+      (réglage son du chrono), « Objectif atteint », Terminer par appui long, résumé puis Enregistrer / Supprimer
+- [x] Historique des courses (carte, temps par km) ; **Records** → Course (1 km, 5 km, 10 km, plus longue) ;
+      **Stats** → Course (distance par semaine, allure) ; **Calendrier** : jours de course marqués 🏃
+- [x] Hors ligne : une course faite sans réseau part toute seule plus tard (même file d'attente que les séries)
+- [ ] **Toi** : appliquer `supabase/migrations/20261124090000_courses.sql`, puis Réglages → Application → « Activer
+      le module Course », et faire une petite course écran éteint
 
 ## Catégories des exercices (18/11, v2.13.0)
 
