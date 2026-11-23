@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import '../app_version.dart';
 import '../models/profile.dart';
 import '../services/google_account.dart';
+import '../services/profile_prefs.dart';
 import '../services/reminders.dart';
 import '../services/role.dart';
 import '../services/session_store.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
+import 'model_screen.dart';
 import 'profile_screen.dart' show ProfileScreen;
 import 'settings/account_page.dart';
 import 'settings/admin_page.dart';
@@ -167,6 +169,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   subtitle: 'Nom, catégorie, assistable',
                   onTap: () => _open(
                       ExercisesPage(ops: ExerciseOps.supabase(widget.userId))),
+                ),
+                // Modèle mathématique de la planche : admin, planche activée.
+                ListenableBuilder(
+                  listenable: Listenable.merge(
+                      [isAdminNotifier, plancheEnabledNotifier]),
+                  builder: (_, __) =>
+                      !isAdminNotifier.value || !plancheEnabledNotifier.value
+                          ? const SizedBox.shrink()
+                          : NavTile(
+                              icon: Icons.functions,
+                              title: 'Modèle de la planche',
+                              subtitle: 'Coefficients de l\'effort (admin)',
+                              onTap: () =>
+                                  _open(ModelScreen(userId: widget.userId)),
+                            ),
                 ),
                 NavTile(
                   icon: Icons.notifications_active_outlined,

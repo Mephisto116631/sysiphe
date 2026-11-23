@@ -70,6 +70,9 @@ class ExercisesPage extends StatefulWidget {
 class _ExercisesPageState extends State<ExercisesPage> {
   List<ExerciseCategory> _items = [];
   Set<String> _assistables = {};
+  // Sélection multiple : changer la catégorie de plusieurs exercices.
+  bool _selecting = false;
+  final Set<String> _selected = {};
   bool _loading = true;
   Object? _error;
 
@@ -305,10 +308,96 @@ class _ExercisesPageState extends State<ExercisesPage> {
         '« ${item.exercice} » → $picked');
   }
 
+  /// Exercices sélectionnables (la planche est reconnue par son nom : sa
+  /// catégorie ne change pas).
+  List<ExerciseCategory> get _selectable =>
+      [for (final i in _items) if (!Perf.isPlancheRawName(i.exercice)) i];
+
+  void _toggleSelect(String ex) => setState(() {
+        if (!_selected.remove(ex)) _selected.add(ex);
+        if (_selected.isEmpty) _selecting = false;
+      });
+
+  void _exitSelect() => setState(() {
+        _selecting = false;
+        _selected.clear();
+      });
+
+  Future<void> _bulkCategory() async {
+    final chosen = [for (final i in _items) if (_selected.contains(i.exercice)) i];
+    if (chosen.isEmpty) return;
+    final mains = {for (final i in chosen) i.main};
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (_) => CategoryPickerDialog(
+        exercice: '${chosen.length} exercice${chosen.length > 1 ? 's' : ''}',
+        current: mains.length == 1 ? mains.first : '',
+        categories: _categories,
+        suggestion: null,
+      ),
+    );
+    if (picked == null || !mounted) return;
+    final todo = [
+      for (final i in chosen)
+        if (i.main != picked || i.mixed) i.exercice
+    ];
+    _exitSelect();
+    await _run(() async {
+      for (final ex in todo) {
+        await widget.ops.setCategory(ex, picked);
+      }
+    }, '${chosen.length} exercice${chosen.length > 1 ? 's' : ''} → $picked');
+  }
+
   @override
   Widget build(BuildContext context) {
+    final selectable = _selectable;
+    final allSelected =
+        selectable.isNotEmpty && _selected.length == selectable.length;
     return Scaffold(
-      appBar: AppBar(title: const Text('Exercices')),
+      appBar: _selecting
+          ? AppBar(
+              leading: IconButton(
+                  icon: const Icon(Icons.close),
+                  tooltip: 'Annuler',
+                  onPressed: _exitSelect),
+              title: Text('${_selected.length} sélectionné'
+                  '${_selected.length > 1 ? 's' : ''}'),
+              actions: [
+                TextButton(
+                  key: const ValueKey('select-all'),
+                  onPressed: () => setState(() => allSelected
+                      ? _selected.clear()
+                      : _selected.addAll(selectable.map((i) => i.exercice))),
+                  child: Text(allSelected ? 'Aucun' : 'Tout'),
+                ),
+              ],
+            )
+          : AppBar(
+              title: const Text('Exercices'),
+              actions: [
+                if (selectable.length > 1)
+                  IconButton(
+                    key: const ValueKey('select-mode'),
+                    icon: const Icon(Icons.checklist),
+                    tooltip: 'Changer plusieurs catégories',
+                    onPressed: () => setState(() => _selecting = true),
+                  ),
+              ],
+            ),
+      bottomNavigationBar: !_selecting
+          ? null
+          : SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: FilledButton.icon(
+                  key: const ValueKey('bulk-category'),
+                  icon: const Icon(Icons.label_outline),
+                  label: const Text('Changer la catégorie'),
+                  onPressed: _selected.isEmpty ? null : _bulkCategory,
+                ),
+              ),
+            ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -317,10 +406,14 @@ class _ExercisesPageState extends State<ExercisesPage> {
                   padding: const EdgeInsets.all(16),
                   children: [
                     Text(
-                        'Touche un exercice pour le renommer, changer sa '
-                        'catégorie (tes propres catégories : elles servent à '
-                        'proposer celle des nouveaux exercices) ou le rendre '
-                        'assistable.',
+                        _selecting
+                            ? 'Coche les exercices, puis « Changer la '
+                                'catégorie » : une seule fois pour tous.'
+                            : 'Touche un exercice pour le renommer, changer '
+                                'sa catégorie (tes propres catégories : elles '
+                                'servent à proposer celle des nouveaux '
+                                'exercices) ou le rendre assistable. Plusieurs '
+                                'à la fois : ☑ en haut, ou appui long.',
                         style: Theme.of(context).textTheme.bodySmall),
                     const SizedBox(height: 12),
                     Card(
@@ -332,13 +425,34 @@ class _ExercisesPageState extends State<ExercisesPage> {
                           : Column(
                               children: [
                                 for (final i in _items)
-                                  ListTile(
-                                    title: Text(i.exercice),
-                                    subtitle: Text(_subtitle(i)),
-                                    trailing: const Icon(Icons.chevron_right,
-                                        color: AppTheme.textSecondary),
-                                    onTap: () => _open(i),
-                                  ),
+                                  if (_selecting &&
+                                      !Perf.isPlancheRawName(i.exercice))
+                                    CheckboxListTile(
+                                      key: ValueKey('sel-${i.exercice}'),
+                                      title: Text(i.exercice),
+                                      subtitle: Text(_subtitle(i)),
+                                      value: _selected.contains(i.exercice),
+                                      onChanged: (_) =>
+                                          _toggleSelect(i.exercice),
+                                    )
+                                  else
+                                    ListTile(
+                                      title: Text(i.exercice),
+                                      subtitle: Text(_subtitle(i)),
+                                      enabled: !_selecting,
+                                      trailing: _selecting
+                                          ? null
+                                          : const Icon(Icons.chevron_right,
+                                              color: AppTheme.textSecondary),
+                                      onTap: () => _open(i),
+                                      onLongPress:
+                                          Perf.isPlancheRawName(i.exercice)
+                                              ? null
+                                              : () => setState(() {
+                                                    _selecting = true;
+                                                    _selected.add(i.exercice);
+                                                  }),
+                                    ),
                               ],
                             ),
                     ),

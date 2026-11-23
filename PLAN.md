@@ -297,7 +297,10 @@ Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec 
       serveur), ceux du téléphone et le recalcul à sa prochaine ouverture ; message affiché une fois
 - [x] Release : GitHub liste les APK par ordre alphabétique, et les versions ≤ 2.17 prennent le premier
       (« sysiphe-course.apk » !). Une copie standard « sysiphe-basique.apk » est publiée en tête
-- [ ] **Toi** : migration `20261124180000_admin_push_reglages.sql`
+- [x] Migration `20261124180000_admin_push_reglages.sql` appliquée (vérifiée)
+- [x] Réglages → Exercices : **plusieurs catégories d'un coup** (☑ en haut ou appui long, « Tout », puis « Changer la
+      catégorie »)
+- [x] **Modèle** de la planche retiré de la barre du bas : Réglages → « Modèle de la planche » (admin, planche activée)
 - [ ] À étudier : photos de profil (initiales gardées par défaut, photo personnalisée en option)
 
 ## Catégories des exercices (18/11, v2.13.0)
