@@ -7,6 +7,7 @@ import 'package:sysiphe/screens/settings/exercises_page.dart';
 import 'package:sysiphe/services/chrono_fx.dart';
 import 'package:sysiphe/services/profile_prefs.dart';
 import 'package:sysiphe/services/rest_timer.dart';
+import 'package:sysiphe/services/role.dart';
 import 'package:sysiphe/theme.dart';
 import 'package:sysiphe/widgets/rest_bar.dart';
 import 'package:sysiphe/widgets/saisie/perf_tile.dart';
@@ -187,9 +188,11 @@ void main() {
     testWidgets('fiche Planche : activer / désactiver, Modèle, intensité',
         (t) async {
       phone(t);
+      isAdminNotifier.value = true; // Modèle : réservé à l'admin
       addTearDown(() {
         Perf.plancheEnabled = true;
         plancheEnabledNotifier.value = true;
+        isAdminNotifier.value = false;
       });
       final saved = <Map<String, dynamic>>[];
       await t.pumpWidget(MaterialApp(
@@ -220,6 +223,14 @@ void main() {
       expect(find.text('Modèle de la planche'), findsOneWidget);
       expect(find.text('Couleurs d\'intensité'), findsOneWidget);
       expect(find.text('Renommer'), findsNothing);
+      // Profil non admin : pas de Modèle (seulement son poids).
+      await t.tapAt(const Offset(10, 10));
+      await t.pumpAndSettle();
+      isAdminNotifier.value = false;
+      await t.tap(find.text('Planche'));
+      await t.pumpAndSettle();
+      expect(find.text('Modèle de la planche'), findsNothing);
+      expect(find.text('Couleurs d\'intensité'), findsOneWidget);
       await t.tap(find.text('Activer la planche'));
       await t.pumpAndSettle();
       expect(saved.single, {'include_planche': false});

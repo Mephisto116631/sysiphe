@@ -140,6 +140,9 @@ void main() {
     expect(fields[0].decoration!.hintText, 'ex. 30');
     expect(fields[1].controller!.text, isEmpty);
     expect(fields[1].decoration!.hintText, 'ex. 10');
+    // Lest aligné sur le champ de valeur (le texte d'aide est en dessous).
+    final tf = find.byType(TextField);
+    expect(t.getTopLeft(tf.at(1)).dy, t.getTopLeft(tf.at(0)).dy);
   });
 
   testWidgets('exercice en secondes : chronomètre qui remplit le champ',

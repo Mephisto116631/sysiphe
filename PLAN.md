@@ -278,6 +278,15 @@ Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec 
 - [ ] **Toi** : appliquer `supabase/migrations/20261124090000_courses.sql`, puis Réglages → Application → « Activer
       le module Course », et faire une petite course écran éteint
 
+## Correctifs (24/11, v2.18.1)
+
+- [x] Réglages d'un profil autre que le premier refusés (« violates foreign key constraint user_settings_user_id_fkey ») :
+      la clé vers `auth.users` (ancien fonctionnement) est retirée — migration `20261124120000_user_settings_sans_auth.sql`
+- [x] Saisie : champ « Lest (kg) » des cartes d'exercice aligné sur le champ de valeur
+- [x] **Modèle** de la planche réservé à l'admin (onglet et lien) ; les autres profils règlent seulement leur poids
+      (Réglages → Entraînement), qui recalcule maintenant leurs efforts de planche
+- [ ] **Toi** : appliquer la migration (SQL Editor)
+
 ## Catégories des exercices (18/11, v2.13.0)
 
 - [x] Réglages → **Catégories des exercices** : ranger chaque exercice avec ses propres catégories (Planche,

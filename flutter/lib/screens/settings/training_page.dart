@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../models/effort_model.dart';
+import '../../models/perf.dart';
 import '../../services/data_events.dart';
 import '../../services/supabase_service.dart';
 import '../../theme.dart';
@@ -66,8 +68,20 @@ class _TrainingPageState extends State<TrainingPage> {
     }
     setState(() => _saving = true);
     try {
-      await SupabaseService.instance
-          .saveSettings(widget.userId, {'weight': weight});
+      final svc = SupabaseService.instance;
+      await svc.saveSettings(widget.userId, {'weight': weight});
+      // Le poids entre dans l'effort de la planche : on recalcule les
+      // séries avec les coefficients actuels du modèle.
+      if (Perf.plancheEnabled) {
+        final m = EffortModel.fromSettings(
+            {...await svc.getSettings(widget.userId), 'weight': weight});
+        await svc.recalculateEfforts(widget.userId,
+            weight: weight,
+            variantes: m.variantes,
+            formes: m.formes,
+            elastiques: m.elastiques,
+            tensions: m.tensions);
+      }
       notifyDataChanged();
       if (!mounted) return;
       setState(() => _saving = false);
