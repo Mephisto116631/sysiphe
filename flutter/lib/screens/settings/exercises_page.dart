@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../models/categorize.dart';
-import '../../models/intensity.dart';
 import '../../models/perf.dart';
 import '../../services/data_events.dart';
 import '../../services/profile_prefs.dart';
