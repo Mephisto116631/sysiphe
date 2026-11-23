@@ -191,9 +191,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 NavTile(
                   icon: Icons.phone_android,
                   title: 'Application',
-                  subtitle: 'Mises à jour, espace',
+                  subtitle: 'Mises à jour, paramètres, espace',
                   trailingText: 'v${kAppVersion.split('+').first}',
-                  onTap: () => _open(const AppPage()),
+                  onTap: () => _open(AppPage(
+                      userId: widget.userId,
+                      profileName: widget.profile.name)),
                 ),
                 // Visible seulement pour un profil admin.
                 ValueListenableBuilder<bool>(
@@ -203,8 +205,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       : NavTile(
                           icon: Icons.admin_panel_settings_outlined,
                           title: 'Admin',
-                          subtitle: 'Export de la base',
-                          onTap: () => _open(AdminPage(userId: widget.userId)),
+                          subtitle: 'Export de la base, envoi de réglages',
+                          onTap: () => _open(AdminPage(
+                              userId: widget.userId,
+                              profileName: widget.profile.name)),
                         ),
                 ),
               ],

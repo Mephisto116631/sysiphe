@@ -287,6 +287,17 @@ Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec 
       (Réglages → Entraînement), qui recalcule maintenant leurs efforts de planche
 - [ ] **Toi** : appliquer la migration (SQL Editor)
 
+## Paramètres en fichier, envoi par l'admin (24/11, v2.19.0)
+
+- [x] Réglages → Application → **Exporter mes paramètres** : un fichier texte `.json` lisible (poids, planche, lest,
+      intensité, coefficients, assistables, repos, chrono, rappels, minuteur, course), partagé ; **Importer des
+      paramètres** : coller le texte, résumé de ce qui change, confirmation (efforts recalculés si besoin)
+- [x] Admin → **Envoyer à un profil** : paramètres (fichier collé ou « Mes paramètres ») et/ou **message de
+      présentation**. Réglages du profil appliqués tout de suite (RPC `admin_push_settings`, admin vérifié par le
+      serveur), ceux du téléphone et le recalcul à sa prochaine ouverture ; message affiché une fois
+- [ ] **Toi** : migration `20261124180000_admin_push_reglages.sql`
+- [ ] À étudier : photos de profil (initiales gardées par défaut, photo personnalisée en option)
+
 ## Catégories des exercices (18/11, v2.13.0)
 
 - [x] Réglages → **Catégories des exercices** : ranger chaque exercice avec ses propres catégories (Planche,

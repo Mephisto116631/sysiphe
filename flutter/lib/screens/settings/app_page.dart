@@ -1,15 +1,22 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../app_flavor.dart';
 import '../../app_version.dart';
+import '../../services/settings_transfer.dart';
 import '../../services/update_service.dart';
 import '../../theme.dart';
+import '../../widgets/settings_import_dialog.dart';
 import '../../widgets/update_flow.dart';
 import 'common.dart';
 
 /// Réglages → Application : mises à jour, téléchargement automatique,
 /// espace occupé, version.
 class AppPage extends StatefulWidget {
-  const AppPage({super.key});
+  /// Profil actif (export / import de ses paramètres) ; null : masqué.
+  final String? userId;
+  final String? profileName;
+  const AppPage({super.key, this.userId, this.profileName});
 
   @override
   State<AppPage> createState() => _AppPageState();
@@ -25,6 +32,37 @@ class _AppPageState extends State<AppPage> {
     UpdateService.autoDownload().then((v) {
       if (mounted) setState(() => _autoUpdate = v);
     });
+  }
+
+  /// Fichier .json des paramètres (profil + appareil), partagé.
+  Future<void> _export() async {
+    try {
+      final b = await exportBundle(widget.userId!,
+          profileName: widget.profileName);
+      final slug = (widget.profileName ?? 'profil')
+          .toLowerCase()
+          .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+          .replaceAll(RegExp(r'^-|-$'), '');
+      final name = 'sysiphe-parametres-${slug.isEmpty ? 'profil' : slug}.json';
+      final file = File('${Directory.systemTemp.path}/$name');
+      await file.writeAsString(b.encode(), flush: true);
+      await Share.shareXFiles(
+          [XFile(file.path, mimeType: 'application/json', name: name)],
+          subject: 'Paramètres Sysiphe');
+    } catch (e) {
+      if (mounted) showSnack(context, errorText(e), error: true);
+    }
+  }
+
+  Future<void> _import() async {
+    final b = await askSettingsBundle(context);
+    if (b == null || !mounted) return;
+    try {
+      await importBundle(widget.userId!, b);
+      if (mounted) showSnack(context, 'Paramètres appliqués ✓');
+    } catch (e) {
+      if (mounted) showSnack(context, errorText(e), error: true);
+    }
   }
 
   @override
@@ -104,6 +142,37 @@ class _AppPageState extends State<AppPage> {
               ],
             ),
           ),
+          if (widget.userId != null) ...[
+            const SizedBox(height: 16),
+            Card(
+              child: Column(
+                children: [
+                  ListTile(
+                    key: const ValueKey('export-params'),
+                    leading: const Icon(Icons.ios_share,
+                        color: AppTheme.primaryBlue),
+                    title: const Text('Exporter mes paramètres'),
+                    subtitle: const Text('Fichier texte (.json) : poids, '
+                        'planche, intensité, repos, chrono, rappels…'),
+                    trailing: const Icon(Icons.chevron_right,
+                        color: AppTheme.textSecondary),
+                    onTap: _export,
+                  ),
+                  ListTile(
+                    key: const ValueKey('import-params'),
+                    leading: const Icon(Icons.file_download_outlined,
+                        color: AppTheme.primaryBlue),
+                    title: const Text('Importer des paramètres'),
+                    subtitle: const Text('Coller le texte d\'un fichier '
+                        'exporté (autre profil ou téléphone)'),
+                    trailing: const Icon(Icons.chevron_right,
+                        color: AppTheme.textSecondary),
+                    onTap: _import,
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 24),
           Center(
             child: Text(

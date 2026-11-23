@@ -4,6 +4,7 @@ import '../models/profile.dart';
 import '../services/profile_prefs.dart';
 import '../services/role.dart';
 import '../services/session_store.dart';
+import '../services/settings_transfer.dart';
 import '../services/supabase_service.dart';
 import '../widgets/pin_dialog.dart';
 import '../widgets/update_flow.dart';
@@ -75,10 +76,35 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Planche activée et couleurs d'intensité du profil (user_settings).
   Future<void> _loadProfilePrefs() async {
+    final uid = widget.profile.id;
+    Map<String, dynamic> s;
     try {
-      applyProfilePrefs(
-          await SupabaseService.instance.getSettings(widget.profile.id));
-    } catch (_) {/* hors ligne : réglages par défaut */}
+      s = await SupabaseService.instance.getSettings(uid);
+      applyProfilePrefs(s);
+    } catch (_) {
+      return; // hors ligne : réglages par défaut
+    }
+    // Réglages envoyés par l'admin (appareil, recalcul des efforts).
+    try {
+      await applyAdminPush(uid, s);
+    } catch (_) {/* réessayé à la prochaine ouverture */}
+    // Message de présentation de l'admin, affiché une fois.
+    final msg = await pendingPresentation(uid, s);
+    if (msg == null || !mounted) return;
+    final (id, title, text) = msg;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: SingleChildScrollView(child: Text(text)),
+        actions: [
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK')),
+        ],
+      ),
+    );
+    await markPresentationSeen(uid, id);
   }
 
   /// L'onglet Modèle (modèle mathématique de la planche) est réservé à
