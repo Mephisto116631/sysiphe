@@ -94,9 +94,15 @@ jobs:
           rm /tmp/keystore.jks
 
       # ── 9. GitHub Release ─────────────────────────────────────────────────
-      #    sysiphe.apk est publié SEUL d'abord : les versions ≤ 2.17 de l'app
-      #    installent le premier APK de la Release (elles ne connaissent pas
-      #    sysiphe-course.apk). L'APK course est ajouté ensuite (étape 10).
+      #    Les versions ≤ 2.17 de l'app installent le PREMIER APK de la
+      #    Release, et GitHub les liste par ordre alphabétique :
+      #    « sysiphe-course.apk » passe avant « sysiphe.apk ». On publie donc
+      #    aussi une copie de la version standard, « sysiphe-basique.apk »,
+      #    qui passe en tête. (À retirer quand plus personne n'est en 2.17.)
+      #    Les versions ≥ 2.18 cherchent leur APK par son nom exact.
+      - name: Copie pour les anciennes versions
+        run: cp sysiphe.apk sysiphe-basique.apk
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -107,10 +113,12 @@ jobs:
           body: |
             Build ${{ steps.version.outputs.full }} — commit ${{ github.sha }}
           generate_release_notes: true
-          files: sysiphe.apk
+          files: |
+            sysiphe-basique.apk
+            sysiphe.apk
           make_latest: true
 
-      # ── 10. APK du module Course, ajouté après sysiphe.apk ────────────────
+      # ── 10. APK du module Course ────────────────────────────────────────────
       #    gh release upload : n'ajoute que le fichier (texte de la Release
       #    et numéro de build inchangés).
       - name: Add course APK

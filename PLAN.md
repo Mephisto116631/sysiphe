@@ -295,6 +295,8 @@ Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec 
 - [x] Admin → **Envoyer à un profil** : paramètres (fichier collé ou « Mes paramètres ») et/ou **message de
       présentation**. Réglages du profil appliqués tout de suite (RPC `admin_push_settings`, admin vérifié par le
       serveur), ceux du téléphone et le recalcul à sa prochaine ouverture ; message affiché une fois
+- [x] Release : GitHub liste les APK par ordre alphabétique, et les versions ≤ 2.17 prennent le premier
+      (« sysiphe-course.apk » !). Une copie standard « sysiphe-basique.apk » est publiée en tête
 - [ ] **Toi** : migration `20261124180000_admin_push_reglages.sql`
 - [ ] À étudier : photos de profil (initiales gardées par défaut, photo personnalisée en option)
 
