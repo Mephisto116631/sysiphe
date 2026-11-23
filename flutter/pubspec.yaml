@@ -48,6 +48,8 @@ dev_dependencies:
 # ce qui n'est pas disponible pour les plugins → forcer la version 6.3.x
 dependency_overrides:
   app_links: ">=6.0.0 <6.4.0"
+  # Même problème pour geolocator_android 4.6.2 : 4.6.1 fixe compileSdk 34.
+  geolocator_android: 4.6.1
 
 flutter:
   uses-material-design: true
