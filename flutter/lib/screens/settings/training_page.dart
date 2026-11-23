@@ -54,7 +54,7 @@ class _TrainingPageState extends State<TrainingPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _enableCharges = !v);
-      showSnack(context, 'Erreur : $e', error: true);
+      showSnack(context, errorText(e), error: true);
     }
   }
 
@@ -75,7 +75,7 @@ class _TrainingPageState extends State<TrainingPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
-      showSnack(context, 'Erreur : $e', error: true);
+      showSnack(context, errorText(e), error: true);
     }
   }
 

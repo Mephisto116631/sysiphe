@@ -140,7 +140,7 @@ class _ExercisesPageState extends State<ExercisesPage> {
     } catch (e) {
       if (!mounted) return;
       final dup = '$e'.contains('duplicate') || '$e'.contains('23505');
-      showSnack(context, dup ? 'Ce nom existe déjà' : 'Erreur : $e',
+      showSnack(context, dup ? 'Ce nom existe déjà' : errorText(e),
           error: true);
     }
     await _load();

@@ -76,9 +76,24 @@ class PerfTile extends StatelessWidget {
               ),
           ]),
         ),
-        trailing: IconButton(
-          icon: const Icon(Icons.delete_outline, size: 20, color: Colors.grey),
-          onPressed: perf.id != null ? onDelete : null,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Enregistrée hors ligne, pas encore envoyée.
+            if (perf.pending)
+              Tooltip(
+                message: 'En attente d\'envoi (hors ligne)',
+                child: Icon(Icons.cloud_upload_outlined,
+                    key: const ValueKey('perf-pending'),
+                    size: 18,
+                    color: Colors.orange.shade800),
+              ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline,
+                  size: 20, color: Colors.grey),
+              onPressed: perf.id != null ? onDelete : null,
+            ),
+          ],
         ),
       ),
     );

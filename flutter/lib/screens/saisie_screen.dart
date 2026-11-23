@@ -11,6 +11,7 @@ import '../services/supabase_service.dart';
 import '../services/reminders.dart';
 import '../services/profile_prefs.dart';
 import '../services/rest_timer.dart';
+import '../services/sync_service.dart';
 import '../theme.dart';
 import '../widgets/chrono.dart';
 import '../widgets/exercise_card.dart';
@@ -20,6 +21,7 @@ import '../widgets/saisie/kpi.dart';
 import '../widgets/saisie/date_nav_row.dart';
 import '../widgets/saisie/dialogs.dart';
 import '../widgets/saisie/new_exercice_dialog.dart';
+import '../widgets/saisie/offline_banner.dart';
 import '../widgets/saisie/options_fields.dart';
 import '../widgets/saisie/recent_chips.dart';
 import '../widgets/saisie/perf_tile.dart';
@@ -235,7 +237,7 @@ class _SaisieScreenState extends State<SaisieScreen>
     final newPr = ins != null && ins.prSerie > 0 && e.value > ins.prSerie;
     try {
       final serie = (await _freeSeries(ex, e.serie, 1)).single;
-      await SupabaseService.instance.savePerfs([
+      final sent = await SupabaseService.instance.savePerfs([
         _makePerf(
           repos: _rest.takeLastRest(),
           exercice: ex,
@@ -255,7 +257,10 @@ class _SaisieScreenState extends State<SaisieScreen>
       _loadHistory();
       _snack(newPr
           ? '🏆 $ex : nouveau record en série (${_num(e.value)})'
-          : '$ex · série $serie enregistrée ✓');
+          : sent
+              ? '$ex · série $serie enregistrée ✓'
+              : '$ex · série $serie enregistrée hors ligne ✓ (envoi '
+                  'automatique)');
       _startRest();
       return true;
     } catch (err) {
@@ -783,7 +788,7 @@ class _SaisieScreenState extends State<SaisieScreen>
     final newPr = ins != null && ins.prSerie > 0 && best > ins.prSerie;
 
     try {
-      await SupabaseService.instance.savePerfs(perfs);
+      final sent = await SupabaseService.instance.savePerfs(perfs);
       _chargeCtrl.clear();
       _showingExisting = false;
       setState(() => _saving = false);
@@ -799,9 +804,11 @@ class _SaisieScreenState extends State<SaisieScreen>
       _loadHistory();
       _snack(newPr
           ? '🏆 Nouveau record en série : ${_num(best)} (ancien : ${_num(ins.prSerie)})'
-          : perfs.length > 1
-              ? '${perfs.length} séries enregistrées ✓'
-              : 'Enregistré ✓');
+          : !sent
+              ? 'Enregistré hors ligne ✓ (envoi automatique)'
+              : perfs.length > 1
+                  ? '${perfs.length} séries enregistrées ✓'
+                  : 'Enregistré ✓');
       _startRest();
       return true;
     } catch (e) {
@@ -1227,6 +1234,9 @@ class _SaisieScreenState extends State<SaisieScreen>
               ),
               const SizedBox(height: 16),
             ],
+
+            // ── Hors ligne : séries en attente d'envoi ────────────────────
+            OfflineBanner(sync: SyncService.instance),
 
             // ── Repos entre les séries ────────────────────────────────────
             ListenableBuilder(

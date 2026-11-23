@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../models/effort_model.dart';
 import '../models/perf.dart';
 import '../services/data_events.dart';
+import 'settings/common.dart' show errorText;
 import '../services/profile_prefs.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
@@ -131,7 +132,7 @@ class _ModelScreenState extends State<ModelScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _applying = false);
-      _snack('Erreur : $e', error: true);
+      _snack(errorText(e), error: true);
     }
   }
 

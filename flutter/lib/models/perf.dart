@@ -28,6 +28,13 @@ class Perf {
   /// Repos prévu à ce moment-là (réglage + ajustements ±15 s), en secondes.
   final int? reposPrevuS;
 
+  /// Identifiant créé sur le téléphone (mode hors ligne) : un second envoi de
+  /// la même série est ignoré par le serveur (perfs.client_id unique).
+  final String? clientId;
+
+  /// Série enregistrée hors ligne, pas encore envoyée (identifiant local < 0).
+  bool get pending => (id ?? 0) < 0;
+
   /// Repos passé ou raccourci de plus de 10 s.
   bool get reposPasse =>
       reposS != null && reposPrevuS != null && reposPrevuS! - reposS! > 10;
@@ -50,6 +57,7 @@ class Perf {
     this.effortPondere,
     this.reposS,
     this.reposPrevuS,
+    this.clientId,
   });
 
   /// Même série rangée dans une autre catégorie.
@@ -92,6 +100,7 @@ class Perf {
         effortPondere: (json['effort_pondere'] as num?)?.toInt(),
         reposS: (json['repos_s'] as num?)?.toInt(),
         reposPrevuS: (json['repos_prevu_s'] as num?)?.toInt(),
+        clientId: json['client_id'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -113,6 +122,7 @@ class Perf {
         // repos_s accepte toujours les séries sans repos.
         if (reposS != null) 'repos_s': reposS,
         if (reposPrevuS != null) 'repos_prevu_s': reposPrevuS,
+        if (clientId != null) 'client_id': clientId,
       };
 
   String get displayValue {

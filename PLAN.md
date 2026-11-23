@@ -178,7 +178,7 @@ qui ne sont plus lues par aucun code : elles trahissent des fonctions d'**avant 
 - [ ] Installer la sauvegarde Drive (toi, sur ordi : clé `service_role` + script, `backup/README.md` option A)
 - [ ] (facultatif) Installer la sauvegarde NAS (`backup/README.md` option B)
 - [ ] Vérifier la 1re sauvegarde réelle (fichiers du jour dans Drive)
-- [ ] Mode hors ligne Flutter : cache local et saisie différée, synchronisée au retour du réseau
+- [x] Mode hors ligne Flutter : cache local et saisie différée, synchronisée au retour du réseau (v2.17.0)
 - [x] Numéro de version affiché dans l'app (bas de l'écran Paramètres, ex. `2.1.0+7`)
 - [x] Version incrémentée à chaque build (`versionCode` = numéro du run CI) et notes de version générées depuis les PR → passage en **v2.1.0**
 
@@ -323,3 +323,13 @@ Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec 
       points ; appliquées aux Records, au Modèle et aux séries du jour
 - [ ] **Toi** : appliquer le script SQL (migrations `20261120120000_admin_delete_profile` et
       `20261123120000_repos_intensite`) **avant** d'installer la v2.16
+
+## Mode hors ligne (23/11, v2.17.0)
+
+- [x] Copie locale (séries, réglages) relue sans réseau : Saisie, Stats, Calendrier, Records affichent les dernières
+      données connues
+- [x] Séries saisies sans réseau gardées sur le téléphone (« Enregistré hors ligne ✓ », icône ☁︎↑), corrigeables et
+      supprimables ; envoi automatique au démarrage, au retour dans l'app et toutes les 60 s ; « Réessayer »
+- [x] Pas de doublon au renvoi : `perfs.client_id` unique (migration `20261123180000_perfs_client_id`)
+- [x] Actions en ligne seulement (profils, Google, réglages, Modèle, renommer…) : « Connexion nécessaire »
+- [ ] **Toi** : appliquer la migration `client_id` avant d'installer la v2.17, puis tester en mode avion
