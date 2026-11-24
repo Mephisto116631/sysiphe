@@ -60,6 +60,15 @@ void main() {
       await pump(t, admin: true);
       expect(find.text('Admin'), findsOneWidget);
     });
+
+    testWidgets('Modèle de la planche : dans les Réglages, admin seulement',
+        (t) async {
+      await pump(t);
+      expect(find.text('Modèle de la planche'), findsNothing);
+      isAdminNotifier.value = true;
+      await t.pump();
+      expect(find.text('Modèle de la planche'), findsOneWidget);
+    });
   });
 
   group('page Exercices', () {
@@ -119,6 +128,51 @@ void main() {
           MaterialApp(theme: AppTheme.light, home: ExercisesPage(ops: ops())));
       await t.pumpAndSettle();
     }
+
+    testWidgets('plusieurs exercices : une seule catégorie pour tous',
+        (t) async {
+      await pump(t);
+      // Appui long : sélection, puis on coche un deuxième exercice.
+      await t.longPress(find.text('Traction'));
+      await t.pumpAndSettle();
+      expect(find.text('1 sélectionné'), findsOneWidget);
+      await t.tap(find.text('Abdos'));
+      await t.pump();
+      expect(find.text('2 sélectionnés'), findsOneWidget);
+      // La planche ne se coche pas.
+      expect(find.byKey(const ValueKey('sel-Planche')), findsNothing);
+      await t.tap(find.byKey(const ValueKey('bulk-category')));
+      await t.pumpAndSettle();
+      expect(find.text('2 exercices'), findsOneWidget);
+      await t.tap(find.widgetWithText(ChoiceChip, 'Musculation'));
+      await t.pump();
+      await t.tap(find.text('Appliquer'));
+      await t.pumpAndSettle();
+      // Abdos (mélangé) est uniformisé, Traction change.
+      expect(calls, ['cat Abdos→Musculation', 'cat Traction→Musculation']);
+      expect(find.text('2 exercices → Musculation'), findsOneWidget);
+      expect(find.text('Exercices'), findsOneWidget); // sortie du mode
+    });
+
+    testWidgets('sélection : tout, aucun, annuler', (t) async {
+      await pump(t);
+      await t.tap(find.byKey(const ValueKey('select-mode')));
+      await t.pump();
+      await t.tap(find.byKey(const ValueKey('select-all')));
+      await t.pump();
+      expect(find.text('4 sélectionnés'), findsOneWidget); // sans la planche
+      await t.tap(find.text('Aucun'));
+      await t.pump();
+      expect(find.text('0 sélectionné'), findsOneWidget);
+      expect(
+          t.widget<FilledButton>(find.byKey(const ValueKey('bulk-category')))
+              .onPressed,
+          isNull);
+      await t.tap(find.byTooltip('Annuler'));
+      await t.pump();
+      expect(find.text('Exercices'), findsOneWidget);
+      expect(t.takeException(), isNull);
+    });
 
     testWidgets('liste : catégorie, séries, assistable, mélangé', (t) async {
       await pump(t);

@@ -667,6 +667,20 @@ class SupabaseService {
     return rows.length;
   }
 
+  /// Admin : envoie des réglages (profil + appareil) et/ou un message de
+  /// présentation à un profil. Rôle vérifié par le serveur.
+  Future<void> adminPushSettings(String profileId,
+      {Map<String, dynamic> settings = const {},
+      Map<String, Object> device = const {},
+      Map<String, String>? message}) async {
+    await _db.rpc('admin_push_settings', params: {
+      'p_profile': profileId,
+      'p_settings': settings,
+      'p_device': device,
+      'p_message': message,
+    });
+  }
+
   Future<void> setPin(String profileId, String pin) async {
     if (!await _hasSession()) {
       await _db

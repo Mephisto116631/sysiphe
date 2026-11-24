@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import '../app_version.dart';
 import '../models/profile.dart';
 import '../services/google_account.dart';
+import '../services/profile_prefs.dart';
 import '../services/reminders.dart';
 import '../services/role.dart';
 import '../services/session_store.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
+import 'model_screen.dart';
 import 'profile_screen.dart' show ProfileScreen;
 import 'settings/account_page.dart';
 import 'settings/admin_page.dart';
@@ -168,6 +170,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onTap: () => _open(
                       ExercisesPage(ops: ExerciseOps.supabase(widget.userId))),
                 ),
+                // Modèle mathématique de la planche : admin, planche activée.
+                ListenableBuilder(
+                  listenable: Listenable.merge(
+                      [isAdminNotifier, plancheEnabledNotifier]),
+                  builder: (_, __) =>
+                      !isAdminNotifier.value || !plancheEnabledNotifier.value
+                          ? const SizedBox.shrink()
+                          : NavTile(
+                              icon: Icons.functions,
+                              title: 'Modèle de la planche',
+                              subtitle: 'Coefficients de l\'effort (admin)',
+                              onTap: () =>
+                                  _open(ModelScreen(userId: widget.userId)),
+                            ),
+                ),
                 NavTile(
                   icon: Icons.notifications_active_outlined,
                   title: 'Rappels',
@@ -191,9 +208,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 NavTile(
                   icon: Icons.phone_android,
                   title: 'Application',
-                  subtitle: 'Mises à jour, espace',
+                  subtitle: 'Mises à jour, paramètres, espace',
                   trailingText: 'v${kAppVersion.split('+').first}',
-                  onTap: () => _open(const AppPage()),
+                  onTap: () => _open(AppPage(
+                      userId: widget.userId,
+                      profileName: widget.profile.name)),
                 ),
                 // Visible seulement pour un profil admin.
                 ValueListenableBuilder<bool>(
@@ -203,8 +222,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       : NavTile(
                           icon: Icons.admin_panel_settings_outlined,
                           title: 'Admin',
-                          subtitle: 'Export de la base',
-                          onTap: () => _open(AdminPage(userId: widget.userId)),
+                          subtitle: 'Export de la base, envoi de réglages',
+                          onTap: () => _open(AdminPage(
+                              userId: widget.userId,
+                              profileName: widget.profile.name)),
                         ),
                 ),
               ],

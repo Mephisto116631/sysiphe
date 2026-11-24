@@ -3,14 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../services/supabase_service.dart';
 import '../../theme.dart';
+import 'admin_push_page.dart';
 import 'common.dart';
 
-/// Réglages → Admin (profils admin seulement) : export de toute la base.
-/// (Le Modèle de la planche est propre à chaque profil : onglet Modèle et
-/// Réglages → Exercices → Planche.)
+/// Réglages → Admin (profils admin seulement) : export de toute la base,
+/// envoi de paramètres et d'un message de présentation à un profil.
 class AdminPage extends StatelessWidget {
   final String userId;
-  const AdminPage({super.key, required this.userId});
+  final String? profileName;
+  const AdminPage({super.key, required this.userId, this.profileName});
 
   /// Crée un vrai fichier .csv (toutes les séries de tous les profils, rôle
   /// vérifié côté serveur) et ouvre le partage Android.
@@ -52,6 +53,19 @@ class AdminPage extends StatelessWidget {
                   subtitle: const Text(
                       'Toutes les séries de tous les profils, en CSV'),
                   onTap: () => _exportAll(context),
+                ),
+                ListTile(
+                  key: const ValueKey('admin-push'),
+                  leading: const Icon(Icons.send_outlined,
+                      color: AppTheme.primaryBlue),
+                  title: const Text('Envoyer à un profil'),
+                  subtitle: const Text(
+                      'Paramètres (planche, poids…) et message de présentation'),
+                  trailing: const Icon(Icons.chevron_right,
+                      color: AppTheme.textSecondary),
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => AdminPushPage(
+                          userId: userId, profileName: profileName))),
                 ),
               ],
             ),
