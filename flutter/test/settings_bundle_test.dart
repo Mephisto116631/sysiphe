@@ -40,8 +40,7 @@ void main() {
         'include_planche',
         'enable_charges',
         'intensity_config',
-        'variantes_config'
-      });
+      }); // coefficients du modèle : communs, jamais dans un fichier
       expect(b.device.keys.toSet(),
           {'rest_seconds', 'chrono_sound_mode', 'chrono_sets:planche', 'reminders_on'});
       final text = b.encode();
@@ -91,7 +90,6 @@ void main() {
             'Poids : 72.5 kg',
             'Planche : désactivée',
             'Couleurs d\'intensité',
-            'Coefficients du modèle de la planche',
             'Repos : 120 s',
             'Chrono (son, départ, objectifs…)',
             'Rappels de séance',

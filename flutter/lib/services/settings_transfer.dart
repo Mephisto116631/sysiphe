@@ -122,3 +122,24 @@ Future<(String, String, String)?> pendingPresentation(
 
 Future<void> markPresentationSeen(String userId, String id) =>
     UiPrefs.setString(_presentationKey(userId), id);
+
+// ── Modèle commun de la planche ─────────────────────────────────────────
+
+String _modelKey(String userId) => 'effort_model_applied_$userId';
+
+/// Le modèle commun a changé (ou n'a jamais été appliqué à ce profil sur ce
+/// téléphone) : recalcule les efforts de planche du profil. true si fait.
+Future<bool> applySharedModelIfChanged(String userId) async {
+  if (!Perf.plancheEnabled) return false;
+  final m = await SupabaseService.instance.getSharedModel();
+  if (m == null || m.version.isEmpty) return false;
+  if (await UiPrefs.getString(_modelKey(userId)) == m.version) return false;
+  try {
+    await recalcPlancheEfforts(userId);
+  } catch (_) {
+    return false; // hors ligne : à la prochaine ouverture
+  }
+  await UiPrefs.setString(_modelKey(userId), m.version);
+  notifyDataChanged();
+  return true;
+}

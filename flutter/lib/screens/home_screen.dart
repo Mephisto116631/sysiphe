@@ -82,9 +82,11 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (_) {
       return; // hors ligne : réglages par défaut
     }
-    // Réglages envoyés par l'admin (appareil, recalcul des efforts).
+    // Réglages envoyés par l'admin (appareil, recalcul des efforts), puis
+    // modèle commun de la planche modifié par l'admin : efforts recalculés.
     try {
       await applyAdminPush(uid, s);
+      await applySharedModelIfChanged(uid);
     } catch (_) {/* réessayé à la prochaine ouverture */}
     // Message de présentation de l'admin, affiché une fois.
     final msg = await pendingPresentation(uid, s);

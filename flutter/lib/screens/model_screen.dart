@@ -12,7 +12,8 @@ import '../widgets/load_error.dart';
 /// Onglet « Modèle » : la vue d'ensemble de l'ancien tableur. On modifie
 /// les coefficients, et la grille d'efforts, le détail du calcul et
 /// l'impact sur l'historique se recalculent à chaque frappe. Rien n'est
-/// enregistré tant qu'on n'appuie pas sur « Appliquer à mes séries ».
+/// enregistré tant qu'on n'appuie pas sur « Appliquer à tous » (modèle
+/// commun à tous les profils).
 /// Réglages + historique ; injectable pour les tests (sinon Supabase).
 typedef ModelLoader = Future<(Map<String, dynamic>, List<Perf>)> Function();
 
@@ -94,9 +95,10 @@ class _ModelScreenState extends State<ModelScreen> {
         builder: (ctx) => AlertDialog(
           title: const Text('Modifier l\'algo d\'effort ?'),
           content: const Text(
-              'Le modèle sera enregistré et toutes tes séries de planche '
-              'seront recalculées. Cette action change tes efforts, records '
-              'et statistiques.'),
+              'Le modèle est commun à tous les profils : tes séries de '
+              'planche sont recalculées tout de suite, celles des autres '
+              'profils à leur prochaine ouverture de l\'app. Cette action '
+              'change les efforts, records et statistiques.'),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
@@ -115,7 +117,11 @@ class _ModelScreenState extends State<ModelScreen> {
     setState(() => _applying = true);
     try {
       final svc = SupabaseService.instance;
-      await svc.saveSettings(widget.userId, m.toSettings());
+      // Coefficients : modèle commun à tous les profils (chacun recalcule ses
+      // séries à sa prochaine ouverture). Poids : celui de l'admin.
+      final all = m.toSettings();
+      await svc.setSharedModel(all);
+      await svc.saveSettings(widget.userId, {'weight': all['weight']});
       final n = await svc.recalculateEfforts(
         widget.userId,
         weight: m.weight,
@@ -189,7 +195,7 @@ class _ModelScreenState extends State<ModelScreen> {
                               strokeWidth: 2, color: Colors.white))
                       : const Icon(Icons.done_all),
                   label: Text(
-                      'Appliquer à mes séries (${impactOn(_history, m!).changed} séries changent)'),
+                      'Appliquer à tous (${impactOn(_history, m!).changed} de tes séries changent)'),
                 ),
               ),
             ),
@@ -218,7 +224,7 @@ class _ModelScreenState extends State<ModelScreen> {
             ),
             child: const Text(
                 'Brouillon : rien n\'est enregistré tant que tu n\'appuies pas sur '
-                '« Appliquer à mes séries ».'),
+                '« Appliquer à tous ».'),
           ),
         _CoefficientsCard(
           key: const ValueKey('coefficients'),

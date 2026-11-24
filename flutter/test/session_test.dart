@@ -149,4 +149,13 @@ void main() {
     expect(freeSeries([1], 3, 2), [3, 4]); // numéro choisi libre : gardé
     expect(freeSeries([], 0, 1), [1]);
   });
+
+  test('planche désactivée : retirée des exercices proposés', () {
+    addTearDown(() => Perf.plancheEnabled = true);
+    const names = ['Traction', 'Planche', ' planche ', 'Dips'];
+    Perf.plancheEnabled = true;
+    expect(proposedExercises(names), names);
+    Perf.plancheEnabled = false;
+    expect(proposedExercises(names), ['Traction', 'Dips']);
+  });
 }

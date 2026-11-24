@@ -14,23 +14,15 @@ const kProfileKeys = <String, Type>{
   'inactivity_days': int,
   'nb_days_avg': int,
   'intensity_config': Map,
-  'variantes_config': Map,
-  'formes_config': Map,
-  'elastiques_config': Map,
-  'tensions_config': Map,
   'ecartements_config': Map,
   'assistable_exercises': List,
 };
+// Les coefficients du modèle de la planche (variantes, formes, élastiques,
+// tensions) sont communs à tous les profils : réglés par l'admin dans
+// Réglages → Modèle de la planche, jamais par un fichier.
 
 /// Clés qui changent l'effort de la planche (recalcul après import).
-const kEffortKeys = {
-  'weight',
-  'variantes_config',
-  'formes_config',
-  'elastiques_config',
-  'tensions_config',
-  'include_planche',
-};
+const kEffortKeys = {'weight', 'include_planche'};
 
 /// Réglages de l'appareil (préférences locales) : clés exactes…
 const kDeviceKeys = <String, Type>{
@@ -196,8 +188,6 @@ class SettingsBundle {
         if (profile['enable_charges'] != null)
           'Champ lest : ${profile['enable_charges'] == true ? 'affiché' : 'masqué'}',
         if (profile['intensity_config'] != null) 'Couleurs d\'intensité',
-        if (profile.keys.any((k) => k.endsWith('_config') && k != 'intensity_config'))
-          'Coefficients du modèle de la planche',
         if (profile['assistable_exercises'] != null) 'Exercices assistables',
         if (profile['inactivity_days'] != null)
           'Rappel après ${profile['inactivity_days']} jours sans séance',

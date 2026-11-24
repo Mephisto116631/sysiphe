@@ -187,3 +187,10 @@ List<int> freeSeries(Iterable<int> used, int first, int count) {
   }
   return out;
 }
+
+/// Exercices proposés dans la Saisie (cartes, liste, autocomplétion) : la
+/// planche en est retirée quand elle est désactivée pour le profil.
+List<String> proposedExercises(Iterable<String> names) => [
+      for (final e in names)
+        if (Perf.plancheEnabled || !Perf.isPlancheRawName(e)) e
+    ];

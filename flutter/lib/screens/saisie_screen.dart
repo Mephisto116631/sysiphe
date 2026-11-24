@@ -277,6 +277,7 @@ class _SaisieScreenState extends State<SaisieScreen>
       ..._recentNames,
       ..._exerciceNames.where((e) => !_recentNames.contains(e)),
     ].where((e) => !already.contains(e)).toList();
+    choices.retainWhere(proposedExercises(choices).contains);
     final picked = await pickExerciseSheet(context, choices);
     if (picked == null || !mounted) return;
     var name = picked;
@@ -310,7 +311,8 @@ class _SaisieScreenState extends State<SaisieScreen>
       return t != null ? d >= t.series.length : d > 0;
     }
 
-    final shown = all.where((e) => e != selected).toList();
+    final shown =
+        proposedExercises(all).where((e) => e != selected).toList();
     final names = [
       ...shown.where((e) => !finished(e)),
       ...shown.where(finished),
@@ -384,8 +386,10 @@ class _SaisieScreenState extends State<SaisieScreen>
         nbDaysAvg: _nbDaysAvg);
   }
 
-  List<String> get _recentNames =>
-      _history.isNotEmpty ? exercisesByRecency(_history) : _exerciceNames;
+  /// Planche désactivée pour le profil : elle n'est proposée nulle part
+  /// (cartes, liste des exercices, autocomplétion).
+  List<String> get _recentNames => proposedExercises(
+      _history.isNotEmpty ? exercisesByRecency(_history) : _exerciceNames);
 
   /// Choisir un exercice : reprend ce qui a été fait la dernière fois
   /// (séance précédente, sinon dernière séance où il apparaît).
