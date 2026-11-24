@@ -6,6 +6,7 @@ import '../services/role.dart';
 import '../services/session_store.dart';
 import '../services/settings_transfer.dart';
 import '../services/supabase_service.dart';
+import '../widgets/news_dialog.dart';
 import '../widgets/pin_dialog.dart';
 import '../widgets/update_flow.dart';
 import 'profile_screen.dart';
@@ -42,7 +43,10 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _checkAccess();
       _loadRole();
-      _loadProfilePrefs();
+      // Une fenêtre à la fois : nouveautés de la version installée, message
+      // de l'admin, puis mise à jour éventuelle.
+      if (mounted) await showNewsIfUpdated(context);
+      await _loadProfilePrefs();
       // Nouvelle version ? Signalée discrètement (rien si à jour ou hors ligne).
       if (mounted && !_updateChecked) {
         _updateChecked = true;

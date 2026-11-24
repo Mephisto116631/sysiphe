@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../app_flavor.dart';
 import '../app_version.dart';
 import '../models/avatar.dart';
 import '../models/profile.dart';
@@ -11,6 +12,8 @@ import '../services/supabase_service.dart';
 import '../theme.dart';
 import '../widgets/avatar_editor.dart';
 import '../widgets/avatar_view.dart';
+import '../widgets/news_dialog.dart';
+import '../widgets/update_flow.dart';
 import 'model_screen.dart';
 import 'profile_screen.dart' show ProfileScreen;
 import 'settings/account_page.dart';
@@ -18,6 +21,7 @@ import 'settings/admin_page.dart';
 import 'settings/app_page.dart';
 import 'settings/common.dart';
 import 'settings/exercises_page.dart';
+import 'settings/help_page.dart';
 import 'settings/reminders_page.dart';
 import 'settings/training_page.dart';
 
@@ -265,6 +269,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               userId: widget.userId,
                               profileName: widget.profile.name)),
                         ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            child: Column(
+              children: [
+                // Module Course : activer / retirer = installer l'autre
+                // version de l'app (mêmes données).
+                SwitchListTile(
+                  key: const ValueKey('course-module'),
+                  secondary: const Icon(Icons.directions_run,
+                      color: Colors.deepOrange),
+                  title: const Text('Module Course (GPS)'),
+                  subtitle: Text(kCourse
+                      ? 'Activé · désactiver installe la version sans course'
+                      : 'Suivi GPS des courses · tes données restent'),
+                  value: kCourse,
+                  onChanged: (_) => switchFlavor(context),
+                ),
+                NavTile(
+                  icon: Icons.campaign_outlined,
+                  title: 'Nouveautés',
+                  subtitle: 'Ce qui a changé à chaque version',
+                  onTap: () => _open(const NewsPage()),
+                ),
+                NavTile(
+                  icon: Icons.menu_book_outlined,
+                  title: 'Mode d\'emploi',
+                  subtitle: 'Saisie, chrono, planche, stats, réglages…',
+                  onTap: () => _open(const HelpPage()),
                 ),
               ],
             ),
