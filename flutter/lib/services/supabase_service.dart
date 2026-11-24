@@ -2,11 +2,13 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
+import '../models/avatar.dart';
 import '../models/course.dart';
 import '../models/profile.dart';
 import '../models/perf.dart';
 import 'offline_store.dart';
 import 'sync_service.dart';
+import 'ui_prefs.dart';
 
 class SupabaseService {
   static SupabaseService? _instance;
@@ -217,6 +219,32 @@ class SupabaseService {
         name: name.trim(),
         hasPin: pin != null && pin.trim().isNotEmpty,
         isMember: true);
+  }
+
+  /// Avatar du profil (lettres, image ou photo). Le dernier connu est gardé
+  /// sur le téléphone (affichage hors ligne).
+  Future<ProfileAvatar> getAvatar(String profileId) async {
+    final key = 'avatar.$profileId';
+    try {
+      final row = await _db
+          .from('profiles')
+          .select('avatar')
+          .eq('id', profileId)
+          .maybeSingle()
+          .timeout(_timeout);
+      final a = ProfileAvatar.fromJson(row?['avatar']);
+      await UiPrefs.setString(key, jsonEncode(a.toJson()));
+      return a;
+    } catch (_) {
+      return ProfileAvatar.fromJson(await UiPrefs.getString(key));
+    }
+  }
+
+  Future<void> setAvatar(String profileId, ProfileAvatar a) async {
+    await _db
+        .from('profiles')
+        .update({'avatar': a.toJson()}).eq('id', profileId);
+    await UiPrefs.setString('avatar.$profileId', jsonEncode(a.toJson()));
   }
 
   Future<void> renameProfile(String profileId, String name) async {

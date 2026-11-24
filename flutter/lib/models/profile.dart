@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart' show StringCharacters;
+import 'avatar.dart';
 
 class Profile {
   final String id;
@@ -10,13 +11,26 @@ class Profile {
   /// serveur) : pas besoin de redemander le PIN.
   final bool isMember;
 
+  /// Lettres colorées (défaut), image prédéfinie ou photo.
+  final ProfileAvatar avatar;
+
   const Profile({
     required this.id,
     required this.name,
     required this.hasPin,
     this.lastLogin,
     this.isMember = false,
+    this.avatar = ProfileAvatar.defaut,
   });
+
+  Profile copyWith({String? name, ProfileAvatar? avatar}) => Profile(
+        id: id,
+        name: name ?? this.name,
+        hasPin: hasPin,
+        lastLogin: lastLogin,
+        isMember: isMember,
+        avatar: avatar ?? this.avatar,
+      );
 
   /// Ligne de la RPC list_profiles (has_pin, is_member) — le hash du PIN
   /// n'est jamais renvoyé au client.
@@ -28,6 +42,7 @@ class Profile {
         lastLogin: json['last_login'] != null
             ? DateTime.tryParse(json['last_login'] as String)
             : null,
+        avatar: ProfileAvatar.fromJson(json['avatar']),
       );
 
   /// Deux premières initiales, en caractères complets (graphèmes) : un emoji

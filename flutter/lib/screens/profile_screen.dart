@@ -4,6 +4,7 @@ import '../services/google_account.dart';
 import '../services/session_store.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
+import '../widgets/avatar_view.dart';
 import '../widgets/pin_dialog.dart';
 import 'home_screen.dart';
 
@@ -248,18 +249,10 @@ class _ProfileCard extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              CircleAvatar(
-                radius: 28,
-                backgroundColor: AppTheme.primaryBlue,
-                child: Text(
-                  profile.initials,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
+              AvatarView(
+                  initials: profile.initials,
+                  avatar: profile.avatar,
+                  radius: 28),
               const SizedBox(height: 10),
               Text(
                 profile.name,

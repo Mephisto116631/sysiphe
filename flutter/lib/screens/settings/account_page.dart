@@ -4,6 +4,7 @@ import '../../services/role.dart';
 import '../../services/session_store.dart';
 import '../../services/supabase_service.dart';
 import '../../theme.dart';
+import '../../widgets/avatar_view.dart';
 import '../../widgets/google_account_card.dart';
 import '../../widgets/load_error.dart';
 import 'common.dart';
@@ -197,11 +198,8 @@ class _AccountPageState extends State<AccountPage> {
                 children: [
                   for (final p in _profiles)
                     ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: AppTheme.primaryBlue,
-                        child: Text(p.initials,
-                            style: const TextStyle(color: Colors.white)),
-                      ),
+                      leading:
+                          AvatarView(initials: p.initials, avatar: p.avatar),
                       title: Text(p.name),
                       subtitle: p.id == widget.current.id
                           ? const Text('Profil actif')

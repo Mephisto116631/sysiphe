@@ -1,6 +1,6 @@
 name: sysiphe
 description: Sysiphe — suivi d'entraînement natif Flutter
-version: 2.19.0+1
+version: 2.20.0+1
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -34,6 +34,9 @@ dependencies:
   flutter_tts: 4.0.2      # annonces vocales du chrono
   path_provider: ^2.1.5
 
+  # Photo de profil (galerie / appareil photo, réduite par Android)
+  image_picker: 1.1.2     # versions récentes : Flutter plus récent
+
   # Module Course (version sysiphe-course.apk) : GPS et carte OpenStreetMap
   geolocator: 13.0.4      # versions récentes : Flutter plus récent
   flutter_map: 7.0.2      # 8.x exige Flutter 3.27
@@ -50,6 +53,8 @@ dependency_overrides:
   app_links: ">=6.0.0 <6.4.0"
   # Même problème pour geolocator_android 4.6.2 : 4.6.1 fixe compileSdk 34.
   geolocator_android: 4.6.1
+  # Dernière version compatible Flutter 3.24 (compileSdk 34 fixe).
+  image_picker_android: 0.8.12+21
 
 flutter:
   uses-material-design: true
