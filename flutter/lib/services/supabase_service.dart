@@ -10,6 +10,14 @@ import 'offline_store.dart';
 import 'sync_service.dart';
 import 'ui_prefs.dart';
 
+/// Coefficients du modèle de la planche (communs à tous les profils).
+const kModelKeys = [
+  'variantes_config',
+  'formes_config',
+  'elastiques_config',
+  'tensions_config',
+];
+
 class SupabaseService {
   static SupabaseService? _instance;
   static SupabaseService get instance => _instance ??= SupabaseService._();
@@ -630,6 +638,7 @@ class SupabaseService {
   // ─── Paramètres utilisateur (table user_settings, partagée avec Streamlit) ─
 
   Future<Map<String, dynamic>> getSettings(String userId) async {
+    Map<String, dynamic> s;
     try {
       final res = await _db
           .from('user_settings')
@@ -638,12 +647,63 @@ class SupabaseService {
           .maybeSingle()
           .timeout(_timeout);
       _offline.setSettings(userId, res ?? {});
-      return res ?? {};
+      s = res ?? {};
     } catch (_) {
       // Réseau : derniers réglages connus ; sinon valeurs par défaut (même
       // règle que Python).
-      return _offline.settings(userId) ?? {};
+      s = _offline.settings(userId) ?? {};
     }
+    // Coefficients de la planche : le modèle commun (celui de l'admin)
+    // remplace ceux du profil, qui ne garde que son poids.
+    final m = await getSharedModel();
+    if (m == null) return s;
+    return {
+      ...s,
+      for (final k in kModelKeys)
+        if (m.value[k] != null) k: m.value[k],
+    };
+  }
+
+  /// Modèle de la planche commun à tous les profils (app_config), avec sa
+  /// version (date de modification). Dernier connu sans réseau ; null s'il
+  /// n'existe pas encore (migration non appliquée) : chaque profil garde
+  /// alors ses propres coefficients.
+  Future<({Map<String, dynamic> value, String version})?>
+      getSharedModel() async {
+    const key = 'shared_effort_model';
+    Map<String, dynamic>? row;
+    try {
+      final res = await _db
+          .from('app_config')
+          .select('value, updated_at')
+          .eq('key', 'effort_model')
+          .maybeSingle()
+          .timeout(_timeout);
+      row = res == null ? null : Map<String, dynamic>.from(res);
+      await UiPrefs.setString(key, jsonEncode(row));
+    } catch (_) {
+      try {
+        final c = await UiPrefs.getString(key);
+        if (c != null) row = (jsonDecode(c) as Map?)?.cast<String, dynamic>();
+      } catch (_) {}
+    }
+    final v = row?['value'];
+    if (v is! Map) return null;
+    return (
+      value: Map<String, dynamic>.from(v),
+      version: '${row?['updated_at'] ?? ''}'
+    );
+  }
+
+  /// Admin : enregistre le modèle commun (coefficients seulement).
+  Future<void> setSharedModel(Map<String, dynamic> configs) async {
+    await _db.rpc('admin_set_config', params: {
+      'p_key': 'effort_model',
+      'p_value': {
+        for (final k in kModelKeys)
+          if (configs[k] != null) k: configs[k],
+      },
+    });
   }
 
   /// Upsert partiel : seules les colonnes de [data] sont modifiées, les

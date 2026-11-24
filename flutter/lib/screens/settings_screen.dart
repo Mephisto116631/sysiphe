@@ -222,7 +222,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           : NavTile(
                               icon: Icons.functions,
                               title: 'Modèle de la planche',
-                              subtitle: 'Coefficients de l\'effort (admin)',
+                              subtitle: 'Coefficients communs à tous les '
+                                  'profils (admin)',
                               onTap: () =>
                                   _open(ModelScreen(userId: widget.userId)),
                             ),

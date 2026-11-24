@@ -321,6 +321,15 @@ Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec 
 - [x] Réglages → interrupteur **Module Course (GPS)** : l'activer ou le retirer installe l'autre version (données
       gardées)
 
+## Modèle de la planche commun, planche masquée (24/11, v2.22.0)
+
+- [x] **Modèle unique** : les coefficients (variantes, formes, élastiques, tensions) sont dans `app_config`, réglés par
+      l'admin (Réglages → Modèle de la planche → « Appliquer à tous », RPC `admin_set_config`). Chaque profil garde
+      seulement son **poids** ; à l'ouverture, si le modèle a changé, l'app recalcule les efforts du profil. Un fichier
+      de paramètres n'emporte plus de coefficients. Modèle de départ = coefficients actuels de l'admin
+- [x] Planche **désactivée** : retirée des cartes d'exercices, de la liste « + Ajouter » et de l'autocomplétion
+- [ ] **Toi** : migration `20261124230000_modele_partage.sql`
+
 ## Catégories des exercices (18/11, v2.13.0)
 
 - [x] Réglages → **Catégories des exercices** : ranger chaque exercice avec ses propres catégories (Planche,

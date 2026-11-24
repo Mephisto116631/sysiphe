@@ -15,6 +15,12 @@ class ChangelogEntry {
 }
 
 const kChangelog = <ChangelogEntry>[
+  ChangelogEntry('2.22.0', '24 nov. 2026', 'Une planche pour tous', [
+    '⚖️ Le calcul de l\'effort de la planche est le même pour tout le monde. '
+        'Toi, tu règles seulement ton poids (Réglages → Entraînement).',
+    '🙈 Planche désactivée ? Elle n\'apparaît plus dans tes cartes '
+        'd\'exercices ni dans la liste.',
+  ]),
   ChangelogEntry('2.21.0', '24 nov. 2026', 'Nouveautés et mode d\'emploi', [
     '📰 Cette fenêtre ! Après chaque mise à jour, un résumé de ce qui change. '
         'Tout l\'historique dans Réglages → Nouveautés.',
