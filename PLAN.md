@@ -311,6 +311,16 @@ Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec 
 - [x] Base : `profiles.avatar` (jsonb, taille limitée), modifiable par les appareils du profil ; `list_profiles` le renvoie
 - [ ] **Toi** : migration `20261124210000_profiles_avatar.sql`
 
+## Nouveautés, mode d'emploi, module Course en un appui (24/11, v2.21.0)
+
+- [x] **Quoi de neuf ?** : après chaque mise à jour, une fenêtre résume en langage simple ce qui a changé depuis la
+      dernière version vue (une fois) ; tout l'historique dans Réglages → **Nouveautés** (`models/changelog.dart`, à
+      compléter à chaque version)
+- [x] Réglages → **Mode d'emploi** : saisie, chrono et repos, planche, stats, course, exercices, hors ligne, profil,
+      mises à jour (rubriques dépliables)
+- [x] Réglages → interrupteur **Module Course (GPS)** : l'activer ou le retirer installe l'autre version (données
+      gardées)
+
 ## Catégories des exercices (18/11, v2.13.0)
 
 - [x] Réglages → **Catégories des exercices** : ranger chaque exercice avec ses propres catégories (Planche,
