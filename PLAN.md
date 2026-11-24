@@ -301,7 +301,15 @@ Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec 
 - [x] Réglages → Exercices : **plusieurs catégories d'un coup** (☑ en haut ou appui long, « Tout », puis « Changer la
       catégorie »)
 - [x] **Modèle** de la planche retiré de la barre du bas : Réglages → « Modèle de la planche » (admin, planche activée)
-- [ ] À étudier : photos de profil (initiales gardées par défaut, photo personnalisée en option)
+- [x] Photos de profil : voir v2.20.0
+
+## Avatars des profils (24/11, v2.20.0)
+
+- [x] Réglages → appui sur le rond du profil : **lettres** (8 couleurs, défaut = bleu d'avant), **images prédéfinies**
+      (32 emoji : animaux, sports, symboles) ou **photo** (galerie ou appareil photo, réduite à 256 px, ~15 Ko)
+- [x] Affiché sur l'écran de choix du profil, dans Réglages et Compte et sécurité ; gardé sur le téléphone (hors ligne)
+- [x] Base : `profiles.avatar` (jsonb, taille limitée), modifiable par les appareils du profil ; `list_profiles` le renvoie
+- [ ] **Toi** : migration `20261124210000_profiles_avatar.sql`
 
 ## Catégories des exercices (18/11, v2.13.0)
 

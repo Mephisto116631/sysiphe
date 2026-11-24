@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../app_version.dart';
+import '../models/avatar.dart';
 import '../models/profile.dart';
 import '../services/google_account.dart';
 import '../services/profile_prefs.dart';
@@ -8,6 +9,8 @@ import '../services/role.dart';
 import '../services/session_store.dart';
 import '../services/supabase_service.dart';
 import '../theme.dart';
+import '../widgets/avatar_editor.dart';
+import '../widgets/avatar_view.dart';
 import 'model_screen.dart';
 import 'profile_screen.dart' show ProfileScreen;
 import 'settings/account_page.dart';
@@ -75,11 +78,38 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   SettingsSummary? _s;
+  late ProfileAvatar _avatar = widget.profile.avatar;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _loadAvatar();
+  }
+
+  Future<void> _loadAvatar() async {
+    if (widget.loadSummary != null) return; // tests : pas de réseau
+    try {
+      final a = await SupabaseService.instance.getAvatar(widget.userId);
+      if (mounted) setState(() => _avatar = a);
+    } catch (_) {}
+  }
+
+  /// Lettres (couleur), image prédéfinie ou photo du profil.
+  Future<void> _editAvatar() async {
+    final a = await editAvatar(context,
+        initials: widget.profile.initials, current: _avatar);
+    if (a == null || !mounted) return;
+    final before = _avatar;
+    setState(() => _avatar = a);
+    try {
+      await SupabaseService.instance.setAvatar(widget.userId, a);
+      if (mounted) showSnack(context, 'Avatar enregistré');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _avatar = before);
+      showSnack(context, errorText(e), error: true);
+    }
   }
 
   Future<void> _load() async {
@@ -127,11 +157,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Column(
               children: [
                 ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: AppTheme.primaryBlue,
-                    child: Text(widget.profile.initials,
-                        style: const TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.bold)),
+                  leading: InkWell(
+                    key: const ValueKey('edit-avatar'),
+                    customBorder: const CircleBorder(),
+                    onTap: _editAvatar,
+                    child: Badge(
+                      backgroundColor: Colors.white,
+                      alignment: Alignment.bottomRight,
+                      offset: const Offset(-2, -12),
+                      label: const Icon(Icons.edit,
+                          size: 10, color: AppTheme.primaryBlue),
+                      child: AvatarView(
+                          initials: widget.profile.initials, avatar: _avatar),
+                    ),
                   ),
                   title: Text(widget.profile.name,
                       style: theme.textTheme.titleMedium),
