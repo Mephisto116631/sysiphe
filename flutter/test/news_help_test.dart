@@ -83,7 +83,9 @@ void main() {
     testWidgets('pages Nouveautés et Mode d\'emploi à 360 px', (t) async {
       phone(t);
       await t.pumpWidget(const MaterialApp(home: NewsPage()));
-      expect(find.text('Ta photo de profil'), findsOneWidget);
+      // La plus récente en haut ; les autres en faisant défiler.
+      expect(find.text(kChangelog.first.title), findsOneWidget);
+      await t.scrollUntilVisible(find.text('Ta photo de profil'), 200);
       // Le module Course n'apparaît que dans la version course.
       if (kCourse) {
         await t.scrollUntilVisible(find.text('Le module Course'), 200);
