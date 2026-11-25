@@ -15,35 +15,40 @@ enum StatMetric {
   /// Reps avec lest : tonnage du jour, Σ performance × charge.
   tonnage,
 
-  /// Reps sans lest : volume du jour, Σ performance.
+  /// Volume du jour, Σ performance : reps (sans lest) ou secondes.
   volume,
 
-  /// Autres (secondes, kg) : meilleure valeur du jour.
+  /// Meilleure série du jour (au choix, ou unités mélangées / kg).
   best;
 
   String get label => switch (this) {
         StatMetric.effort => 'Effort pondéré',
         StatMetric.tonnage => 'Tonnage (kg)',
-        StatMetric.volume => 'Volume (reps)',
+        StatMetric.volume => 'Volume',
         StatMetric.best => 'Meilleure valeur',
       };
 
   String unit(String unite) => switch (this) {
         StatMetric.effort => ' pts',
         StatMetric.tonnage => ' kg',
-        StatMetric.volume => ' reps',
+        StatMetric.volume => unite == 'Sec' ? 's' : ' reps',
         StatMetric.best => unite == 'Sec' ? 's' : ' $unite',
       };
 }
 
-StatMetric metricFor(List<Perf> perfs) {
+/// Courbe d'un exercice : volume par défaut, pour tous les profils (reps ou
+/// secondes cumulées du jour ; tonnage avec du lest). [best] : meilleure
+/// série du jour. Unités mélangées ou en kg : meilleure série.
+StatMetric metricFor(List<Perf> perfs, {bool best = false}) {
   if (perfs.isEmpty) return StatMetric.best;
   if (perfs.first.isPlanche) return StatMetric.effort;
+  if (best) return StatMetric.best;
   if (perfs.every((p) => p.unite == 'Reps')) {
     return perfs.any((p) => p.charge > 0)
         ? StatMetric.tonnage
         : StatMetric.volume;
   }
+  if (perfs.every((p) => p.unite == 'Sec')) return StatMetric.volume;
   return StatMetric.best;
 }
 

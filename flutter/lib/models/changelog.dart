@@ -15,6 +15,11 @@ class ChangelogEntry {
 }
 
 const kChangelog = <ChangelogEntry>[
+  ChangelogEntry('2.22.1', '25 nov. 2026', 'Stats en volume', [
+    '📊 Dans Stats, chaque exercice s\'affiche en volume du jour (total des '
+        'répétitions ou des secondes). Le bouton « Meilleure série » montre '
+        'ta meilleure série à la place.',
+  ]),
   ChangelogEntry('2.22.0', '24 nov. 2026', 'Une planche pour tous', [
     '⚖️ Le calcul de l\'effort de la planche est le même pour tout le monde. '
         'Toi, tu règles seulement ton poids (Réglages → Entraînement).',
