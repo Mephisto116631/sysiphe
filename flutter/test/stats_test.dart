@@ -99,13 +99,24 @@ void main() {
       expect(dailySeries(perfs, StatMetric.tonnage).single.value, 56);
     });
 
-    test('secondes hors planche : meilleure valeur du jour', () {
+    test('secondes hors planche : volume du jour, ou meilleure série', () {
       final perfs = [
         p('Lean Planche', j1, 20, unite: 'Sec'),
         p('Lean Planche', j1, 30, unite: 'Sec'),
       ];
-      expect(metricFor(perfs), StatMetric.best);
+      expect(metricFor(perfs), StatMetric.volume);
+      expect(dailySeries(perfs, StatMetric.volume).single.value, 50);
+      expect(StatMetric.volume.unit('Sec'), 's');
+      expect(metricFor(perfs, best: true), StatMetric.best);
       expect(dailySeries(perfs, StatMetric.best).single.value, 30);
+    });
+
+    test('unités mélangées : meilleure série', () {
+      final perfs = [
+        p('Abdos', j1, 20, unite: 'Sec'),
+        p('Abdos', j1, 15),
+      ];
+      expect(metricFor(perfs), StatMetric.best);
     });
   });
 

@@ -83,6 +83,17 @@ void main() {
     expect(t.takeException(), isNull);
   });
 
+  testWidgets('Exercice : volume par défaut, ou meilleure série', (t) async {
+    await pump(t, prefs: {'stats_exercice_u': 'Pompes'});
+    expect(find.text('Volume'), findsWidgets);
+    await t.tap(find.text('Meilleure série'));
+    await t.pumpAndSettle();
+    expect(find.text('Meilleure valeur'), findsOneWidget);
+    expect((await SharedPreferences.getInstance()).getBool('stats_best_set'),
+        true);
+    expect(t.takeException(), isNull);
+  });
+
   testWidgets('Comparer : 3 exercices récents, en % du record', (t) async {
     await pump(t);
     await t.tap(find.text('Comparer'));

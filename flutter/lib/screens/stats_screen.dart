@@ -50,6 +50,7 @@ class _StatsScreenState extends State<StatsScreen> {
   String? _selected;
   _Period _period = _Period.all;
   bool _plancheTime = false; // planche : effort (défaut) ou temps
+  bool _bestSet = false; // autres exercices : volume (défaut) ou meilleure série
   bool _byVariante = false; // planche : une courbe par variante
   final Set<String> _hiddenVariantes = {};
   List<String> _compared = [];
@@ -83,6 +84,7 @@ class _StatsScreenState extends State<StatsScreen> {
   Future<void> _restorePrefs() async {
     final p = await UiPrefs.getString('stats_period');
     final t = await UiPrefs.getBool('stats_planche_time');
+    final b = await UiPrefs.getBool('stats_best_set');
     final v = await UiPrefs.getBool('stats_par_variante');
     final pct = await UiPrefs.getBool('stats_compare_pct');
     if (!mounted) return;
@@ -91,6 +93,7 @@ class _StatsScreenState extends State<StatsScreen> {
         if (e.name == p) _period = e;
       }
       _plancheTime = t ?? _plancheTime;
+      _bestSet = b ?? _bestSet;
       _byVariante = v ?? _byVariante;
       _comparePct = pct ?? _comparePct;
     });
@@ -242,8 +245,13 @@ class _StatsScreenState extends State<StatsScreen> {
   Widget _exerciseTab(BuildContext context) {
     final perfs = _inPeriod.where((p) => p.exercice == _selected).toList();
     final isPlanche = perfs.isNotEmpty && perfs.first.isPlanche;
-    final metric =
-        isPlanche && _plancheTime ? StatMetric.best : metricFor(perfs);
+    final metric = isPlanche && _plancheTime
+        ? StatMetric.best
+        : metricFor(perfs, best: _bestSet);
+    // Volume possible (reps ou secondes seulement) : choix volume / meilleure.
+    final canVolume = !isPlanche &&
+        perfs.isNotEmpty &&
+        metricFor(perfs) != StatMetric.best;
     final points = dailySeries(perfs, metric);
     final unit = metric.unit(perfs.isEmpty ? 'Sec' : perfs.first.unite);
     final variantes = isPlanche && _byVariante
@@ -268,6 +276,30 @@ class _StatsScreenState extends State<StatsScreen> {
             }
           },
         ),
+        if (canVolume) ...[
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: SegmentedButton<bool>(
+              key: const ValueKey('stats-volume-best'),
+              segments: const [
+                ButtonSegment(
+                    value: false,
+                    label: Text('Volume'),
+                    icon: Icon(Icons.stacked_bar_chart, size: 18)),
+                ButtonSegment(
+                    value: true,
+                    label: Text('Meilleure série'),
+                    icon: Icon(Icons.emoji_events_outlined, size: 18)),
+              ],
+              selected: {_bestSet},
+              onSelectionChanged: (s) {
+                setState(() => _bestSet = s.first);
+                UiPrefs.setBool('stats_best_set', s.first);
+              },
+            ),
+          ),
+        ],
         if (isPlanche) ...[
           const SizedBox(height: 8),
           SizedBox(
