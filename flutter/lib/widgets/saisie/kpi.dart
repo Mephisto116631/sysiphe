@@ -21,23 +21,44 @@ class KpiRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final d = week.deltaPct;
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-            child: Kpi(
-                label: effort > 0 ? 'Effort du jour' : 'Séries du jour',
-                value: effort > 0 ? '$effort pts' : '$sets')),
-        const SizedBox(width: 8),
-        Expanded(child: Kpi(label: 'Séances ce mois', value: '$monthSessions')),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Kpi(
-            label: d == null
-                ? 'Reps cette semaine'
-                : 'Reps semaine (${d >= 0 ? '+' : ''}${d.round()} %)',
-            value: week.current.round().toString(),
+        // Trois cases de même hauteur : libellés courts, l'évolution de la
+        // semaine est écrite en dessous.
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                  child: Kpi(
+                      label: effort > 0 ? 'Effort du jour' : 'Séries du jour',
+                      value: effort > 0 ? '$effort pts' : '$sets')),
+              const SizedBox(width: 8),
+              Expanded(
+                  child: Kpi(label: 'Séances ce mois', value: '$monthSessions')),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Kpi(
+                  label: 'Reps semaine',
+                  value: week.current.round().toString(),
+                ),
+              ),
+            ],
           ),
         ),
+        if (d != null)
+          Padding(
+            key: const ValueKey('kpi-week-delta'),
+            padding: const EdgeInsets.fromLTRB(4, 6, 4, 0),
+            child: Text(
+              'Reps de la semaine : ${d >= 0 ? '+' : ''}${d.round()} % '
+              'par rapport à la semaine dernière',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: d >= 0 ? Colors.green.shade700 : Colors.orange.shade800),
+            ),
+          ),
       ],
     );
   }
