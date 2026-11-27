@@ -850,11 +850,37 @@ class _SaisieScreenState extends State<SaisieScreen>
 
   Future<void> _editPerf(Perf p) async {
     if (p.id == null) return;
-    final v = await askPerfValue(context, p);
-    if (v == null || v <= 0 || v == p.performance) return;
+    // Planche : variante, forme, élastique et tension aussi modifiables.
+    final e = await askPerfEdit(context, p,
+        planche: p.isPlanche
+            ? PlancheChoices(
+                (_cfg.variantes ?? kVariantes).keys.toList(),
+                (_cfg.formes ?? kFormes).keys.toList(),
+                (_cfg.elastiques ?? kElastiques).keys.toList(),
+                (_cfg.tensions ?? kTensions).keys.toList())
+            : null);
+    if (e == null || !e.changes(p)) return;
+    final patch = <String, dynamic>{'performance': e.value};
+    int? effort;
+    if (p.isPlanche) {
+      patch.addAll({
+        'variante': e.variante,
+        'forme': e.forme,
+        'elastique': e.elastique,
+        'tension': e.tension,
+      });
+      effort = _cfg.planche(
+          variante: e.variante,
+          forme: e.forme,
+          elastique: e.elastique,
+          tension: e.tension,
+          temps: e.value);
+    } else {
+      effort = _effortWith(p, e.value);
+    }
+    if (effort != null) patch['effort_pondere'] = effort;
     try {
-      await SupabaseService.instance
-          .updatePerfValue(p.id!, v, effortPondere: _effortWith(p, v));
+      await SupabaseService.instance.updatePerf(p.id!, patch);
       await _loadTodayPerfs();
       _loadHistory();
     } catch (e) {

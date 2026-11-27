@@ -519,19 +519,24 @@ class SupabaseService {
   /// Corrige la valeur d'une série déjà enregistrée (et son effort).
   /// Série en attente ou pas de réseau : corrigée sur le téléphone.
   Future<void> updatePerfValue(int id, double performance,
-      {int? effortPondere}) async {
+          {int? effortPondere}) =>
+      updatePerf(id, {
+        'performance': performance,
+        if (effortPondere != null) 'effort_pondere': effortPondere,
+      });
+
+  /// Corrige une série enregistrée : valeur, et pour la planche variante,
+  /// forme, élastique, tension, effort. Hors ligne : mise en file.
+  Future<void> updatePerf(int id, Map<String, dynamic> patch) async {
     if (id < 0) {
-      _offline.updateValue(id, performance, effortPondere: effortPondere);
+      _offline.updateFields(id, patch);
       return;
     }
     try {
-      await _db.from('perfs').update({
-        'performance': performance,
-        if (effortPondere != null) 'effort_pondere': effortPondere,
-      }).eq('id', id).timeout(_timeout);
+      await _db.from('perfs').update(patch).eq('id', id).timeout(_timeout);
     } catch (e) {
       if (!isNetworkError(e)) rethrow;
-      _offline.updateValue(id, performance, effortPondere: effortPondere);
+      _offline.updateFields(id, patch);
       SyncService.instance.onQueued();
     }
   }

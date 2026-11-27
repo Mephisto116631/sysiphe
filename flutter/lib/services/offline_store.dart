@@ -246,12 +246,15 @@ class OfflineStore {
     return '';
   }
 
-  void updateValue(int id, double performance, {int? effortPondere}) {
+  void updateValue(int id, double performance, {int? effortPondere}) =>
+      updateFields(id, {
+        'performance': performance,
+        if (effortPondere != null) 'effort_pondere': effortPondere,
+      });
+
+  /// Correction hors ligne de plusieurs champs (valeur, variante, forme…).
+  void updateFields(int id, Map<String, dynamic> patch) {
     final userId = _ownerOf(id);
-    final patch = {
-      'performance': performance,
-      if (effortPondere != null) 'effort_pondere': effortPondere,
-    };
     if (id < 0) {
       for (final o in _outbox) {
         if (o.kind == 'insert' && o.localId == id) o.data.addAll(patch);

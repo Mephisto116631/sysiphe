@@ -15,6 +15,11 @@ class ChangelogEntry {
 }
 
 const kChangelog = <ChangelogEntry>[
+  ChangelogEntry('2.23.2', '27 nov. 2026', 'Corriger une planche', [
+    '✏️ En touchant une série de planche du jour, tu peux maintenant changer '
+        'la variante, la forme, l\'élastique et la tension, pas seulement le '
+        'temps. L\'effort est recalculé.',
+  ]),
   ChangelogEntry('2.23.0', '27 nov. 2026', 'Tes séances cardio enregistrées', [
     '⏱️ Minuteur (HIIT, Tabata…) : à la fin, enregistre ta séance en un '
         'appui. Chaque cycle devient une série, avec le repos choisi et le '
