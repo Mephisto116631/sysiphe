@@ -4,6 +4,9 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import '../models/interval_plan.dart';
+import '../models/perf.dart';
+import '../services/data_events.dart';
+import '../services/supabase_service.dart';
 import '../services/timer_alerts.dart';
 import '../theme.dart';
 
@@ -12,7 +15,15 @@ import '../theme.dart';
 /// secondes et à chaque changement, écran maintenu allumé, notifications si
 /// l'app passe en arrière-plan.
 class MinuteurScreen extends StatefulWidget {
-  const MinuteurScreen({super.key});
+  /// Profil : la séance est proposée à l'enregistrement à la fin (null :
+  /// pas d'enregistrement).
+  final String? userId;
+
+  /// Tests : enregistrement et numéro de la première série fournis.
+  final Future<bool> Function(List<Perf>)? save;
+  final Future<int> Function(String exercice)? firstSerie;
+
+  const MinuteurScreen({super.key, this.userId, this.save, this.firstSerie});
 
   @override
   State<MinuteurScreen> createState() => _MinuteurScreenState();
@@ -34,6 +45,9 @@ class _MinuteurScreenState extends State<MinuteurScreen>
   Timer? _tick;
   int _lastIndex = -1;
   int _lastSec = -1;
+  IntervalLog? _log; // cycles faits, pour l'enregistrement
+  Duration _phaseStart = Duration.zero; // temps réel au début de la phase
+  bool _offered = false; // enregistrement déjà proposé pour cette séance
 
   @override
   void initState() {
@@ -70,9 +84,22 @@ class _MinuteurScreenState extends State<MinuteurScreen>
     } catch (_) {}
   }
 
-  Duration get _elapsed {
+  Duration get _elapsed => _real + _skipped;
+
+  /// Temps réellement passé (sans pauses ni phases sautées).
+  Duration get _real {
     final ref = _pausedAt ?? DateTime.now();
-    return ref.difference(_startAt!) - _pausedTotal + _skipped;
+    return ref.difference(_startAt!) - _pausedTotal;
+  }
+
+  /// La phase en cours se termine (fin, passée, ou séance arrêtée) : son
+  /// temps réel est noté dans le journal.
+  void _endPhase() {
+    final plan = _plan, log = _log;
+    if (plan == null || log == null || _lastIndex < 0) return;
+    final s = ((_real - _phaseStart).inMilliseconds / 1000).round();
+    log.phaseEnded(plan.phases[_lastIndex], s);
+    _phaseStart = _real;
   }
 
   // ---------------------------------------------------------------- contrôle
@@ -94,6 +121,9 @@ class _MinuteurScreenState extends State<MinuteurScreen>
       _skipped = Duration.zero;
       _lastIndex = -1;
       _lastSec = -1;
+      _log = IntervalLog(_cfg);
+      _phaseStart = Duration.zero;
+      _offered = false;
     });
     _tick?.cancel();
     _tick = Timer.periodic(const Duration(milliseconds: 100), (_) => _onTick());
@@ -104,10 +134,13 @@ class _MinuteurScreenState extends State<MinuteurScreen>
     if (!mounted || _plan == null || _paused || !_running) return;
     final pos = _plan!.at(_elapsed);
     if (pos.finished) {
+      _endPhase();
+      _lastIndex = -1;
       _finish();
       return;
     }
     if (pos.index != _lastIndex) {
+      _endPhase();
       _lastIndex = pos.index;
       _lastSec = -1;
       HapticFeedback.heavyImpact(); // changement de phase
@@ -123,7 +156,8 @@ class _MinuteurScreenState extends State<MinuteurScreen>
   Future<void> _finish() async {
     _tick?.cancel();
     WakelockPlus.disable();
-    TimerAlerts.cancelAll();
+    // Écran éteint : la notification « Terminé » reste jusqu'au retour.
+    TimerAlerts.cancelIfForeground();
     setState(() {
       _running = false;
       _done = true;
@@ -131,6 +165,72 @@ class _MinuteurScreenState extends State<MinuteurScreen>
     for (var i = 0; i < 3; i++) {
       HapticFeedback.heavyImpact();
       await Future.delayed(const Duration(milliseconds: 250));
+    }
+    await _offerSave();
+  }
+
+  /// Propose d'enregistrer la séance : un cycle = une série en secondes,
+  /// avec le repos choisi et le repos réellement pris avant elle.
+  Future<void> _offerSave() async {
+    final log = _log;
+    final uid = widget.userId;
+    if (_offered || log == null || log.rounds.isEmpty || uid == null) return;
+    _offered = true;
+    if (!mounted) return;
+    final name = await showDialog<String>(
+      context: context,
+      builder: (_) => IntervalSaveDialog(
+          log: log, initialName: intervalExerciseName(log.config)),
+    );
+    if (name == null || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final first = await (widget.firstSerie ?? (ex) => _firstSerie(uid, ex))(name);
+      final today = DateTime.now();
+      final perfs = [
+        for (var i = 0; i < log.rounds.length; i++)
+          Perf(
+            userId: uid,
+            date: DateTime(today.year, today.month, today.day),
+            exercice: name,
+            serie: first + i,
+            performance: log.rounds[i].workS.toDouble(),
+            unite: 'Sec',
+            categorie: 'Cardio',
+            reposS: log.rounds[i].restBeforeS,
+            reposPrevuS:
+                log.rounds[i].restBeforeS == null ? null : log.rounds[i].restPlannedS,
+          ),
+      ];
+      final sent =
+          await (widget.save ?? SupabaseService.instance.savePerfs)(perfs);
+      notifyDataChanged(); // Saisie, Stats, Calendrier
+      messenger.showSnackBar(SnackBar(
+        content: Text(sent
+            ? '« $name » enregistré ✓ (${perfs.length} séries)'
+            : '« $name » enregistré hors ligne ✓ (envoi automatique)'),
+        behavior: SnackBarBehavior.floating,
+      ));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(
+          content: Text('Enregistrement impossible : $e'),
+          behavior: SnackBarBehavior.floating));
+    }
+  }
+
+  /// Numéro de la première série : après celles déjà faites aujourd'hui.
+  static Future<int> _firstSerie(String uid, String ex) async {
+    try {
+      final today = await SupabaseService.instance
+          .getPerfsForDate(uid, DateTime.now());
+      final done = [
+        for (final p in today)
+          if (p.exercice.trim().toLowerCase() == ex.trim().toLowerCase())
+            p.serie
+      ];
+      return done.isEmpty ? 1 : done.reduce((a, b) => a > b ? a : b) + 1;
+    } catch (_) {
+      return 1;
     }
   }
 
@@ -159,15 +259,21 @@ class _MinuteurScreenState extends State<MinuteurScreen>
     _onTick();
   }
 
-  void _stop() {
+  Future<void> _stop() async {
     _tick?.cancel();
     WakelockPlus.disable();
     TimerAlerts.cancelAll();
+    // Arrêt en cours de séance : la phase en cours compte (cycle entamé).
+    if (_running) {
+      _endPhase();
+      _lastIndex = -1;
+    }
     setState(() {
       _running = false;
       _paused = false;
       _done = false;
     });
+    await _offerSave();
   }
 
   Future<bool> _confirmStop() async {
@@ -230,7 +336,7 @@ class _MinuteurScreenState extends State<MinuteurScreen>
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
         if (await _confirmStop() && mounted) {
-          _stop();
+          await _stop();
           if (mounted) Navigator.of(context).pop();
         }
       },
@@ -517,6 +623,71 @@ class _StepperRow extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+
+/// « Enregistrer la séance ? » : résumé des cycles, nom de l'exercice.
+/// Renvoie le nom choisi, ou null (ignorer).
+class IntervalSaveDialog extends StatefulWidget {
+  final IntervalLog log;
+  final String initialName;
+  const IntervalSaveDialog(
+      {super.key, required this.log, required this.initialName});
+
+  @override
+  State<IntervalSaveDialog> createState() => _IntervalSaveDialogState();
+}
+
+class _IntervalSaveDialogState extends State<IntervalSaveDialog> {
+  late final _name = TextEditingController(text: widget.initialName);
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final log = widget.log;
+    final n = log.rounds.length;
+    return AlertDialog(
+      title: const Text('Enregistrer la séance ?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('$n cycle${n > 1 ? 's' : ''} · '
+              '${formatSeconds(log.totalWorkS)} d\'effort'
+              '${log.config.rest > 0 && n > 1 ? ' · repos ${formatSeconds(log.config.rest)}' : ''}'),
+          const SizedBox(height: 4),
+          Text('Une série par cycle, en catégorie Cardio, avec le repos '
+              'choisi et le repos réellement pris.',
+              style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: 8),
+          TextField(
+            key: const ValueKey('interval-name'),
+            controller: _name,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(labelText: 'Exercice'),
+            onChanged: (_) => setState(() {}),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Ignorer')),
+        FilledButton(
+          key: const ValueKey('interval-save'),
+          onPressed: _name.text.trim().isEmpty
+              ? null
+              : () => Navigator.pop(context, _name.text.trim()),
+          child: const Text('Enregistrer'),
+        ),
+      ],
     );
   }
 }

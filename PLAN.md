@@ -330,6 +330,14 @@ Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec 
 - [x] Planche **désactivée** : retirée des cartes d'exercices, de la liste « + Ajouter » et de l'autocomplétion
 - [ ] **Toi** : migration `20261124230000_modele_partage.sql`
 
+## Minuteur enregistré, notification de repos (27/11, v2.23.0)
+
+- [x] Minuteur (HIIT, Tabata, intervalles) : à la fin ou à l'arrêt, « Enregistrer la séance ? » (nom modifiable) ;
+      un cycle = une série en secondes, catégorie Cardio, avec le **repos choisi** (`repos_prevu_s`) et le **repos
+      réellement pris** (`repos_s`, phase passée comprise). Hors ligne : même file d'attente que les séries
+- [x] Repos / minuteur écran éteint : la notification de fin reste affichée jusqu'au retour dans l'app (elle était
+      effacée par l'app elle-même à la fin du décompte)
+
 ## Catégories des exercices (18/11, v2.13.0)
 
 - [x] Réglages → **Catégories des exercices** : ranger chaque exercice avec ses propres catégories (Planche,

@@ -115,7 +115,7 @@ class RestTimer extends ChangeNotifier {
     if (end == null) return;
     final l = end.difference(_nowFn());
     if (l <= Duration.zero) {
-      _finish(RestTaken(_planned, _planned));
+      _finish(RestTaken(_planned, _planned), natural: true);
       HapticFeedback.heavyImpact();
       Future.delayed(
           const Duration(milliseconds: 250), HapticFeedback.heavyImpact);
@@ -141,12 +141,14 @@ class RestTimer extends ChangeNotifier {
     }
   }
 
-  void _finish(RestTaken? taken) {
+  void _finish(RestTaken? taken, {bool natural = false}) {
     _tick?.cancel();
     if (taken != null) _last = taken;
     _end = null;
     left.value = null;
-    TimerAlerts.cancelAll();
+    // Fin du repos écran éteint : la notification « Repos terminé » reste
+    // affichée jusqu'au retour dans l'app.
+    natural ? TimerAlerts.cancelIfForeground() : TimerAlerts.cancelAll();
     if (_done != null && !_done!.isCompleted) _done!.complete();
   }
 

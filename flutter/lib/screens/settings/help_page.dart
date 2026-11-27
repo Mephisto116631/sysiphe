@@ -31,6 +31,9 @@ const kHelp = <HelpSection>[
     'Le bouton son passe de voix + bips à bips seuls, puis à muet.',
     'Après chaque série, le repos démarre (bandeau bleu) : −15 / +15 pour '
         'l\'ajuster, Passer pour l\'arrêter. Le vrai temps de repos est noté.',
+    'Minuteur (icône chrono en haut de la Saisie) : HIIT, Tabata ou tes '
+        'propres durées. À la fin (ou si tu arrêtes), enregistre la séance : '
+        'une série par cycle, en Cardio, avec le repos choisi et le repos pris.',
   ]),
   HelpSection(Icons.accessibility_new, 'La planche', [
     'Réglages → Exercices → Planche : active ou désactive la planche pour ton '

@@ -1196,7 +1196,8 @@ class _SaisieScreenState extends State<SaisieScreen>
           IconButton(
             icon: const Icon(Icons.timer_outlined),
             onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const MinuteurScreen())),
+                MaterialPageRoute(
+                    builder: (_) => MinuteurScreen(userId: widget.userId))),
             tooltip: 'Minuteur (préparation, exercice, repos)',
           ),
           if (_todayPerfs.isNotEmpty)
