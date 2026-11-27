@@ -69,6 +69,10 @@ void main() {
     await t.scrollUntilVisible(find.text('Détail : Full · Normal'), 300,
         scrollable: page);
     expect(find.text('Facteur de difficulté'), findsOneWidget);
+    // Comparateur discret sous le détail : 5 combinaisons les plus proches.
+    await t.scrollUntilVisible(find.text('Équivalences à 10 s'), 300,
+        scrollable: page);
+    expect(find.textContaining('≈ '), findsNWidgets(5));
     expect(t.takeException(), isNull);
   });
 

@@ -416,6 +416,23 @@ class _ModelScreenState extends State<ModelScreen> {
             row('Effort', '${_n(_gridTemps)} s × poids × difficulté / 100',
                 '${b.effort} pts',
                 bold: true),
+            // Comparateur discret : combinaisons d'effort le plus proche.
+            const SizedBox(height: 8),
+            Text('Équivalences à ${_n(_gridTemps)} s',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(fontWeight: FontWeight.w600)),
+            for (final c in closestEfforts(m,
+                variante: _selVariante!,
+                forme: _selForme!,
+                elastique: _gridElastique,
+                tension: _gridTension,
+                temps: _gridTemps))
+              Text(
+                '≈ ${c.effort} pts (${c.effort - b.effort >= 0 ? '+' : ''}'
+                '${c.effort - b.effort}) · ${c.label}',
+                key: ValueKey('equiv-${c.label}'),
+                style: theme.textTheme.bodySmall,
+              ),
           ],
         ),
       ),
