@@ -177,3 +177,59 @@ Map<String, double> geometricSeries(
       for (var i = 0; i < keys.length; i++)
         keys[i]: double.parse((base * math.pow(ratio, i)).toStringAsFixed(4)),
     };
+
+/// Une combinaison de planche et son effort (comparateur d'équivalences).
+class EffortCombo {
+  final String variante, forme, elastique, tension;
+  final int effort;
+  const EffortCombo(
+      this.variante, this.forme, this.elastique, this.tension, this.effort);
+
+  /// « Straddle · Normal · Rouge/Violet (Écarté) », « Tuck · High ».
+  String get label => [
+        variante,
+        forme,
+        if (elastique != 'Aucun') '$elastique ($tension)',
+      ].join(' · ');
+}
+
+/// Les [n] combinaisons dont l'effort, pour [temps] secondes, est le plus
+/// proche de la référence (elle exclue) : ordre d'idée pour passer d'une
+/// variante, d'une forme ou d'un élastique à l'autre. Sans élastique, la
+/// tension ne compte pas (N/A). À écart égal, la plus facile d'abord.
+List<EffortCombo> closestEfforts(
+  EffortModel m, {
+  required String variante,
+  required String forme,
+  required String elastique,
+  required String tension,
+  required double temps,
+  int n = 5,
+}) {
+  final ref = m.effort(variante, forme, elastique, tension, temps);
+  final out = <EffortCombo>[];
+  for (final v in m.variantes.keys) {
+    for (final f in m.formes.keys) {
+      for (final e in m.elastiques.keys) {
+        final ts = e == 'Aucun'
+            ? const ['N/A']
+            : [for (final t in m.tensions.keys) if (t != 'N/A') t];
+        for (final t in ts) {
+          final same = v == variante &&
+              f == forme &&
+              e == elastique &&
+              (e == 'Aucun' || t == tension);
+          if (same) continue;
+          final eff = m.effort(v, f, e, t, temps);
+          if (eff <= 0) continue;
+          out.add(EffortCombo(v, f, e, t, eff));
+        }
+      }
+    }
+  }
+  out.sort((a, b) {
+    final d = (a.effort - ref).abs().compareTo((b.effort - ref).abs());
+    return d != 0 ? d : a.effort.compareTo(b.effort);
+  });
+  return out.take(n).toList();
+}
