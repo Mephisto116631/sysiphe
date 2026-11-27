@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
@@ -98,6 +99,15 @@ class TimerAlerts {
         }
       }
     } catch (_) {/* les notifications sont un confort : jamais bloquant */}
+  }
+
+  /// Fin naturelle d'un décompte (repos, minuteur) : on n'efface les
+  /// notifications que si l'app est à l'écran. En arrière-plan, celle qui
+  /// vient de s'afficher reste jusqu'au retour dans l'app (effacée alors par
+  /// le retour au premier plan).
+  static Future<void> cancelIfForeground() async {
+    final s = WidgetsBinding.instance.lifecycleState;
+    if (s == null || s == AppLifecycleState.resumed) await cancelAll();
   }
 
   /// Annule les alertes programmées ou affichées du minuteur, du repos et

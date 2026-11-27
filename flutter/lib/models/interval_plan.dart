@@ -117,3 +117,58 @@ String clock(Duration d) {
   final s = (d.inMilliseconds / 1000).ceil();
   return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
 }
+
+/// Un cycle fait au minuteur : temps d'effort réel, repos pris juste avant
+/// (null pour le premier) et repos choisi.
+class IntervalRound {
+  final int workS;
+  final int? restBeforeS;
+  final int restPlannedS;
+  const IntervalRound(this.workS, this.restBeforeS, this.restPlannedS);
+
+  @override
+  bool operator ==(Object other) =>
+      other is IntervalRound &&
+      other.workS == workS &&
+      other.restBeforeS == restBeforeS &&
+      other.restPlannedS == restPlannedS;
+  @override
+  int get hashCode => Object.hash(workS, restBeforeS, restPlannedS);
+  @override
+  String toString() => 'Round($workS s, repos $restBeforeS/$restPlannedS)';
+}
+
+/// Journal d'une séance au minuteur : chaque phase terminée (ou passée) avec
+/// son temps réel. Donne les cycles à enregistrer comme séries.
+class IntervalLog {
+  IntervalLog(this.config);
+  final IntervalConfig config;
+  final List<IntervalRound> rounds = [];
+  int? _pendingRest; // repos pris après le dernier cycle
+
+  /// Une phase vient de se terminer après [seconds] réelles.
+  void phaseEnded(IntervalPhase phase, int seconds) {
+    switch (phase.kind) {
+      case IntervalKind.prep:
+        break;
+      case IntervalKind.rest:
+        _pendingRest = seconds;
+      case IntervalKind.work:
+        if (seconds >= 1) {
+          rounds.add(IntervalRound(
+              seconds, rounds.isEmpty ? null : _pendingRest, config.rest));
+        }
+        _pendingRest = null;
+    }
+  }
+
+  int get totalWorkS => rounds.fold(0, (a, r) => a + r.workS);
+}
+
+/// Nom proposé pour enregistrer la séance : « Tabata », « HIIT » ou
+/// « Intervalles ».
+String intervalExerciseName(IntervalConfig c) {
+  if (c.work == 20 && c.rest == 10) return 'Tabata';
+  if (c.work >= 30 && c.rest > 0 && c.rest <= c.work) return 'HIIT';
+  return 'Intervalles';
+}

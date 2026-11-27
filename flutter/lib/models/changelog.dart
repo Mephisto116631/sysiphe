@@ -15,6 +15,13 @@ class ChangelogEntry {
 }
 
 const kChangelog = <ChangelogEntry>[
+  ChangelogEntry('2.23.0', '27 nov. 2026', 'Tes séances cardio enregistrées', [
+    '⏱️ Minuteur (HIIT, Tabata…) : à la fin, enregistre ta séance en un '
+        'appui. Chaque cycle devient une série, avec le repos choisi et le '
+        'repos vraiment pris.',
+    '🔔 La notification « Repos terminé » reste affichée jusqu\'à ce que tu '
+        'reviennes dans l\'app.',
+  ]),
   ChangelogEntry('2.22.1', '25 nov. 2026', 'Stats en volume', [
     '📊 Dans Stats, chaque exercice s\'affiche en volume du jour (total des '
         'répétitions ou des secondes). Le bouton « Meilleure série » montre '
