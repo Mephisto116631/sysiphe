@@ -570,7 +570,7 @@ class _SaisieScreenState extends State<SaisieScreen>
   /// à chaque changement de l'historique ou des réglages.
   void _rescheduleReminders() =>
       Reminders.reschedule(_history.map((p) => p.date),
-          inactivityDays: _inactivityDays);
+          inactivityDays: _inactivityDays, perfs: _history);
 
   /// Synchronise le nom d'exercice et adapte le formulaire :
   /// « Planche » → options planche ouvertes et unité en secondes.

@@ -50,7 +50,8 @@ const kHelp = <HelpSection>[
     'Stats : la courbe d\'un exercice, la comparaison de plusieurs exercices, '
         'tes séries par catégorie.',
     'Calendrier : tes jours d\'entraînement, plus foncés quand tu en as fait '
-        'beaucoup, et ton temps de récupération.',
+        'beaucoup, et ton temps de récupération. « Repos le plus efficace » : '
+        'les jours de repos qui précèdent tes meilleures séances.',
     'Records : ta meilleure série et ta meilleure séance pour chaque exercice.',
   ]),
   HelpSection(Icons.directions_run, 'La course', [
@@ -76,8 +77,9 @@ const kHelp = <HelpSection>[
   HelpSection(Icons.person_outline, 'Profil, photo et réglages', [
     'Touche le rond de ton profil en haut des Réglages pour choisir une '
         'couleur, une image ou ta photo.',
-    'Rappels : une notification quand une séance est conseillée, ou après '
-        'quelques jours sans séance.',
+    'Rappels : une notification quand une séance est conseillée (après ton '
+        'repos habituel, optimal ou choisi), ou après quelques jours sans '
+        'séance.',
     'Application → Exporter mes paramètres : un fichier pour retrouver tous '
         'tes réglages sur un autre téléphone (Importer).',
     'Compte et sécurité : associe ton compte Google pour retrouver tes '

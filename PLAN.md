@@ -338,6 +338,14 @@ Choix actuel : la formule type planche (ci-dessus), jugée plus cohérente avec 
 - [x] Repos / minuteur écran éteint : la notification de fin reste affichée jusqu'au retour dans l'app (elle était
       effacée par l'app elle-même à la fin du décompte)
 
+## Repos le plus efficace (28/11, v2.24.0)
+
+- [x] Calendrier → Récupération : **repos le plus efficace** = jours de repos qui précèdent tes meilleures séances.
+      Chaque exercice est comparé à sa propre moyenne (même mesure que les Stats) ; une séance = moyenne de ses
+      exercices ; regroupement par repos (0, 1, 2, 3, 4 j et +), au moins 2 séances par repos (`optimalRest`)
+- [x] Réglages → Rappels : la « séance conseillée » suit le repos **habituel** (défaut), **optimal** (repli sur
+      l'habituel s'il n'est pas calculable) ou **choisi** (0 à 14 jours)
+
 ## Catégories des exercices (18/11, v2.13.0)
 
 - [x] Réglages → **Catégories des exercices** : ranger chaque exercice avec ses propres catégories (Planche,

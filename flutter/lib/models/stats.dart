@@ -486,3 +486,74 @@ List<(DateTime, Map<String, int>)> setsByCategory(
   }
   return out;
 }
+
+// ─── Repos le plus efficace (jours entre deux séances) ─────────────────────
+
+/// Résultat d'un nombre de jours de repos : qualité moyenne des séances qui
+/// l'ont suivi (1,0 = séance moyenne) et nombre de séances.
+class RestBucket {
+  final int days; // 4 = « 4 jours et plus »
+  final double score;
+  final int sessions;
+  const RestBucket(this.days, this.score, this.sessions);
+}
+
+class OptimalRest {
+  final int bestDays;
+  final double bestScore;
+  final List<RestBucket> buckets; // 0, 1, 2, 3, 4+
+  const OptimalRest(this.bestDays, this.bestScore, this.buckets);
+}
+
+const kRestBucketMax = 4;
+
+/// Quel repos (en jours) précède tes meilleures séances ?
+///
+/// Chaque exercice est comparé à lui-même : sa valeur du jour (volume,
+/// effort…, comme les Stats) divisée par sa moyenne. Une séance vaut la
+/// moyenne de ses exercices (1,10 = 10 % au-dessus de ton habitude). On
+/// regroupe les séances selon les jours de repos qui les précèdent ; le repos
+/// optimal est celui dont les séances sont les meilleures (au moins
+/// [minSessions] séances). null s'il n'y a pas au moins deux repos
+/// comparables.
+OptimalRest? optimalRest(Iterable<Perf> perfs, {int minSessions = 2}) {
+  final byEx = <String, List<Perf>>{};
+  for (final p in perfs) {
+    if (p.exercice.trim().isEmpty) continue;
+    (byEx[p.exercice] ??= []).add(p);
+  }
+  // Valeur relative de chaque exercice, par jour.
+  final dayScores = <DateTime, List<double>>{};
+  for (final list in byEx.values) {
+    final pts = dailySeries(list, metricFor(list));
+    if (pts.length < 3) continue; // trop peu de séances pour une moyenne
+    final mean = pts.fold<double>(0, (a, p) => a + p.value) / pts.length;
+    if (mean <= 0) continue;
+    for (final p in pts) {
+      (dayScores[_day(p.date)] ??= []).add(p.value / mean);
+    }
+  }
+  final rest = computeRest(perfs.map((p) => p.date));
+  if (rest == null) return null;
+  final sums = <int, (double, int)>{};
+  for (final g in rest.gaps) {
+    final s = dayScores[_day(g.resume)];
+    if (s == null || s.isEmpty) continue;
+    final score = s.reduce((a, b) => a + b) / s.length;
+    final k = g.restDays.clamp(0, kRestBucketMax);
+    final prev = sums[k] ?? (0.0, 0);
+    sums[k] = (prev.$1 + score, prev.$2 + 1);
+  }
+  final buckets = [
+    for (final e in (sums.entries.toList()..sort((a, b) => a.key - b.key)))
+      RestBucket(e.key, e.value.$1 / e.value.$2, e.value.$2)
+  ];
+  final ok = [for (final b in buckets) if (b.sessions >= minSessions) b];
+  if (ok.length < 2) return null;
+  final best = ok.reduce((a, b) => b.score > a.score ? b : a);
+  return OptimalRest(best.days, best.score, buckets);
+}
+
+/// « 2 j », « 4 j et + ».
+String restDaysLabel(int d) =>
+    d >= kRestBucketMax ? '$kRestBucketMax j et +' : '$d j';

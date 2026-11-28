@@ -22,6 +22,8 @@ class _RemindersCardState extends State<RemindersCard> {
   bool _on = true;
   int _hour = Reminders.defaultHour;
   int _days = 2;
+  RestTarget _target = RestTarget.habituel;
+  int _chosen = 1;
   bool _loading = true;
 
   @override
@@ -33,6 +35,8 @@ class _RemindersCardState extends State<RemindersCard> {
   Future<void> _load() async {
     final on = await Reminders.enabled();
     final hour = await Reminders.hour();
+    final target = await Reminders.target();
+    final chosen = await Reminders.chosenDays();
     var days = 2;
     try {
       final s = await SupabaseService.instance.getSettings(widget.userId);
@@ -43,6 +47,8 @@ class _RemindersCardState extends State<RemindersCard> {
       _on = on;
       _hour = hour;
       _days = days.clamp(1, 30);
+      _target = target;
+      _chosen = chosen;
       _loading = false;
     });
   }
@@ -63,6 +69,18 @@ class _RemindersCardState extends State<RemindersCard> {
     if (t == null || !mounted) return;
     setState(() => _hour = t.hour);
     await UiPrefs.setInt(Reminders.hourKey, t.hour);
+    notifyDataChanged();
+  }
+
+  Future<void> _setTarget(RestTarget t) async {
+    setState(() => _target = t);
+    await UiPrefs.setString(Reminders.targetKey, t.name);
+    notifyDataChanged(); // la Saisie reprogramme les rappels
+  }
+
+  Future<void> _setChosen(int v) async {
+    setState(() => _chosen = v);
+    await UiPrefs.setInt(Reminders.chosenDaysKey, v);
     notifyDataChanged();
   }
 
@@ -92,7 +110,7 @@ class _RemindersCardState extends State<RemindersCard> {
                 color: AppTheme.primaryBlue),
             title: const Text('Rappels de séance'),
             subtitle: const Text(
-                'Prochaine séance conseillée (repos habituel) et rappel '
+                'Prochaine séance conseillée (après ton repos) et rappel '
                 'après plusieurs jours sans séance'),
             value: _on,
             onChanged: _loading ? null : _setOn,
@@ -107,6 +125,72 @@ class _RemindersCardState extends State<RemindersCard> {
                       fontSize: 16, fontWeight: FontWeight.w600)),
               onTap: _pickHour,
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Séance conseillée après', style: sub),
+                  const SizedBox(height: 4),
+                  SizedBox(
+                    width: double.infinity,
+                    child: SegmentedButton<RestTarget>(
+                      key: const ValueKey('rest-target'),
+                      segments: const [
+                        ButtonSegment(
+                            value: RestTarget.habituel,
+                            label: Text('Habituel')),
+                        ButtonSegment(
+                            value: RestTarget.optimal, label: Text('Optimal')),
+                        ButtonSegment(
+                            value: RestTarget.choisi, label: Text('Choisi')),
+                      ],
+                      selected: {_target},
+                      showSelectedIcon: false,
+                      onSelectionChanged:
+                          _loading ? null : (s) => _setTarget(s.first),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                      switch (_target) {
+                        RestTarget.habituel =>
+                          'Ton repos le plus fréquent entre deux séances.',
+                        RestTarget.optimal =>
+                          'Le repos qui précède tes meilleures séances '
+                              '(Calendrier → Récupération).',
+                        RestTarget.choisi =>
+                          'Le nombre de jours de repos que tu choisis.',
+                      },
+                      style: sub),
+                ],
+              ),
+            ),
+            if (_target == RestTarget.choisi)
+              ListTile(
+                key: const ValueKey('rest-chosen'),
+                leading: const Icon(Icons.bedtime_outlined,
+                    color: AppTheme.primaryBlue),
+                title: Text(_chosen == 0
+                    ? 'Tous les jours'
+                    : '$_chosen jour${_chosen > 1 ? 's' : ''} de repos'),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: 'Moins de repos',
+                      icon: const Icon(Icons.remove_circle_outline),
+                      onPressed: _chosen <= 0 ? null : () => _setChosen(_chosen - 1),
+                    ),
+                    IconButton(
+                      tooltip: 'Plus de repos',
+                      icon: const Icon(Icons.add_circle_outline),
+                      onPressed:
+                          _chosen >= 14 ? null : () => _setChosen(_chosen + 1),
+                    ),
+                  ],
+                ),
+              ),
             ListTile(
               leading: const Icon(Icons.hourglass_bottom,
                   color: AppTheme.primaryBlue),
