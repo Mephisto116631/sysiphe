@@ -1,5 +1,6 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
+import '../models/perf.dart';
 import '../models/stats.dart';
 import 'timer_alerts.dart';
 import 'ui_prefs.dart';
@@ -20,6 +21,36 @@ class PlannedReminder {
 const kReminderInactivityId = 2001;
 const kReminderNextId = 2002;
 
+/// Repos visé avant la « séance conseillée » : l'habituel (le plus
+/// fréquent), l'optimal (celui qui précède tes meilleures séances, voir
+/// [optimalRest]) ou un nombre de jours choisi.
+enum RestTarget { habituel, optimal, choisi }
+
+/// Repos retenu pour le rappel : nombre de jours et phrase du rappel.
+class RestChoice {
+  final int days;
+  final String reason; // « Ton repos habituel », « Ton repos optimal »…
+  const RestChoice(this.days, this.reason);
+}
+
+/// Repos à utiliser selon le réglage ; repli sur l'habituel si l'optimal
+/// n'est pas encore calculable. null : rien à conseiller.
+RestChoice? chooseRest(RestTarget target,
+    {required RestStats? rest, OptimalRest? optimal, int chosenDays = 1}) {
+  switch (target) {
+    case RestTarget.choisi:
+      return RestChoice(chosenDays.clamp(0, 14), 'Le repos que tu as choisi');
+    case RestTarget.optimal:
+      if (optimal != null) {
+        return RestChoice(optimal.bestDays, 'Ton repos optimal');
+      }
+      break;
+    case RestTarget.habituel:
+      break;
+  }
+  return rest == null ? null : RestChoice(rest.mode, 'Ton repos habituel');
+}
+
 DateTime _day(DateTime d) => DateTime(d.year, d.month, d.day);
 
 /// Jours calendaires entre deux dates (insensible aux changements d'heure).
@@ -39,6 +70,7 @@ List<PlannedReminder> planReminders({
   required int inactivityDays,
   required int hour,
   required DateTime now,
+  RestChoice? restChoice,
 }) {
   final days = {for (final d in sessionDates) _day(d)}.toList()..sort();
   if (days.isEmpty) return const [];
@@ -66,12 +98,13 @@ List<PlannedReminder> planReminders({
     ));
   }
 
-  final rest = computeRest(days);
-  if (rest != null) {
-    final when = at(rest.nextSession);
+  final choice =
+      restChoice ?? chooseRest(RestTarget.habituel, rest: computeRest(days));
+  if (choice != null) {
+    final r = choice.days;
+    final when = at(DateTime(last.year, last.month, last.day + r + 1));
     if (when.isAfter(now) &&
         (inactivity == null || _day(when).isBefore(_day(inactivity)))) {
-      final r = rest.mode;
       out.insert(
           0,
           PlannedReminder(
@@ -79,8 +112,8 @@ List<PlannedReminder> planReminders({
             when,
             'Séance conseillée aujourd\'hui',
             r == 0
-                ? 'D\'habitude, tu t\'entraînes tous les jours.'
-                : 'Ton repos habituel (${r == 1 ? '1 jour' : '$r jours'}) est terminé.',
+                ? '${choice.reason} : t\'entraîner tous les jours.'
+                : '${choice.reason} (${r == 1 ? '1 jour' : '$r jours'}) est terminé.',
           ));
     }
   }
@@ -94,6 +127,17 @@ List<PlannedReminder> planReminders({
 class Reminders {
   static const enabledKey = 'reminders_on';
   static const hourKey = 'reminders_hour';
+  static const targetKey = 'reminders_rest_target';
+  static const chosenDaysKey = 'reminders_rest_days';
+
+  static Future<RestTarget> target() async {
+    final n = await UiPrefs.getString(targetKey);
+    return RestTarget.values.firstWhere((t) => t.name == n,
+        orElse: () => RestTarget.habituel);
+  }
+
+  static Future<int> chosenDays() async =>
+      (await UiPrefs.getInt(chosenDaysKey) ?? 1).clamp(0, 14);
   static const defaultHour = 18;
 
   static const _details = NotificationDetails(
@@ -112,18 +156,24 @@ class Reminders {
       (await UiPrefs.getInt(hourKey) ?? defaultHour).clamp(0, 23);
 
   /// Recalcule et reprogramme les deux rappels. Jamais bloquant.
+  /// [perfs] : l'historique, pour le repos optimal.
   static Future<void> reschedule(Iterable<DateTime> sessionDates,
-      {required int inactivityDays}) async {
+      {required int inactivityDays, Iterable<Perf> perfs = const []}) async {
     try {
       final plugin = await TimerAlerts.plugin();
       await plugin.cancel(kReminderInactivityId);
       await plugin.cancel(kReminderNextId);
       if (!await enabled()) return;
+      final t = await target();
       final plan = planReminders(
         sessionDates: sessionDates,
         inactivityDays: inactivityDays,
         hour: await hour(),
         now: DateTime.now(),
+        restChoice: chooseRest(t,
+            rest: computeRest(sessionDates),
+            optimal: t == RestTarget.optimal ? optimalRest(perfs) : null,
+            chosenDays: await chosenDays()),
       );
       for (final r in plan) {
         await plugin.zonedSchedule(

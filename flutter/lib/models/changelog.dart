@@ -15,6 +15,12 @@ class ChangelogEntry {
 }
 
 const kChangelog = <ChangelogEntry>[
+  ChangelogEntry('2.24.0', '28 nov. 2026', 'Ton repos idéal', [
+    '⚡ Calendrier → Récupération : le nombre de jours de repos qui précède '
+        'tes meilleures séances, et l\'écart pour chaque repos.',
+    '🔔 Réglages → Rappels : la « séance conseillée » peut suivre ton repos '
+        'habituel, ton repos optimal, ou un nombre de jours que tu choisis.',
+  ]),
   ChangelogEntry('2.23.2', '27 nov. 2026', 'Corriger une planche', [
     '✏️ En touchant une série de planche du jour, tu peux maintenant changer '
         'la variante, la forme, l\'élastique et la tension, pas seulement le '

@@ -5,6 +5,7 @@ import '../app_flavor.dart';
 import '../services/data_events.dart';
 import '../services/supabase_service.dart';
 import '../services/ui_prefs.dart';
+import '../models/perf.dart';
 import '../models/stats.dart';
 import '../theme.dart';
 import '../widgets/load_error.dart';
@@ -21,6 +22,7 @@ class CalendarScreen extends StatefulWidget {
 class _CalendarScreenState extends State<CalendarScreen> {
   Map<DateTime, int> _activeDays = {};
   Set<DateTime> _runDays = {}; // jours de course (version course)
+  List<Perf> _perfs = []; // historique (repos le plus efficace)
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
   bool _loading = true;
@@ -46,8 +48,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
     try {
-      final days = await SupabaseService.instance
-          .getActiveDays(widget.userId); // tout l'historique
+      // Tout l'historique : jours actifs et repos le plus efficace.
+      final perfs = await SupabaseService.instance.getAllPerfs(widget.userId);
+      final days = <DateTime, int>{};
+      for (final p in perfs) {
+        final k = DateTime(p.date.year, p.date.month, p.date.day);
+        days[k] = (days[k] ?? 0) + 1;
+      }
       final runs = <DateTime>{};
       if (kCourse) {
         try {
@@ -62,7 +69,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
         days[d] = (days[d] ?? 0) + 1;
       }
       if (!mounted) return;
-      setState(() { _activeDays = days; _runDays = runs; _loading = false; });
+      setState(() {
+        _activeDays = days;
+        _runDays = runs;
+        _perfs = perfs;
+        _loading = false;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() { _error = e; _loading = false; });
@@ -226,7 +238,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
                   // Récupération (onglet Repos du web)
                   const SizedBox(height: 10),
-                  _RestCard(dates: _activeDays.keys.toList()),
+                  _RestCard(dates: _activeDays.keys.toList(), perfs: _perfs),
                 ],
               ),
             ),
@@ -331,8 +343,9 @@ enum _RestPeriod {
 /// longue coupure, prochaine séance suggérée et dernières reprises.
 class _RestCard extends StatefulWidget {
   final List<DateTime> dates;
+  final List<Perf> perfs;
 
-  const _RestCard({required this.dates});
+  const _RestCard({required this.dates, this.perfs = const []});
 
   @override
   State<_RestCard> createState() => _RestCardState();
@@ -404,6 +417,14 @@ class _RestCardState extends State<_RestCard> {
                   _RestMetric('${r.longest} j', 'Plus longue\ncoupure'),
                 ],
               ),
+              const SizedBox(height: 12),
+              _BestRest(perfs: [
+                for (final p in widget.perfs)
+                  if (_period.days == null ||
+                      !p.date.isBefore(DateTime.now()
+                          .subtract(Duration(days: _period.days!))))
+                    p
+              ]),
               const SizedBox(height: 12),
               _NextSession(next: r.nextSession),
               const SizedBox(height: 12),
@@ -483,6 +504,64 @@ class _NextSession extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
       ),
       child: Text(text, style: TextStyle(color: color)),
+    );
+  }
+}
+
+/// Repos le plus efficace : jours de repos qui précèdent tes meilleures
+/// séances (chaque exercice comparé à sa propre moyenne).
+class _BestRest extends StatelessWidget {
+  final List<Perf> perfs;
+  const _BestRest({required this.perfs});
+
+  static String _pct(double s) {
+    final d = ((s - 1) * 100).round();
+    return '${d >= 0 ? '+' : ''}$d %';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final o = optimalRest(perfs);
+    if (o == null) {
+      return Text(
+          'Repos le plus efficace : pas encore assez de séances pour le '
+          'calculer.',
+          key: const ValueKey('best-rest-none'),
+          style: theme.textTheme.bodySmall);
+    }
+    final best = o.bestDays;
+    return Column(
+      key: const ValueKey('best-rest'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          const Icon(Icons.bolt, size: 18, color: Colors.green),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+                'Repos le plus efficace : ${restDaysLabel(best)} '
+                '(séances ${_pct(o.bestScore)} vs ta moyenne)',
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(fontWeight: FontWeight.w600)),
+          ),
+        ]),
+        const SizedBox(height: 4),
+        Wrap(spacing: 6, runSpacing: 4, children: [
+          for (final b in o.buckets)
+            Chip(
+              visualDensity: VisualDensity.compact,
+              backgroundColor: b.days == best ? Colors.green.shade50 : null,
+              label: Text('${restDaysLabel(b.days)} : ${_pct(b.score)} '
+                  '(${b.sessions})',
+                  style: const TextStyle(fontSize: 12)),
+            ),
+        ]),
+        Text(
+            'Chaque exercice comparé à sa moyenne ; entre parenthèses, le '
+            'nombre de séances.',
+            style: theme.textTheme.bodySmall),
+      ],
     );
   }
 }
